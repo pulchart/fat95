@@ -1,0 +1,608 @@
+
+                fat95 v3.13 (13-02-2004) fichier « readme »
+                -------------------------------------------
+
+$VER: fat95 informations en français 3.13 (13-Feb-2004)
+
+Much thanks to Hervé Dupont for translating this :^)
+
+Introduction
+============
+
+Installer des lecteurs de disques sous AmigaOS est vraiment simple. ;-)
+Il y a toujours deux programmes impliqués :
+
+  1. un pilote hardware, donnant l'accès aux blocs d'un disque en un
+     ensemble. Ce pilote fait soit partie du Kickstart en ROM,
+     soit en tant que fichier indépendant avec un nom comme :
+     « DEVS:xxx.device ».
+
+  2. un système de fichiers. C'est comme un gestionnaire de stokage
+     chargé de la gestion des partitions, des répertoires et des
+     fichiers. La système de fichiers standard est également présent
+     dans la ROM. D'autres, comme fat95 sont des fichiers placés dans
+     le répertoire « L: ».
+
+Nous devons maintenant allier les deux ensemble. Pour ce faire, nous
+écrirons un texte particulier, connu sous le nom de Mountlist.
+Il y a des paramètres autant pour le pilote que pour le gestionnaire
+de fichiers.
+
+Tout d'abord, le nom du pilote :
+
+    Device = scsi.device
+
+Celui-ci correspond au port interne IDE ou SCSI de l'Amiga.
+Habituellement, plusieurs disques peuvent être connectés à un tel port.
+Toutefois nous devons établir celui que nous voulons :
+
+    Unit = 1
+
+Ceci est mon disque IDE (esclave), un disque ZIP de 100 Mo.
+Le disque dur maître a pour numéro 0.
+Pour les pilote ne possédant qu'un seul disque, c'est également 0.
+
+    Flags = 0
+
+Certains pilotes permettent quelques réglages spécifiques via cette option.
+Voir les spécification du pilote pour obtenir plus de détails.
+La plupart du temps, 0 est suffisant.
+
+    BufMemType = 1
+
+Le plus souvent utilisé. Voir aussi les spécifications du pilote pour
+les autres valeurs.
+
+    MaxTransfer = 0x20000
+    Mask = 0xfffffffe
+
+Pour la ROM (non-corrigée) de l' A1200 concernant le scsi.device.
+Ou si le pilote n'en a pas besoin, effacez ces lignes.
+
+Maintenant pour le système de fichiers.
+
+    Filesystem = l:fat95
+
+AmigaOS veut le chemin complet ici.
+
+    StackSize = 4096
+
+Réserve quelques octets pour les données temporaires. Si la valeur
+est trop petite, des « craches » mystérieux aparaîtront.
+
+    GlobVec = -1
+
+Une nuit d'histoire. Pour le moment fat95 est érit en assembleur, donc -1.
+
+    Buffers = 200
+
+Réserve un nombre de blocs de 512 octets chacun en mémoire
+Plus = Plus rapide = moins de mémoire de disponible.
+
+    Control = "+s"
+
+Ceci est complètement optionnel ;^)
+Vous pouvez utiliser les options suivantes :
+
+    +    Active les options qui suivent.
+    -    Désactive les options qui suivent.
+    s    Force la lecture/écriture en  SCSI direct. Ceci peut aider
+         avec certains disques durs de plus de 4 Go. Désactivé (OFF)
+         par défaut.
+    d    Affiche une information de date dans le commentaire des fichiers.
+         ON par défaut.
+    D    Enregistre la date du dernier accès au fichier. ON par défaut.
+
+Normalement, l'AmigaOS charge le système de fichier lors premier accès,
+pour préserver de la mémoire avec les périphériques utilisé occasionelement.
+Pour le démarrer immédiatement, nous mettrons :
+
+    Activate = 1
+
+Le système de fichiers veut connaître, où exactement, se trouve la partition
+désirée. Contrairement aux autres, fat95 accepte deux méthodes pour le faire.
+
+a) Recherche automatique de partition :
+
+    LowCyl = 0    /* "Auto search ON" */
+
+    BlockSize = 512    /* Fat95 n'a pas besoin de ceci, */
+    HighCyl = 1        /* mais la commande « Mount » aime les voir ;^) */
+    BlocksPerTrack = 1
+    Surfaces = 1
+
+    DosType = 0x46415400    /* disquettes uniquement. Ou alors... */
+    DosType = 0x46415401    /* 1ere partition utilisable. Fonctionne
+                               presque toujours. */
+    DosType = 0x46415402    /* seconde partition primaire. Sagement. */
+    DosType = 0x46415405    /* premier disque logique. */
+    DosType = 0x46415406    /* second disque logique, etc. */
+
+    fat95 recherche automatiquement les tables de partitions de type PC
+    (ne pas confondre avec le RDB).
+
+b) Manuellement :
+
+    BlockSize = 512
+    DosType = 0x46415401
+
+    Le reste est plus compliqué. Vous avez besoin de 4 éléments pour
+    résoudre ces deux équations :
+
+    BlocksPerTrack * Surfaces * LowCyl = StartBlockNumber
+
+    (Le numéro du premier bloc dans la partition) ;
+
+    BlocksPerTrack * Surfaces * (HighCyl + 1) = LastBlock + 1
+
+    (Numéro du premier bloc juste après la partition).
+    Pas si simple, vous voyez. Peut-être mettre BlocksPerTrack
+    et Surfaces à 1. Ainsi vous n'aurez pas à calculer trop durement. ;-)
+    Mais ceci n'est nécessaire que dans des cas pariculiers, comme des
+    dégats dans les tables de partitions.
+
+Référez-vous aussi aux exemples.
+
+Bien.
+Sauvons maintenant tout ça sous le nom DOS désiré, comme « ZIP1 ».
+Il y a plusieurs moyen de « monter » le périphérique :
+
+a) Utilisez dans un Shell :
+
+    mount ZIP1
+
+b) Ajouter une icône de type « projet » : ZIP1.info
+    Entrez « c:mount » en tant qu'outil par défaut.
+    Double-cliquez sur l'icône.
+
+c) Comme b), mais copiez les deux fichiers dans « devs:DosDrivers ».
+    Ceci le montera à chaque démarrage du système.
+
+d) Sous Amiga OS 1.3 la procédure est légèrement différente.
+   Il n'y a qu'UN SEUL fichier pour tous les lecteurs « DEVS:MountList ».
+   Éditez ce fichier et ajoutez les lignes dans l'ordre suivant :
+
+   ZIP1:    /* Votre nom DOS souhaité, plus les deux points */
+     Device = scsi.device
+     /* et ainsi de suite, avec les entrées que nous avons vu plus haut */
+   #    /* Le signe dièse termine la section ZIP1 */
+
+   Sauvez les modifications, et finalement montez :
+
+   mount ZIP1:
+
+   (Cette fois AVEC les deux points).
+
+Si vous aimez démarrer votre Amiga à partir d'une partition FAT :
+
+e) D'abord, a), b) ou d), puis :
+
+    boot95 ZIP1:
+
+De cette manière, j'ai pu installer l'Amiga OS 3.9 sur une partition FAT32
+de 4 Go.
+C'était le moyen le plus simple de tester la FAT32...
+
+Généralité :
+
+Les disques durs PC inclus souvent une zone non utilisée
+d'approximativement 30 Ko entre le « master boot record » (enregistrement
+de démarrage maître) et la première partition. You pouvez essayez
+d'insérrez une séquence de démarrage automatique pour l'Amiga à cet
+endroit. « boot95 » a besoin de « fat95 » dans votre répertoire « L: ». Ou
+bien sa localisation est indiquée dans le second paramètre. Après avoir mis
+à jour la version de fat95, répétez simplement l'appel à boot95.
+
+Attention : ceci remplacera les informations existantes de partionnement
+Amiga. Attention encore : même une partition de démarrage FAT doit être
+accessible à l'heure du démarrage, c'est à dire, dans les 4 premier
+Giga-octets de votre disque dur avec la ROM residente du scsi.device.
+
+
+Installation pour l'OS 2.0+
+===========================
+
+* Double-cliquez sur « install_fat95 ».
+* Double-cliquez sur les icônes d'exemples « MS0 » (lecteur interne) ou
+  « MS1 » pour monter le système de fichiers maintenant.
+* Copiez-les dans le répertoire « DEVS:DOSDrivers/ » pour qu'ils soient
+  monter automatiquement au démarrage du système.
+* Créez vos propres scripts de montage suivant vos besoins.
+
+
+Installation pour l'OS 1.3  
+==========================
+
+Le mfm.device ne fonctionne pas avec le trackdisk.device de l'OS 1.3. Un
+équivalent possible est le messydisk.device de Olaf Seibert. à l'origine,
+celui-ci était diffusé sur une disquette du domaine public appelée « Time
+#10 » datant de 9 ans déjà (!) et il est presque devenu introuvable. C'est
+pourquoi j'ai décidé de l'inclure ici.
+
+
+Double-cliquez sur l'icône « install_fat95 » ou bien :
+
+* Copier le fichier « fat95 » dans le répertoire « L: »,
+* Copier les fichiers « messydisk.device » et « fat95mountlist » dans
+  le répertoire « DEVS: ».
+
+Puis ajoutez cette ligne dans votre fichier « S:Startup-Sequence »
+« mount ms0: from fat95mountlist »
+
+UTILISEZ « ms1: » au lieu de « ms0: » si vous voulez travailler avec le
+second lecteur de disquettes MS-DOS/Win.
+
+
+Particularités
+==============
+
+Lorsqu'on écrit dans le répertoire racine d'un disque sous fat95, il peut
+arriver que vous obteniez un étrange message d'erreur 232 « plus de place
+dans le répertoire ». Ceci signifie : MS-DOS/Win utilise une table de
+répertoire fixe et non extensible dans laquelle vous ne pouvez mettre qu'un
+nombre limité de fichiers et de sous répertoires, même si il reste de la
+place sur le disque. Dans ce cas, effectuez une des actions suivantes :
+ 
+* sauvez vos fichiers dans un sous répertoire plutôt que dans la racine,
+* déplacez un ou deux fichiers dans un sous répertoire puis essayé de
+  nouveau,
+* effacez un ou deux fichiers de la racine,
+* choisissez un autre disque.
+
+Malheureusement, Je ne pourrais pas pleinement recommander l'utilisation de
+« messydisk.device ». Un point ennuyeux est que la tâche « Mount » figera
+jusqu'à ce que le premier changement de disquette ai lieu. Il s'agit
+certainement d'une situation de course avec le « trackdisk » car tout
+fonctionne correctement en mode pas à pas lors du débogage.
+
+Fat95 est maintenant capable de reconnaître les informations NSD (nouveau
+type de périphérique) et il peut même utiliser les commandes du TrackDisk64
+et/ou du mode « direct SCSI » pour les périphériques de plus de 4 Go.
+
+Du fait des plaintes au sujet de l'icône désactivée « FAT », j'ai décidé que
+les volumes renverraient intentionnellement un type erroné « DOS\0 ». Ceci
+devrait faire disparaître l'icône. J'espère et prie que cela n'encourage pas
+les programmes à invalider l'accès directe...
+
+
+FAT32 notes
+===========
+        
+Concrètement, la plus grosse différence comparée à l'ancienne FAT16 est la
+FAT elle-même. Elle couvre habituellement 1/1024 de la taille de la
+partition entière.
+Ceci est imposant ; 8 Mo sur une partition de 8 Go, par exemple. Ainsi fat95
+ne retient pas entièrement la FAT 32 bits. Les accès au fichiers fragmentés
+seront un peu plus lents mais vous sauverez toute cette précieuse mémoire.
+
+La variable conservant l'espace présentement disponible est une autre bonne
+idée... Bien, du moins en théorie. En réalité, celle-ci n'est pas toujours
+à jour. Fat95 a choisi à la place, de calculer l'espace disponible
+directement de la FAT de manière empirique. Ceci prendra plus de temps après
+avoir monté le périphérique pendant lequel il sera en lecture seul (volume
+en cours de validation).
+
+
+Trucs pour xxxscsi.device
+=========================
+
+La plupart des périphériques sont contrôlés par le « scsi.device » ou un
+contrôleur similaire présent sur votre carte contrôleur.
+Actuellement, j'utilise un ZIP100 de chez NEC sur le port IDE interne de
+mon A1200. Malheureusement, le contrôleur « scsi.device » présent en ROM
+ne supporte pas les périphériques purement ATAPI. Il ne fonctionne qu'avec
+les disques durs IDE.
+C'est pourquoi je conseil d'installer un correctif approprié comme
+IDE_scsidisk ou IDEfix. 
+
+
+La « console »
+==============
+
+fat95 ne supporte pas les commentaires de fichiers. Leur lecture fournit
+la date. Modifier cette partie ne fera rien.
+Sélectionnez un fichier au hasard de votre disque fat95 et assignez le
+commentaire.
+
+    !scandisk
+
+et regardez ce qu'il advient...
+Cette petite tricherie n'est pas encore parfaite. Toutefois, il rapporte
+déjà les ennuyeux « fichiers perdus ».
+
+Vous pouvez modifier les options de configuration en utilisant le
+commentaire.
+
+   !control <options>
+
+. Pour plus de détails, lire les entrées de la Mountlist dans
+l'introduction « Control = ».
+Par exemple, désactivez l'option de date pour le lecteur ZIP1:
+
+   filenote ZIP1: "!control -dD"
+
+Et il y a une « sécurité à l'effacement » :
+
+   !erase
+
+Ceci n'efface aucun fichier, mais les fichiers précédemment effacés
+seront remplacés par des zéros. Après cela, personne ne pourra plus récupérer
+leur contenu. :-)
+En conjonction avec aminet/disk/misc/cfd.lha v1.21+, cette fonction
+utilisera la fonction intégrée de suppression des cartes CompactFlash, si
+elle est disponible. Cela peut accélérer les accès en écriture de ces
+cartes, même à l'intérieur de vos caméscopes numériques.
+
+Maintenant, les commandes « scandick » et « erase » peut être interrompues
+en utilisant a touche <ESC>, ou simplement en fermant la fenêtre de
+progression.
+
+
+Problèmes
+=========
+
+?: Que signifie le message « object not found » au montage d'un périphérique
+   avec fat95 ?
+!: Vérifiez les entrées suivantes : "Device =", "Unit =" et "Flags =" dans
+   la MountList.
+
+Si rien ne semble vous aider, vous pouvez créer une copie des variables
+internes utilisées par fat95 en utilisant l'utilitaire « debug95 ».
+Par exemple, tapez dans un Shell :
+
+    debug95 ms0: ram:ms0.log
+
+si le lecteur de disquettes interne MS0: refuse de fonctionner.
+Puis envoyez-moi le fichier ainsi créé (enriron un demi Ko) par courrier
+électronique. Je vous promet qu'il n'y a aucun mot de passe ou secrets
+similaires à l'intérieur.
+
+
+DiskDump
+========
+
+Une vieillerie du monde UNIX, mais bien utile, maintenant ré-inventé pour
+l'Amiga (pas uniquement pour fat95). Il copie une séquence d'un bloc
+du disque dans un fichier :
+
+  dd <nom>.device <unité> <fichier destination> <numéro bloc> <compteur>
+ 
+Par exemple, pour copier les premiers 64 Ko de mon ZIP ATAPI :
+
+  dd scsi.device 1 ram:zipdump 0 128
+
+Vous pouvez aussi écrire :
+
+  dd <fichier source> <nom>.device <unité> <numéro bloc> <compteur> 
+
+Contrairement à d'autres programmes d'édition, ceci fonctionnera aussi
+avec des partitions défectueuses. Ainsi, la prochaine fois que fat95 aura
+du mal avec un nouveau disque, vous verrez le problème de plus près. ;)
+
+
+Pour les spécialistes...
+========================
+
+...voici la liste des paquets DOS actuellement supportés :
+
+0005    ACTION_DIE
+0007    ACTION_CURRENT_VOLUME
+0008    ACTION_LOCATE_OBJECT
+0009    ACTION_RENAME_DISK
+0015    ACTION_FREE_LOCK
+0016    ACTION_DELETE_OBJECT
+0017    ACTION_RENAME_OBJECT
+0018    ACTION_MORE_CACHE
+0019    ACTION_COPY_DIR
+0021    ACTION_SET_PROTECT
+0022    ACTION_CREATE_DIR
+0023    ACTION_EXAMINE_OBJECT
+0024    ACTION_EXAMINE_NEXT
+0025    ACTION_DISK_INFO
+0026    ACTION_INFO
+0027    ACTION_FLUSH
+0028    ACTION_SET_COMMENT
+0029    ACTION_PARENT
+0031    ACTION_INHIBIT
+0034    ACTION_SET_DATE
+0082    ACTION_READ
+0087    ACTION_WRITE
+1004    ACTION_FINDUPDATE
+1005    ACTION_FINDINPUT
+1006    ACTION_FINDOUTPUT
+1007    ACTION_END
+1008    ACTION_SEEK
+1020    ACTION_FORMAT
+1023    ACTION_WRITE_PROTECT
+1026    ACTION_FH_FROM_LOCK
+1027    ACTION_IS_FILESYSTEM
+1028    ACTION_CHANGE_MODE
+1030    ACTION_COPY_DIR_FH
+1031    ACTION_PARENT_FH
+1033    ACTION_EXAMINE_ALL
+1034    ACTION_EXAMINE_FH
+1035    ACTION_EXAMINE_ALL_END
+4200    ACTION_SERIALIZE_DISK
+4201    ACTION_GET_DISK_FSSM
+4202    ACTION_FREE_DISK_FSSM
+
+
+Historique
+
+v1.5    11/1999    first published version
+
+v1.6    12/1999    fixed large partition addressing bug
+                   added workaround for SID2
+                   added volume serial number recognition
+                   added directory optimization
+
+v1.7    01/2000    fixed minor formatting bug
+                   fixed crash on double-mounted volumes
+                   made error requesters more informative
+                   made code reentrant for multi-device use
+
+v1.8    01/2000    added workaround for certain devices who keep
+                   trashing forbidden 68k registers
+
+v1.11   01/2000    new workarounds for "difficult" devices
+                   made drawer operations a bit faster
+
+v1.12   01/2000    added on/off feature for ETD_xxx device commands
+                   added ACTION_SERIALIZE_DISK packet (used by DiskCopy)
+                   made FAT16 mode writeback faster
+                   improved disk format recognition
+
+v1.13   02/2000    fixed SERIALIZE_DISK bug
+
+v1.14   02/2000    fixed bug in updating all FAT copies
+                   alternative english version
+
+v1.15   02/2000    code optimizations
+
+v1.17   02/2000    second published version
+                   improved FORMAT command support
+
+v1.18   03/2000    first try to implement partition support
+
+v1.19   03/2000    fixed partition selection bug
+
+v1.20   03/2000    introduced separate directory and file caches
+                   added dummy workbench icon suppression
+
+v1.21   03/2000    made file access cluster-wise
+                   added diskchange messsages to system (IDCMP_DISKINSERTED...)
+
+v1.22   03/2000    fixed "large sectors" bug (> 512 bytes)
+
+v2.0    04/2000    first try on FAT32
+                   fixed another "large sectors" bug
+
+v2.1    04/2000    added NSD and TD64 support
+                   fixed bug on 28bit entries for FAT32
+                   changed intl character handling for short filenames
+                   fixed "file creation" timestamp
+
+v2.2    06/2000    new restart validator routines
+                   longer filenames (65 chars)
+                   added FAT32 formatting routines
+                   small write access optimizations
+                   changed AddBuffers support (like FFS)
+                   reworked documentation
+
+v2.3    07/2000    added native ExAll() and ExAllEnd()
+                   added ChangeMode()
+                   bugfixes:
+                     ExamineFH()
+                     OpenFromLock()
+                     Rename()
+                     very long path names
+                     Workbench support
+
+v2.4    07/2000    bugfixes:
+                     exclusive locks
+                     double MSDOS 8.3 names
+
+v2.5    07/2000    new buffering scheme (track-wise)
+                   bugfix:
+                     free storage space recognition on FAT32
+
+v2.6    07/2000    bugfixes:
+                     crash when disk is full
+                     access to inconsistent files
+
+v2.7    08/2000    fixed logigal drive recognition #07+
+
+v2.8    08/2000    added software write protection "Lock"
+                   added diagnosis tool "fat95debug"
+
+v2.9    09/2000    fixed AddBuffers bug
+                   ACTION_CURRENT_VOLUME now safer
+                   made all access trackwise
+
+v2.10   10/2000    now recognizes some more "exotic" partition tables
+                   added error requester "TD64 needed but missing"
+
+v2.11   12/2000    meilleur compatibilité FDA
+
+v2.12   02/2001    ajout des commandes « SCSI direct »
+
+v2.13   02/2001    nouveau système de tampons
+
+v2.14   03/2001    correction d'une très vilaine bogue en mode FAT32
+
+v2.15   05/2001    corrections :
+                     plantage sur les noms de plus de 65 caractères
+                     génération de noms courts
+                   nouveau :
+                     attribut « Pure »
+                     fonctions de recherche d'erreurs
+                     boot95
+
+v2.16   08/2001    correction : les fichiers plus grands que la taille
+                   du MaxTransfer sont maintenant sécurisés
+                   nouveau : partage du code via le FileSystem.resource
+
+v2.17   09/2001    nouveau :
+                   le mode FAT32 est maintenant plus rapide
+                   les ZIPs reformatés sur Amiga sont reconnus
+
+v2.18   12/2002    nouveau :
+                     Gestion de SetFileSize()
+                     L'utilisateur peut définir la langue utilisée pour
+                     le dialogue et les noms de fichiers
+
+v2.19   01/2002    nouveau :
+                     noms des fichiers jusqu'à 104 caractères
+
+v3.00   02/2002    ajout d'un caractère utilisateur pour les noms de
+                    fichiers en 8.3 formaté en FAT32 avec une taille
+                    de cluster officielle.
+
+v3.01   02/2002    petite bug corrigée dans les noms courts.
+
+v3.02   03/2002    correction dans la creation des répertoires.
+                    ajout du « gros » format FAT12, exemple pour les
+                    cartes mémoire.
+                    ajout d'une vérification étendue des erreurs SCSI.
+                    de nouvelles langues.
+
+v3.03   05/2002    retrait du pénible message d'erreur DiskUpdate.
+
+v3.04   07/2002    retrait du message « no disk » (pas de disque) lors
+                    d'un démarrage avec un support extractible non présent.
+                    correction d'une bug dans le mode d'analyse.
+                    nouvelle version « dd » avec d'avantage de messages
+                    d'erreurs utiles.
+
+v3.05   07/2002    ajout d'options de configuration.
+                    documentation retravaillée.
+
+v3.06   08/2002    L'accès aux petits fichiers est plus rapide.
+
+v3.07   09/2002    Correction d'une erreur d'écriture sur les fichiers.
+                   Le mode « SCSI direct » peut maintenant être
+                    sélectionné automatiquement si nécessaire.
+                   Ajout de la localisation Hongroise.
+
+v3.08   10/2002    Oups, un numéro de version a été oublié??
+
+v3.09   04/2003    Ajout d'une fonction de suppression sécurisée.
+                   Scandisk peut maintenant être interrompu.
+
+v3.10   07/2003    Fixed bugs that
+                     - sometimes trashed newly created directories;
+                     - altered int`l characters in filenames if no OEM
+                        codepage has been defined.
+                     Updated dd tool.
+
+v3.11   08/2003    Optimized internal short name generator.
+                     Directory contents is now updated during file writes.
+                     True "last changed" datestamp for root directory, too.
+
+v3.12   11/2003    Added alternative disk recognition via direct SCSI commands.
+                     Made TD_UPDATE use optional.
+                     Accelerated small writes a bit.
+                     Unused directory clusters are now freed again.
+
+v3.13   02/2004    Added support for memory cards formatted by PalmOS.
+(EOF)

@@ -1,0 +1,18 @@
+/* MS1: fat95 PC file system for floppy #1              */
+/* $VER: fat95 file system 3.06 (08-Aug-2002) by Torsten Jager */
+
+FileSystem    = l:fat95
+Device        = mfm.device
+Unit        = 1        /* change drive number here */
+Flags        = 0
+LowCyl        = 0
+HighCyl        = 79
+Surfaces    = 2        /* bootblock values have priority over these */
+BlocksPerTrack    = 9
+Buffers        = 20
+BufMemType    = 1
+BootPri        = 0
+Stacksize    = 4096
+Priority    = 5
+GlobVec        = -1
+DosType        = 0x46415400    /* enable ETD commands */

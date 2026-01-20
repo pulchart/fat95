@@ -1,0 +1,7 @@
+NDK
+*.o
+*.py[co]
+*.lha
+.version-stamp
+cfd*.readme
+cfd*.readme.info

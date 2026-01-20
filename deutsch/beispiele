@@ -1,0 +1,152 @@
+/* hier ein paar Beispiel-MountLists von unermüdlichen AMIGA usern */
+
+
+/* externes IOmega Zip 100 Laufwerk an A1200 Tower */
+/* mit B1260, IOblixZII, OS3.5/Scalos/DOpus 5.82 Magellan II */
+/* Danke an Gunter Hinrichsen */
+
+ZIPC:
+FileSystem      = L:fat95
+Flags           = 1
+Surfaces        = 1
+BlocksPerTrack  = 68
+Reserved        = 0
+PreAlloc        = 0
+Interleave      = 0
+LowCyl          = 0
+HighCyl         = 2890
+Buffers         = 100
+BufMemType      = 1
+MaxTransfer     = 0x00ffffff
+Mask            = 0xffffffff
+DosType         = 0x46415401
+GlobVec         = -1
+StackSize       = 8192
+Mount           = 1
+Priority        = 10
+Device          = ioblixzip.device
+Unit            = 1
+#
+
+
+/* Catwesel-Zorro2 DD/HD Floppy Adapter */
+/* Danke an Jens Schröder */
+
+/* multidisk file system entry
+ *
+ * This mounts a logical device on catweasel unit 0 for reading and
+ * writing MS-DOS 9 sector Disks. Create mountlists for other units
+ * by changing the number behind 'UNIT  = ' to 0, 1 or 2.
+ */
+
+MS4DD:
+FileSystem     = L:fat95
+Device         = multidisk.device
+Unit           = 0 /* Unit 0 or 1 */
+Flags          = 2 /* makes a PC DD-Disk driver */
+BlockSize      = 512
+Surfaces       = 2
+BlocksPerTrack = 9
+Reserved       = 1
+Interleave     = 0
+LowCyl         = 0
+HighCyl        = 79
+Buffers        = 20
+BufMemType     = 1
+StackSize      = 4096
+Priority       = 5
+GlobVec        = -1
+DosType        = 0x46415401
+Activate       = 1
+#
+
+MS4HD:
+FileSystem     = L:fat95
+Device         = multidisk.device
+Unit           = 0 /* Unit 0 or 1 */
+Flags          = 3 /* makes a PC HD Disk driver */
+Surfaces       = 2
+BlocksPerTrack = 18
+Reserved       = 1
+Interleave     = 0
+LowCyl         = 0
+HighCyl        = 79
+Buffers        = 40
+Stacksize      = 4096
+BufMemType     = 1
+Priority       = 5
+GlobVec        = -1
+DosType        = 0x46415401
+Activate       = 1 /*=  mount = 1 */
+#
+
+
+/* fat95 auf einer MO (magneto-optische Disk)		   */
+/* Fujitsu MO 640 MByte 2048 bytes/sector direct overwrite */
+/* Danke an H.J.Pinkert					   */
+
+FATMOCYB:
+FileSystem	= L:fat95
+Buffers		= 100
+BufMemType	= 1
+Device		= cybscsi.device
+Unit		= 2 
+StackSize	= 4096
+Priority	= 10
+GlobVec		= -1
+DosType		= 0x46415401
+Surfaces	= 1
+BlocksPerTrack	= 1
+LowCyl		= 0
+HighCyl		= 1
+Mask		= 0xFFFFFFFF
+MaxTransfer 	= 0x00FFFFFF
+mount		= 1
+Activate	= 1
+#
+
+
+/* die DD Floppy in meinem A1200 */
+
+MS0:
+FileSystem	= l:fat95
+Device		= mfm.device
+Unit		= 0
+Flags		= 0
+LowCyl		= 0
+HighCyl		= 0
+Surfaces	= 0
+BlocksPerTrack	= 0
+BlockSize	= 0
+Buffers		= 20
+BufMemType	= 1
+BootPri		= 0
+Stacksize	= 4096
+Priority	= 5
+GlobVec		= -1
+DosType		= 0x46415401
+#
+
+
+/* 100 Mb NEC ZIP Laufwerk am internen IDE-Port meines A1200 */
+
+ZIP0:
+FileSystem	= l:fat95
+Device		= scsi.device
+Unit		= 1
+Flags		= 0
+LowCyl		= 0
+HighCyl		= 0
+Surfaces	= 1
+BlocksPerTrack	= 1
+BlockSize	= 512
+Buffers		= 100
+BufMemType	= 1
+BootPri		= 0
+Stacksize	= 4096
+Priority	= 5
+GlobVec		= -1
+DosType		= 0x46415401
+Control		= "+s"		/* zum Testen: SCSI direkt EIN */
+#
+

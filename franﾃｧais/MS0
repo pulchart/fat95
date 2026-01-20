@@ -1,0 +1,18 @@
+/* MS1: fat95 système de fichiers pour disquette PC  #0       */
+/* $VER: fat95 file system 3.06 (08-Aug-2002) by Torsten Jager */
+
+FileSystem      = l:fat95
+Device          = mfm.device
+Unit            = 0             /* changer ici le numéro du lecteur */
+Flags           = 0
+LowCyl          = 0
+HighCyl         = 79
+Surfaces        = 2             /* la valeur du bootblock à une priorité supérieure à celle-ci */
+BlocksPerTrack  = 9
+Buffers         = 20
+BufMemType      = 1
+BootPri         = 0
+Stacksize       = 4096
+Priority        = 5
+GlobVec         = -1
+DosType         = 0x46415400    /* permet les commandes ETD */

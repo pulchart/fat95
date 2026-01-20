@@ -1,0 +1,653 @@
+fat95 Information
+$VER: fat95 german information 3.15 (05.09.2004)
+
+
+Einführung
+==========
+
+Plattenlaufwerke unter Amiga OS einbinden ist im Grunde ganz einfach.
+Im Spiel sind dabei immer 2 Programme:
+
+  1. ein Hardware-Treiber der blockweisen Zugriff auf das Laufwerk
+     ermöglicht. Bis hierhin ist es noch das Laufwerk noch als Ganzes.
+     Der Treiber ist entweder bereits im Kickstart ROM enthalten,
+     oder als Datei mit einem Namen wie "DEVS:xxx.device".
+
+  2. ein Dateisystem. Das ist so eine Art Lagerverwalter und kümmert
+     sich um Dinge wie Partitionen, Verzeichnisse und Dateien.
+     Das Standard-Dateisystem ist ebenfalls im ROM enthalten.
+     Andere, wie auch fat95, liegen als Dateien im L: Verzeichnis.
+
+Diese beiden Komponenten müssen wir nun zusammenbringen.
+Dafür schreiben wir einen Text, auch Mountlist genannt.
+Dort hinein kommen Parameter sowohl für Treiber als auch für
+das Dateisystem. Zum Beispiel so.
+
+Zuerst der Name des Treibers:
+
+    Device = scsi.device
+
+Dies ist der Zuständige für den internen IDE oder SCSI Anschluß.
+Nun können an so einem Anschluß gewöhnlich mehrere Geräte
+betrieben werden. Deshalb brauchen wir noch eine Angabe,
+welche Platte es denn sein soll:
+
+    Unit = 1
+
+Das ist bei mir das "slave" IDE Gerät, ein 100er ZIP Laufwerk.
+Die Festplatte als "master" hat die Nummer 0.
+Wenn der Treiber nur ein Gerät bedienen kann, ist es auch 0.
+
+    Flags = 0
+
+Manche Treiber erlauben besondere Einstellungen über diese
+Angabe. Näheres dazu in der Treiberdokumentation.
+Meistens genügt aber die Null.
+
+    BufMemType = 1
+
+Klappt meistens. Andere Werte ggf. siehe Treiberdokumentation.
+
+    MaxTransfer = 0x20000
+    Mask = 0xfffffffe
+
+Für das (unkorrigirte) ROM residente scsi.device des A1200.
+Andere Werte siehe Treiberdokumentation, ansonsten einfach
+weglassen.
+
+Nun zum Dateisystem.
+
+    Filesystem = l:fat95
+
+Wegen einer Eigenart des Amiga OS muß hier der volle Pfad
+stehen.
+
+    StackSize = 4096
+
+Soviele Bytes werden für das Dateisystem für temporäre Daten
+reserviert. Nehmen Sie zu wenig, gibt es "unerklärliche"
+Abstürze...
+
+    GlobVec = -1
+
+Das ist eine lange Geschichte. Hier nur soviel: fat95 ist ein
+Assemblerprogramm, also -1.
+
+    Buffers = 200
+
+Soviele Blöcke zu je 512 bytes soll fat95 im Speicher halten.
+Mehr = schneller = mehr Speicherverbrauch.
+
+    Control = "+s"
+
+Das ist freiwillig. Sie können gegenwärtig diese Optionen
+angeben:
+
+    +    Die folgenden Optionen EINschalten.
+    -    Die folgenden Optionen AUSschalten.
+    s    Direkt SCSI Lese-/Schreibmodus erzwingen.
+         Hilft mitunter bei Platten > 4Gbyte. Normal AUS.
+    u    TD_UPDATE nach Schreibzugriffen verwenden.
+         Pflicht bei Disketten, führt bei manchen Geräten
+         aber nur zu "Update-Fehler xx" Meldungen.
+         Normal EIN.
+    d    Zusätzliche Datumsinfos als Dateikommentare
+         anzeigen. Normal EIN.
+    D    Datum des "letzten Zugriffs" auch bei Lesezugriffen
+         merken. Normal EIN.
+
+Windows NT/XP hat eine nervige Eigenart. In der
+Grundeinstellung verzichtet es nämlich auf lange Dateinamen,
+falls diese in das alte 8.3 Schema passen. Das soll vor
+allem Platz sparen, es geht aber auch die Groß/Kleinschreibung
+flöten. Aus "test.txt" wird so "TEST.TXT".
+Wie gesagt, kein ernsthaftes Problem - sieht aber dennoch
+nicht schön aus. Als Ausweg bieten sich 2 Möglichkeiten:
+
+ a) Zwingen Sie Windows in den "Systemrichtlinien"
+    (POLEDIT.EXE), auf FAT Partitionen immer lange
+    Dateinamen zu verwenden. Dateien wo vor dieser Änderung
+    geschrieben wurden bleiben aber wie sie waren.
+
+ b) Verwenden Sie eine dieser neuen fat95 Optionen:
+
+    l    Alle 8.3 Dateinamen als Kleinbuchstaben zeigen,
+         z.B. "TEST.TXT" als "test.txt". Normal AUS.
+
+    L    Wie "l", nur mit großem Anfangsbuchstaben: "Test.txt".
+         Normal AUS.
+
+"Gemischte" Schreibweisen wie etwa "tEsT.tXt" sind aber
+in jedem Fall weg, da hilft dann nur a).
+
+Normalerweise lädt AmigaOS das Dateisystem erst beim
+ersten Zugriff. Das soll Speicher sparen bei selten genutzten
+Geräten. Wenn es dagegen sofort losgehen soll, sagen wir
+
+    Activate = 1
+
+Das Dateisystem möchte nun freilich noch wissen wo genau
+auf der Platte die gewünschte Partition liegt. fat95 erlaubt -
+anders als die meisten Dateisysteme - zwei Arten dies zu tun.
+
+a) Automatische Partitionssuche:
+
+    LowCyl = 0    /* "Automatik EIN" */
+
+    BlockSize = 512    /* fat95 braucht diese Angaben nicht, */
+    HighCyl = 1    /* aber der Mount-Befehl will sie sehen ;^) */
+    BlocksPerTrack = 1
+    Surfaces = 1
+
+    DosType = 0x46415400    /* nur für Disketten - oder... */
+    DosType = 0x46415401    /* erste brauchbare Partition. */
+                            /* Klappt fast immer. oder... */
+    DosType = 0x46415402    /* zweite primäre Partition. Selten. */
+    DosType = 0x46415405    /* erstes logisches Laufwerk. */
+    DosType = 0x46415406    /* zweites logisches Laufwerk, usw. */
+
+    Dabei durchkämmt fat95 selbständig die PC-üblichen
+    Partitionstabellen (nicht zu verwechseln mit RDB).
+
+b) Zu Fuß:
+
+    BlockSize = 512
+    DosType = 0x46415401
+
+    Der Rest ist etwas komplizierter. Sie müssen 4 Zahlen
+    angeben, so daß die folgenden Gleichungen zutreffen:
+
+    BlocksPerTrack * Surfaces * LowCyl = StartBlockNummer
+
+    (also die Nummer des ERSTEN Blocks der Partition);
+
+    BlocksPerTrack * Surfaces * (HighCyl + 1)
+        = LetzterBlock + 1
+
+    (also die Nummer des esten Blocks NACH der Partition).
+    Wie Sie sehen, nicht ganz einfach. Vielleicht hilft es
+    BlocksPerTrack und Surfaces auf 1 zu setzen, dann
+    brauchen Sie nicht so viel rechnen ;-)
+    Ist aber nur selten erforderlich, z.B. bei beschädigten
+    Partitionstabellen.
+
+Ein paar Beispiele siehe deutsch/Beispiele.
+
+Sooo.
+Jetzt speichern wir das Ganze unter dem gewünschten DOS
+Namen, z.B. "ZIP1". Zum Anmelden gibt es wieder mehrere
+Varianten:
+
+a) In eine Shell eingeben:
+
+    mount ZIP1
+
+b) Ein Icon vom Typ "Projekt" hinzufügen: ZIP1.info
+   Als "Standardprogamm" eintragen: c:mount
+   Dann Doppelclick auf das Icon.
+
+c) Dasselbe wie b), aber dann beide Dateien nach
+   devs:DosDrivers kopieren. Dadurch wird bei jedem
+   Systemstart automatisch angemeldet.
+
+d) Unter OS 1.3 ist die Vorgehensweise geringfügig anders.
+   Es gibt nur EINE Datei für alle Laufwerke: DEVS:MountList
+   Bearbeiten Sie diese Datei, und fügen Sie in dieser
+   Reihenfolge Zeilen an:
+
+   ZIP1:    /* der gewünschte DOS Name, plus Doppelpunkt */
+     Device = scsi.device
+     /* und so weiter, die oben beschriebenen Einträge */
+   #    /* Die Raute beendet den Abschnitt ZIP1: */
+
+   Speichern Sie die Änderungen, und melden Sie an:
+
+   mount ZIP1:
+
+   (Dieses Mal MIT Doppelpunkt).
+
+Wenn Sie von einer FAT Partition Ihren Amiga starten wollen:
+
+e) Zuerst a), b) oder d), und dann:
+
+    boot95 ZIP1:
+
+Auf diese Weise konnte ich mein Amiga OS 3.9 auf einer
+4Gbyte FAT32 Partition installieren. War die billigste Art die
+FAT32 Unterstützung zu testen...
+
+Hintergrund:
+
+Auf dem PC partitionierte Festplatten besitzen häufig einen ca. 30kbyte
+großen ungenutzten Bereich zwischen dem MBR und der ersten Partition.
+Mit "boot95" können Sie versuchen, darin eine Amiga AutoMount- und
+Bootsequenz unterzubringen.
+Das Programm benötigt "fat95" im L: Verzeichnis. Alternativ einen anderen
+Dateinamen als 2. Parameter angeben. Nach einem Versionswechsel einfach die
+Prozedur wiederholen.
+Vorsicht: eventuelle schon vorhandene Amiga Partitionsinfos (RDSK etc.)
+werden überschrieben.
+Nochmal Vorsicht: auch eine FAT Bootpartition muß beim Starten zugänglich
+sein, für das ROM residente "scsi.device" also innerhalb der ersten
+4 Gbyte der Platte.
+
+
+Installation
+============
+
+* Doppelklicken Sie deutsch/install_fat95.
+* Doppelklicken Sie das Beispiel-Icon "MS0" (internes Floppy-Laufwerk) oder
+  "MS1" um sofort zu mounten.
+* Kopieren Sie die Icons nach "DEVS:DOSDrivers", um beim Systemstart
+  automatisch zu mounten.
+* Erstellen Sie nach Bedarf eigene Mount-Skripts.
+
+
+OS 1.3 Besonderheiten
+=====================
+
+Das "mfm.device" arbeitet leider nicht mit dem "trackdisk.device" von OS 1.3
+zusammen. Eine geeignete Alternative ist das "messydisk.device" von Olaf
+Seibert. Es wurde vor immerhin 9 Jahren auf einer PD-Disk namens "Time #10"
+verbreitet und ist inzwischen kaum noch erhältlich. Deshalb habe ich diese
+Datei ausnahmsweise in dieses Archiv aufgenommen.
+
+* kopieren Sie die Dateien "messydisk.device" und "fat95mountlist" nach "DEVS:"
+
+Dann fügen Sie diese Zeile der Datei S:Startup-Sequence hinzu:
+
+mount ms0: from fat95mountlist     (internes Floppy-Laufwerk) oder
+mount ms1: from fat95mountlist     (1. externes Floppy-Laufwerk)
+
+
+Besonderheiten
+==============
+
+Versuchen Sie bitte nicht, ein und dasselbe Gerät mit CrossDOS o.ä.
+UND zeitgleich mit fat95 anzumelden.
+
+Beim Schreiben in das Wurzelverzeichnis einer fat95-Disk tritt manchmal die
+etwas seltsame Fehlermeldung 232 "keine weiteren Verzeichniseinträge" auf.
+Das bedeutet: MS-DOS/Win verwendet eine nicht erweiterbare Tabelle mit fester
+Größe für das Wurzelverzeichnis. Diese faßt nur eine begrenzte Anzahl von
+Dateien und Unterverzeichnissen, unabhänggig vom tatsächlich freien
+Speicherplatz auf dem Datenträger.
+Wenn es also passiert, versuchen Sie einen dieser Auswege:
+
+* Speichern Sie in ein Unterverzeichnis anstelle der Wurzel.
+* Verschieben Sie eine oder zwei Dateien in ein Unterverzeichnis,
+  und versuchen Sie es erneut.
+* Löschen Sie eine oder zwei Dateien im Wurzelverzeichnis.
+* Verwenden Sie einen anderen Datenträger.
+
+Leider kann ich die Verwendung des messydisk.device nur eingeschränkt
+empfehlen.
+Der MOUNT Task hängt z.B. bis zum ersten Diskwechsel im jeweiligen
+Laufwerk, was die automatische Anmeldung nahezu sinnlos macht. Beim Testen
+im Einzelschrittmodus scheint alles normal zu funktionieren. Vielleicht
+ist ein ungünstiges Zeitverhalten gegenüber dem parallel arbeitenden
+trackdisk.device die Ursache...
+
+fat95 kann jetzt auch NSD (new style device) Informationen auswerten.
+Bei Medien > 4Gbyte verwendet es Trackdisk64 oder SCSI direkt Befehle
+je nach deren Verfügbarkeit.
+
+Noch etwas: wegen diverser Beschwerden über ein deaktiviertes "FAT" Icon auf
+der Workbench melde ich fat95-Datenträger nun - absichtlich inkorrekt - als
+"DOS\0" an. Das erwähnte Icon ist nun weg, ich hoffe aber inständig daß sich
+daraufhin kein Programm zu unqualifizierten Direktzugriffen ermutigt fühlt...
+
+
+Einige Bemerkungen zu FAT32
+===========================
+
+Der buchstäblich größte Unterschied zu dem älteren FAT16 ist die sogenannte
+File Allocation Table (FAT). Sie belegt typischerweise 1/1024 des gesamten
+Speicherplatzes der Partition, also bei 8 Gbyte immerhin stolze 8 Mbyte.
+Im Gegensatz zu FAT16 und natürlich FAT12 liest fat95 deshalb eine 32bit
+FAT nicht komplett in den RAM. Dadurch wird der Zugriff bei fragmentierten
+Dateien zwar etwas langsamer, aber Sie sparen kostbaren Arbeitsspeicher.
+
+Eine weitere Neuerung ist die Variable für den aktuell verfügbaren freien
+Speicherplatz auf der Partition. Leider ist diese in der Praxis nicht immer
+auf dem neuesten Stand. fat95 ermittelt beim Anmelden der Partition den freien
+Platz deshalb doch auf die altmodische Art durch Prüfen der FAT. Das braucht
+seine Zeit, und so lange kann von der Partition nur gelesen werden
+("volume is validating").
+
+
+xxscsi.device und kein Ende
+===========================
+
+IDE- und SCSI-Geräte werden üblicherweise über das ROM "scsi.device"
+oder ein ähnlich klingendes Modul des Herstellers der Schnittstellenkarte
+gesteuert.
+Derzeit betreibe ich ein NEC Zip100 Laufwerk am internen IDE Anschluß
+meines A1200. Leider kann das ROM residente scsi.device nichts mit ATAPI
+Geräten anfangen und ist auch sonst nicht besonders flexibel. Es kommt nur
+mit "einfachen" IDE Geräten, sprich Festplatten bis 4 GB zurecht.
+Ich empfehle für solche Fälle ein entspechendes scsi.device Patch zu
+installieren wie IDEfix oder IDE_scsidisk. Bei OS 3.9 (möglicherweise schon
+bei 3.5) ist ein solches Patch bereits enthalten.
+
+
+Die "Konsole"
+=============
+
+fat95 unterstützt nicht wirklich Dateikommentare. Beim Lesen derselben
+erhalten Sie die erweiterten Datumsinformationen, schreiben bewirkt nichts.
+Meistens jedenfalls.
+Geben Sie doch einmal irgend einem Objekt auf einer fat95 Disk den Kommentar
+
+    !scandisk
+
+und schauen was passiert...
+Dieser kleine Beschißcode ist noch nicht perfekt. Aber die berüchtigten
+"verlorenen Dateien" zurückbringen kann er schon.
+
+Sie können auch nachträglich Konfigurationsoptionen ändern mittels
+
+    !control <optionen>
+
+. Näheres siehe Einführung zum "Control =" Mountlist-Eintrag.
+Zum Beispiel schalten wir den ganzen Zusatzdatum-Spaß für das Laufwerk ZIP1: ab
+
+    filenote ZIP1: "!control -dD"
+
+Und dann wäre da noch die "Sicherheitslöschung":
+
+    !erase
+
+Das löscht keine Dateien, überschreibt aber alle zuvor gelöschten Dateien
+mit Nullen. Danach kann keiner mehr deren früheren Inhalt wieder herstellen :)
+In Verbindung mit aminet/disk/misc/cfd.lha v1.21+ verwendet diese Funktion
+die eingebaute Löschfunktion von CompactFlash-Speicherkarten, falls
+verfügbar. Das beschleunigt mitunter den Schreibzugriff auf solche Karten,
+auch in der Kamera :))
+
+Ach ja: "scandisk" und "erase" lassen sich jetzt auch abbrechen, mit <ESC>
+oder durch Schließen des Fortschrittsfensters.
+
+
+Fehlersuchhilfe
+===============
+
+?: Was bedeutet die Fehlermeldung "object not found" beim Anmelden?
+!: Überprüfen Sie die MountList-Einträge "Device =", "Unit =" und
+   "Flags =".
+
+In ganz hartnäckigen Fällen können Sie mit dem beigelegten Programm
+"debug95" einen Abzug der internen fat95 Variablen herstellen.
+Tippen Sie dazu in einer Shell z.B.
+
+    debug95 ms0: ram:ms0.log
+
+bei Problemen mit dem internen Floppylaufwerk MS0:.
+Schicken Sie mir die so erzeugte Binärdatei (ca. 1/2 kbyte) per email.
+Ich verspreche daß sie keine Paßwörter oder ähnliche Gemeinheiten
+enthält.
+
+
+DiskDump
+========
+
+Ein altbewährtes UNIX Fahrrad, neu erfunden für Amiga (nicht nur für fat95).
+Kopiert eine Anzahl Disk-Blöcke in eine Datei:
+
+    dd <name>.device <unit> <zieldatei> <erste Blocknummer> <Anzahl Blöcke>
+
+Also zum Beispiel ein Abzug der ersten 64 kbyte meiner ATAPI ZIP:
+
+    dd scsi.device 1 ram:zipdump 0 128
+
+Das ganze geht auch rückwärts:
+
+    dd <quelldatei> <name>.device <unit> <Blocknummer> <Anzahl Blöcke>
+
+Anders als viele Disk-Editoren, funktioniert das auch bei fehlerhaften
+Partitionen. Wenn sich also fat95 an der nächsten eingelegten Disk verschluckt
+können wir nachsehen was da so unverdaulich war ;)
+
+
+Für die Spezialisten...
+=======================
+
+...hier eine Übersicht der unterstützten DOS-Pakete:
+
+0005    ACTION_DIE
+0007    ACTION_CURRENT_VOLUME
+0008    ACTION_LOCATE_OBJECT
+0009    ACTION_RENAME_DISK
+0015    ACTION_FREE_LOCK
+0016    ACTION_DELETE_OBJECT
+0017    ACTION_RENAME_OBJECT
+0018    ACTION_MORE_CACHE
+0019    ACTION_COPY_DIR
+0021    ACTION_SET_PROTECT
+0022    ACTION_CREATE_DIR
+0023    ACTION_EXAMINE_OBJECT
+0024    ACTION_EXAMINE_NEXT
+0025    ACTION_DISK_INFO
+0026    ACTION_INFO
+0027    ACTION_FLUSH
+0028    ACTION_SET_COMMENT
+0029    ACTION_PARENT
+0031    ACTION_INHIBIT
+0034    ACTION_SET_DATE
+0082    ACTION_READ
+0087    ACTION_WRITE
+1004    ACTION_FINDUPDATE
+1005    ACTION_FINDINPUT
+1006    ACTION_FINDOUTPUT
+1007    ACTION_END
+1008    ACTION_SEEK
+1020    ACTION_FORMAT
+1022    ACTION_SET_FILE_SIZE
+1023    ACTION_WRITE_PROTECT
+1026    ACTION_FH_FROM_LOCK
+1027    ACTION_IS_FILESYSTEM
+1028    ACTION_CHANGE_MODE
+1030    ACTION_COPY_DIR_FH
+1031    ACTION_PARENT_FH
+1033    ACTION_EXAMINE_ALL
+1034    ACTION_EXAMINE_FH
+1035    ACTION_EXAMINE_ALL_END
+4200    ACTION_SERIALIZE_DISK
+4201    ACTION_GET_DISK_FSSM
+4202    ACTION_FREE_DISK_FSSM
+
+
+Geschichte
+==========
+
+v1.5    11/1999    erste öffentliche Version
+
+v1.6    12/1999    Fehlerkorrektur:
+                     Zugriff auf Partitionen >= 32 M
+                   neu:
+                     Umgehung eines Fehlers in "SID2"
+                     Disk-Seriennummer
+                     Verzeichnisoptimierung
+
+v1.7    01/2000    Fehlerkorrektur:
+                     Bootblockformatierung
+                     Absturz bei doppelter Datenträger-Anmeldung
+                   neu:
+                     detailliertere Fehlermeldungen
+                     reentranter Code für mehrere Laufwerke gleichzeitig
+
+v1.8    01/2000    neu:
+                     Zusammenarbeit auch mit gewissen devices die verbotene
+                       Prozessorregister verändern
+
+v1.11   01/2000    Fehlerkorrektur:
+                     Aufruf nicht ganz standardgerechter devices
+                   neu:
+                     Verzeichnisoperationen schneller
+
+v1.12   01/2000    neu:
+                     Ein-/Ausschaltmöglichkeit für ETD_xxx device-Befehle
+                     ACTION_SERIALIZE_DISK (wird von DiskCopy benutzt)
+                     schnelleres Schreiben auf 16bit FAT
+                     verbesserte automatische Formaterkennung
+
+v1.13   02/2000    Fehlerkorrektur: ACTION_SERIALIZE_DISK
+
+v1.14   02/2000    Fehlerkorrektur: Aktualisieren aller Kopien der FAT
+                   alternative englischsprachige Version
+
+v1.15   02/2000    Code-Optimierungen
+
+v1.17   02/2000    zweite öffentliche Version
+                   verbesserte Unterstützung für FORMAT-Befehl
+
+v1.18   03/2000    erster Versuch einer MBR-Erkennung
+
+v1.19   03/2000    Fehlerkorrektur: MBR-Automatik
+
+v1.20   03/2000    neu:
+                     getrennte Verzeichnis- und Dateipuffer
+                     "FAT"-Icon unterdrückt
+
+v1.21   03/2000    neu:
+                     clusterweiser Dateizugriff
+                     Weitergabe Diskwechsel-Meldungen (IDCMP_DISKINSERTED...)
+
+v1.22   03/2000    Fehlerkorrektur: Medien mit "großen" Sektoren > 512 bytes
+
+v2.0    04/2000    neu: erste FAT32 Unterstützung
+                   Fehlerkorrektur: nochmal "große Sektoren"
+
+v2.1    04/2000    neu: NSD und TD64 Unterstützung
+                   Fehlerkorrektur:
+                     28bit Einträge bei FAT32
+                     Sonderzeichen in kurzen Dateinamen
+                     Uhrzeit "Objekt erstellt"
+
+v2.2    06/2000    neue Disk- und Partitionserkennung
+                   Dateinamen bis 65 Zeichen
+                   Formatieren auch für FAT32
+                   kleine Optimierung für Schreibzugriffe
+                   geänderte AddBuffers Unterstützung (wie bei FFS)
+                   Dokumentation überarbeitet
+
+v2.3    07/2000    neu: natives ExAll(), ExAllEnd(), ChangeMode()
+                   Fehlerkorrektur:
+                     ExamineFH()
+                     OpenFromLock()
+                     Rename()
+                     überlange Pfadnamen
+                     Workbench-Unterstützung
+
+v2.4    07/2000    Fehlerkorrektur:
+                     exklusive Locks
+                     doppelte MSDOS 8.3 Namen
+
+v2.5    07/2000    neue Pufferverwaltung (trackweise)
+                   Fehlerkorrektur:
+                     Ermittlung des freien Speicherplatzes bei FAT32
+
+v2.6    07/2000    Fehlerkorrektur:
+                     Schreibabbruch wenn Disk voll
+                     Zugriff auf beschädigte Dateien
+
+v2.7    08/2000    Fehlerkorrektur:
+                     Erkennung logischer Laufwerke #07 ff.
+
+v2.8    08/2000    neu:
+                     Software-Schreibschutz "Lock"
+                     Fehlersuchhilfe "fat95debug"
+
+v2.9    09/2000    Fehlerkorrektur:
+                     AddBuffers
+                     ACTION_CURRENT_VOLUME
+                     jetzt alle Zugriffe trackweise
+
+v2.10   10/2000    neu:
+                     Erkennung "exotischer" Partitionstabellen
+                     Zielpartition jetzt auch zu Fuß einstellbar
+                     Abbruch wenn TD64 benötigt aber nicht verfügbar
+
+v2.11   12/2000    neu: verbesserte FDA-Kompatibilität
+
+v2.12   02/2001    neu:
+                     SCSI direkt Unterstützung
+
+v2.13   02/2001    neue Pufferverwaltung
+
+v2.14   03/2001    Fehlerkorrektur für FAT32-Modus
+
+v2.15   05/2001    Fehlerkorrektur:
+                     Absturz bei Namen >65 Zeichen
+                     Abmelden (ACTION_DIE)
+                     Erzeugung der 8.3 Namen
+                   neu:
+                     "pure" Flagge
+                     Reparaturfunktion
+                     boot95
+
+v2.16   08/2001    Fehlerkorrektur: Dateien > MaxTransfer
+                   neu: Anmeldung bei der FileSystem.resource
+
+v2.17   09/2001    neu:
+                     FAT32 Modus schneller
+                     Erkennung Amiga-reformatierter ZIPs
+
+v2.18   12/2001    neu:
+                     SetFileSize()
+                     benutzerdefinierte Sprachunterstützung für Dialog und Dateinamen
+
+v2.19   01/2002    neu: Dateinamen bis 104 Zeichen
+
+v3.00   02/2002    erweiterte Zeichensatzkonfiguration
+                     FAT32-Formatierung mit offiziellen Clustergrößen
+
+v3.01   02/2002    Fehlerkorrektur für Dateinamen mit "Õ" beginnend
+
+v3.02   02/2002    Fehlerkorrektur beim "Verzeichnis anlegen"
+                     Formatieren auch "großer" FAT12 Partitionen, z.B. auf CF Speicherkarten
+                     Erweiterte SCSI Fehlerprüfung
+                     Neue Sprachversionen
+
+v3.03   03/2002    DiskUpdate Fehlermeldung abgeschaltet
+
+v3.04   07/2002    Meldung beim Starten ohne eingelegtes Wechselmedium entfernt.
+                     Hänger beim "scandisk" entfernt.
+                     Neue "dd" Version mit informativeren Fehlermeldungen.
+
+v3.05   07/2002    Neue Konfigurationsoptionen.
+                     Dokumentation überarbeitet.
+
+v3.06   08/2002    Zugriff auf kleine Dateien jetzt schneller.
+
+v3.07   09/2002    Fehlerkorrektur für Dateien schreiben.
+                     "SCSI direkt" jetzt automatisch aktiv wenn nötig.
+                     Ungarische Übersetzung hinzugefügt.
+
+v3.08   10/2002    Hmm. Eine Versionsnummer übersprungen???
+
+v3.09   04/2003    Sicherheitslöschung hinzugefügt.
+                     Fehlersuchfunktion jetzt abbrechbar.
+
+v3.10   07/2003    Fehler beseitigt, die:
+                     - manchmal neu erstellte Verzeichnisse beschädigten;
+                     - internationale Zeichen aus Dateinamen entfernten, wenn kein OEM
+                        Zeichensatz eingestellt ist.
+                     Neue DiskDump (dd) Version.
+
+v3.11   08/2003    Internen Kurznamengenerator optimiert.
+                     Verzeichnisinhalt wird noch während des Schreibens von Dateien aktualisiert.
+                     Wurzelverzeichnis hat jetzt auch ein echtes "zuletzt geändert" Datum.
+
+v3.12   11/2003    Alternative Diskerkennung über SCSI hinzugefügt.
+                     TD_UPDATE jetzt abschaltbar.
+                     Kleine Schreibzugriffe jetzt schneller.
+                     Ungenutzte Verzeichnisteile werden wieder freigegeben.
+
+v3.13   02/2004    Unterstützung für mit PalmOS formatierte Speicherkarten hinzugefügt.
+
+v3.14   05/2004    Option "L" hinzugefügt.
+
+v3.15   05/2004    Option "l" hinzugefügt.
+
+(Ende)

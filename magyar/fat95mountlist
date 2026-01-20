@@ -1,0 +1,43 @@
+/* OS1.3 stílusú mountlist fájl                               */
+/* MS0: fat95 PC file system a 0. meghajtóhoz                   */
+/* $VER: fat95 file system 2.6 (26-Jul-2000) by Torsten Jager */
+
+FileSystem	= l:fat95
+Device		= messydisk.device
+Unit		= 0		/* itt írd át a meghajtó számát */
+Flags		= 0
+LowCyl		= 0
+HighCyl		= 79
+Surfaces	= 2		/* a bootblokk adatok felülbírálhatják */
+BlocksPerTrack	= 9
+Buffers		= 20
+BufMemType	= 1
+BootPri		= 0
+Stacksize	= 2048
+Priority	= 5
+GlobVec		= -1
+DosType		= 0x46415400	/* ETD parancsok engedélyezése */
+Mount		= 1		/* ha 0-ra állítod, akkor a meghajtó */
+				/* az elsõ hozzáféréskor töltõdik be */
+#
+
+/* MS1: fat95 PC file system az 1. meghajtóhoz		     */
+
+FileSystem	= l:fat95
+Device		= messydisk.device
+Unit		= 1		/* itt írd át a meghajtó számát */
+Flags		= 0
+LowCyl		= 0
+HighCyl		= 79
+Surfaces	= 2		/* a bootblokk adatok felülbírálhatják */
+BlocksPerTrack	= 9
+Buffers		= 20
+BufMemType	= 1
+BootPri		= 0
+Stacksize	= 2048
+Priority	= 5
+GlobVec		= -1
+DosType		= 0x46415400	/* enable ETD commands */
+Mount		= 1		/* ha 0-ra állítod, akkor a meghajtó */
+				/* az elsõ hozzáféréskor töltõdik be */
+#

@@ -1,0 +1,41 @@
+/* OS1.3 style mountlist file				     */
+/* MS0: fat95 PC file system for floppy #0		     */
+/* $VER: fat95 file system 2.6 (26-Jul-2000) by Torsten Jager */
+
+FileSystem	= l:fat95
+Device		= messydisk.device
+Unit		= 0		/* change drive number here */
+Flags		= 0
+LowCyl		= 0
+HighCyl		= 79
+Surfaces	= 2		/* bootblock values have priority over these */
+BlocksPerTrack	= 9
+Buffers		= 20
+BufMemType	= 1
+BootPri		= 0
+Stacksize	= 2048
+Priority	= 5
+GlobVec		= -1
+DosType		= 0x46415400	/* enable ETD commands */
+Mount		= 1		/* set to 0 to load drivers at first access */
+#
+
+/* MS1: fat95 PC file system for floppy #1		     */
+
+FileSystem	= l:fat95
+Device		= messydisk.device
+Unit		= 1		/* change drive number here */
+Flags		= 0
+LowCyl		= 0
+HighCyl		= 79
+Surfaces	= 2		/* bootblock values have priority over these */
+BlocksPerTrack	= 9
+Buffers		= 20
+BufMemType	= 1
+BootPri		= 0
+Stacksize	= 2048
+Priority	= 5
+GlobVec		= -1
+DosType		= 0x46415400	/* enable ETD commands */
+Mount		= 1		/* set to 0 to load drivers at first access */
+#
