@@ -1,0 +1,79 @@
+Short:        Win95/98 compatible file system
+Uploader:     jaroslav.pulchart@gmail.com (Jaroslav Pulchart)
+Author:       jaroslav.pulchart@gmail.com (Jaroslav Pulchart), based on work by Torsten Jager
+Type:         disk/misc
+Version:      @VERSION@
+Architecture: m68k-amigaos
+Distribution: Aminet
+Kurz:         Win95/98-kompatibles Dateisystem
+
+fat95 v@VERSION@ (@DATE@) - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
+
+CHANGES IN @VERSION@ (@DATE@)
+=============================
+
+* Added Makefile-based build system
+* Set English as default localization for fat95 handler
+
+Purpose
+=======
+
+"fat95" is a DOS handler to mount and use Win95/98 volumes just as if they were
+AMIGA volumes.
+
+System requirements
+===================
+
+* every AMIGA, OS 1.3+ (OS 2.0+ for full functionality)
+* a suitable device file for low level disk access, like the
+  mfm.device for floppies.
+* rebuild by vasm 2.0d
+
+Features
+========
+
+PLEASE READ english/readme.too REALLY!
+
+* workbench and applications support
+* diskchange autosense
+* format type autosense: FAT12, FAT16 and FAT32
+* simple LINUX style partition selection or manual definition
+* up to 4 GBytes of partition size for FAT16
+* large harddisk support via TD64 or direct SCSI
+* long filenames (up to 104 chars for now)
+* inquiry, read, write, and maintenance access
+* built-in error check utility
+* disk formatting using the OS 2.0+ format command
+* MS-DOS 8.3 downward compatibility
+* user definable language and code page
+* date range Jan 1st, 1980 through Dec 31st, 2107
+* extended datestamp support: creation date and time, last accessed date
+  (written automatically, readable as file comment text)
+* volume serial number as name for unnamed volumes
+* automatic directory optimization
+* written entirely in assembly language
+
+CHECKSUMS
+=========
+@TOOL_CHECKSUMS@
+
+CONTENTS
+========
+fat95/l/fat95 - FAT95 filesystem handler
+fat95/l/install95 - Locale installer tool (read/write locale files)
+fat95/c/dd - Raw block transfer tool
+fat95/c/debug95 - Debug information tool
+fat95/c/SetFileSize - File size modification utility
+fat95/c/boot95 - Boot partition creation tool
+
+fat95/src/ - Full source code
+
+fat95/english/ - English documentation and examples
+fat95/deutsch/ - German documentation and examples
+fat95/français/ - French documentation
+fat95/español/ - Spanish documentation
+fat95/magyar/ - Hungarian documentation
+fat95/polska/ - Polish documentation
+fat95/russian/ - Russian documentation
+
+fat95/LICENSE - GNU LGPL v2.1

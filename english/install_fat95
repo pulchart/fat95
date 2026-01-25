@@ -1,5 +1,5 @@
 ;fat95 english localization
-;$VER: fat95 install info 3.09 (15.04.2003)
+;$VER: fat95 install info 3.19 (25.01.2026)
 
 [locale]
 ;Here come the user interface texts.
@@ -16,10 +16,10 @@
  3 = Retry
 
 ;Some error messages.
- 4 = Please re-insert disk \n"%s"!
- 5 = %s:\nread error %ld in block %lu.
- 6 = %s:\nwrite error %ld in block %lu.
- 7 = %s:\nupdate error %ld.
+ 4 = Please reinsert the disk \n"%s"!
+ 5 = %s:\nRead error %ld at block %lu.
+ 6 = %s:\nWrite error %ld at block %lu.
+ 7 = %s:\nUpdate error %ld.
 
 ;Extended datestamp info as file comments.
  8 = created
@@ -30,11 +30,11 @@
 11 = Checking file allocation table...
 12 = Searching for lost files...
 13 = %lu error(s) fixed!
-14 = Everything fine :)
+14 = Everything is fine :)
 
 ;The !erase feature.
 15 = Erasing free disk space...
-16 = Hit <ESC> to abort.
+16 = Press <ESC> to abort.
 
 
 [oem]

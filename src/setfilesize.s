@@ -16,6 +16,9 @@
 ; License along with this library; if not, write to the Free Software
 ; Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+; --- Includes ---
+	include	"setfilesize_version.i"
+
 ;--- from exec.library -------------------------------------
 
 CALLEXEC macro
@@ -111,11 +114,11 @@ Start:
 	move.b	(a0)+,d0
 	moveq.l	#OFFSET_END,d1
 	moveq.l	#1,d2
-	cmp.b	#`+`,d0
+	cmp.b	#'+',d0
 	beq.s	s_number
 
 	moveq.l	#-1,d2
-	cmp.b	#`-`,d0
+	cmp.b	#'-',d0
 	beq.s	s_number
 
 	moveq.l	#OFFSET_BEGINNING,d1
@@ -209,11 +212,11 @@ gdp_par:
 	moveq.l	#0,d2
 gdp_char:
 	move.b	(a0)+,d0
-	cmp.b	#` `,d0
+	cmp.b	#' ',d0
 	beq.s	gdp_spc
 	bcs.s	gdp_pend
 
-	cmp.b	#`"`,d0
+	cmp.b	#'"',d0
 	beq.s	gdp_cite
 gdp_write:
 	or.w	#1,d2
@@ -235,13 +238,13 @@ gdp_cite:
 	or.w	#3,d2
 	bra.s	gdp_char
 gdp_c1:
-	cmp.b	#` `+1,(a0)
+	cmp.b	#' '+1,(a0)
 	bcc.s	gdp_write
 
 	move.b	(a0)+,d0
 gdp_pend:
 	clr.b	(a2)+
-	cmp.b	#` `,d0
+	cmp.b	#' ',d0
 	beq.s	gdp_par
 
 	btst	#0,d2
@@ -282,7 +285,7 @@ s2n_char:
 
 	and.b	#$df,d2			;toUpper
 s2n_c1:
-	sub.b	#`0`,d2
+	sub.b	#'0',d2
 	bcs.s	s2n_hcheck
 
 	tst.l	d2
@@ -301,7 +304,7 @@ s2n_hchar:
 	cmp.b	#10,d2
 	bcs.s	s2n_hadd
 
-	subq.b	#`A`-`9`-1,d2
+	subq.b	#'A'-'9'-1,d2
 	bcs.s	s2n_end
 
 	cmp.b	#16,d2
@@ -311,10 +314,10 @@ s2n_hadd:
 	or.b	d2,d0
 	bra.s	s2n_char
 s2n_hcheck:
-	cmp.b	#`X`-`0`,d2
+	cmp.b	#'X'-'0',d2
 	beq.s	s2n_hswitch
 
-	cmp.b	#`$`-`0`,d2
+	cmp.b	#'$'-'0',d2
 	bne.s	s2n_end
 s2n_hswitch:
 	moveq.l	#0,d0
@@ -335,7 +338,7 @@ Num2Str:
 n2s_loop1:
 	moveq.l	#10,d1
 	bsr.s	UDivMod32
-	or.b	#`0`,d1
+	or.b	#'0',d1
 	move.b	d1,(a1)+	;append digit
 	tst.l	d0
 	bne.s	n2s_loop1
@@ -427,16 +430,18 @@ udm32_next:
 
 ;--- Texts -------------------------------------------------
 
-		dc.b	`$VER: SetFileSize 1.01 (23.10.2001)`, LF, 0
-		dc.b	`© Torsten Jager`, 0
-DosName:	dc.b	`dos.library`, 0
-HelpStr:	dc.b	`usage: SetFileSize <file> `
-		dc.b	`<new size>|+<addbytes>|-<cutbytes>`, LF, 0
-NoFileStr:	dc.b	`could not open file.`, LF, 0
-NoSizeStr:	dc.b	`file resizing failed.`, LF, 0
-New1Str:	dc.b	`new file size is `, 0
-New2Str:	dc.b	` bytes.`, LF, 0
+		dc.b	'$VER: '
+		VER_STRING
+		dc.b	LF, 0
+		dc.b	'(c) Torsten Jager', 0
+DosName:	dc.b	'dos.library', 0
+HelpStr:	dc.b	'usage: SetFileSize <file> '
+		dc.b	'<new size>|+<addbytes>|-<cutbytes>', LF, 0
+NoFileStr:	dc.b	'could not open file.', LF, 0
+NoSizeStr:	dc.b	'file resizing failed.', LF, 0
+New1Str:	dc.b	'new file size is ', 0
+New2Str:	dc.b	' bytes.', LF, 0
 		even
 
-;*** Das war`s!!! ******************************************
+;*** That's all folks!! ************************************
 	end

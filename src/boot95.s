@@ -16,8 +16,8 @@
 ; License along with this library; if not, write to the Free Software
 ; Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-FILE_VERSION	= 3
-FILE_REVISION	= 18
+; --- Includes ---
+	include	"boot95_version.i"
 
 ;--- from exec.library -------------------------------------
 
@@ -147,7 +147,7 @@ FSSM_Sizeof	= 16
 
 ;struct DosEnvec
 DE_TableSize	= 0
-DE_SizeBlock	= 4			;in Langworten
+DE_SizeBlock	= 4			;in longwords
 DE_SecOrg	= 8
 DE_Surfaces	= 12
 DE_SectorPerBlock = 16
@@ -185,10 +185,10 @@ FH_Arg1		= 36
 
 ;DiskType
 ID_NONE		= -1			;no Disk
-ID_BUSY		= `BUSY`		;inhibited
-ID_BAD		= `BAD`<<8		;unreadable
-ID_NDOS		= `NDOS`		;readable but incomprehensible
-ID_DOS		= `DOS`<<8		;valid
+ID_BUSY		= 'BUSY'		;inhibited
+ID_BAD		= 'BAD'<<8		;unreadable
+ID_NDOS		= 'NDOS'		;readable but incomprehensible
+ID_DOS		= 'DOS'<<8		;valid
 
 ;DiskState
 ID_WRITE_PROT	= 80			;read only
@@ -599,7 +599,7 @@ s_mbrsnext:
 	move.b	#SCSIF_READ,(a0)+	;SCSI_Flags
 	clr.b	(a0)+			;SCSI_Status
 	clr.l	(a0)+			;SCSI_SenseData
-	clr.l	(a0)			;SCSI_SenseLength und SCSI_SenseActual
+	clr.l	(a0)			;SCSI_SenseLength and SCSI_SenseActual
 	move.l	IORequest(a4),a1
 	movem.l	d2-d7/a2-a5,-(sp)
 	CALLEXEC DoIO
@@ -676,7 +676,7 @@ s_rdb:
 
 	add.l	BlockSize(a4),a2	;&RDSK
 	move.l	a2,a1			;&target
-	move.l	#`RDSK`,(a1)+		;ID
+	move.l	#'RDSK',(a1)+		;ID
 	moveq.l	#64,d0
 	move.l	d0,(a1)+		;SummedLongs
 	addq.l	#8,a1			;ChkSum, HostID
@@ -698,7 +698,7 @@ s_rdb:
 	move.l	d1,(a1)+
 	move.l	TotalSectors(a4),d0
 	move.l	TrackSize(a4),d1
-	move.l	d1,d2			;Blocks/Track oder 1 (LBA)
+	move.l	d1,d2			;Blocks/Track or 1 (LBA)
 	bsr.w	UDivMod32
 	move.l	d0,(a1)+		;Cyls
 	move.l	d2,(a1)+		;Secs
@@ -746,14 +746,14 @@ s_rdskl1:
 
 	add.l	BlockSize(a4),a2	;&PART
 	move.l	a2,a1
-	move.l	#`PART`,(a1)+		;ID
+	move.l	#'PART',(a1)+		;ID
 	moveq.l	#64,d0
 	move.l	d0,(a1)+		;SummedLongs
 	addq.l	#8,a1			;ChkSum, HostID
 	moveq.l	#-1,d0
 	move.l	d0,(a1)+		;Next
 	moveq.l	#1,d0
-	move.l	d0,(a1)+		;Flags: (1 = bootable, 2 = don`t mount)
+	move.l	d0,(a1)+		;Flags: (1 = bootable, 2 = don't mount)
 	moveq.l	#0,d0
 	move.l	d0,(a1)+		;2*res1
 	move.l	d0,(a1)+
@@ -808,7 +808,7 @@ s_ploop2:
 
 	add.l	BlockSize(a4),a2	;&FSHD
 	move.l	a2,a1
-	move.l	#`FSHD`,(a1)+		;ID
+	move.l	#'FSHD',(a1)+		;ID
 	moveq.l	#64,d0
 	move.l	d0,(a1)+		;SummedLongs
 	addq.l	#8,a1			;ChkSum, HostID
@@ -873,7 +873,7 @@ s_floop:
 	moveq.l	#0,d4
 s_f1:
 	move.l	a2,a1
-	move.l	#`LSEG`,(a1)+		;ID
+	move.l	#'LSEG',(a1)+		;ID
 	move.l	d5,d0
 	lsr.l	#2,d0
 	addq.l	#5,d0
@@ -1077,11 +1077,11 @@ gdp_par:
 	moveq.l	#0,d2
 gdp_char:
 	move.b	(a0)+,d0
-	cmp.b	#` `,d0
+	cmp.b	#' ',d0
 	beq.s	gdp_spc
 	bcs.s	gdp_pend
 
-	cmp.b	#`"`,d0
+	cmp.b	#'"',d0
 	beq.s	gdp_cite
 gdp_write:
 	or.w	#1,d2
@@ -1103,13 +1103,13 @@ gdp_cite:
 	or.w	#3,d2
 	bra.s	gdp_char
 gdp_c1:
-	cmp.b	#` `+1,(a0)
+	cmp.b	#' '+1,(a0)
 	bcc.s	gdp_write
 
 	move.b	(a0)+,d0
 gdp_pend:
 	clr.b	(a2)+
-	cmp.b	#` `,d0
+	cmp.b	#' ',d0
 	beq.s	gdp_par
 
 	btst	#0,d2
@@ -1298,20 +1298,22 @@ udm32_next:
 
 ;--- Texts -------------------------------------------------
 
-		dc.b	`$VER: boot95 3.18 (01.03.2013)`,LF,0
-DosName:	dc.b	`dos.library`,0
-HelpStr:	dc.b	`Usage: boot95 <device> [<filesystem>]`,LF,0
-DefFileName:	dc.b	`L:fat95`,0
-OutputName:	dc.b	`ram:boot95.log`,0
-NoDevStr:	dc.b	`Device not found.`,LF,0
-NoFileStr:	dc.b	`Could not get source file.`,LF,0
-NoInfoStr:	dc.b	`Debug info not available.`,LF,0
-NoMemStr:	dc.b	`Not enough memory.`,LF,0
-ReadErrStr:	dc.b	`Read error in block 0.`,LF,0
-NoMBRStr:	dc.b	`PC master boot record not found.`,LF,0
-NoDiskSpaceStr:	dc.b	`Not enough disk space for RDSK chain.`,LF,0
+		dc.b	'$VER: '
+		VER_STRING
+		dc.b	LF,0
+DosName:	dc.b	'dos.library',0
+HelpStr:	dc.b	'Usage: boot95 <device> [<filesystem>]',LF,0
+DefFileName:	dc.b	'L:fat95',0
+OutputName:	dc.b	'ram:boot95.log',0
+NoDevStr:	dc.b	'Device not found.',LF,0
+NoFileStr:	dc.b	'Could not get source file.',LF,0
+NoInfoStr:	dc.b	'Debug info not available.',LF,0
+NoMemStr:	dc.b	'Not enough memory.',LF,0
+ReadErrStr:	dc.b	'Read error in block 0.',LF,0
+NoMBRStr:	dc.b	'PC master boot record not found.',LF,0
+NoDiskSpaceStr:	dc.b	'Not enough disk space for RDSK chain.',LF,0
 		even
 
-;*** Das war`s!!! ******************************************
+;*** that's it!!!! *****************************************
 	end
 

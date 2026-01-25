@@ -16,6 +16,9 @@
 ; License along with this library; if not, write to the Free Software
 ; Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+; --- Includes ---
+	include	"debug95_version.i"
+
 ;---from exec.library --------------------------------------
 
 CALLEXEC macro
@@ -98,7 +101,7 @@ s_ploop:
 	bmi.s	s_pend
 
 	move.b	(a0)+,d1
-	cmp.b	#` `,d1
+	cmp.b	#' ',d1
 	beq.s	s_pbreak
 	bcs.s	s_pend
 s_pwrite:
@@ -204,13 +207,15 @@ re_end:
 
 ;--- Texts -------------------------------------------------
 
-		dc.b	`$VER: debug95 3.18 (01.03.2013)`,LF,0
-DosName:	dc.b	`dos.library`,0
-HelpStr:	dc.b	`usage: fat95debug <device> <logfile>`,LF,0
-NoDevStr:	dc.b	`device not found.`,LF,0
-NoFileStr:	dc.b	`could not open log file.`,LF,0
-NoInfoStr:	dc.b	`debug info not available.`,LF,0
+		dc.b	'$VER: '
+		VER_STRING
+		dc.b	LF,0
+DosName:	dc.b	'dos.library',0
+HelpStr:	dc.b	'usage: fat95debug <device> <logfile>',LF,0
+NoDevStr:	dc.b	'device not found.',LF,0
+NoFileStr:	dc.b	'could not open log file.',LF,0
+NoInfoStr:	dc.b	'debug info not available.',LF,0
 		even
 
-;*** Das war`s!!! ******************************************
+;*** that's it!!!! *****************************************
 	end

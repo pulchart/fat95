@@ -16,6 +16,9 @@
 ; License along with this library; if not, write to the Free Software
 ; Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+; --- Includes ---
+	include	"install95_version.i"
+
 ;--- from exec.library -------------------------------------
 
 CALLEXEC macro
@@ -378,7 +381,7 @@ s_hsnext:
 	move.l	d0,ChunkOffs(a4)
 	add.l	Buffer(a4),d0
 	move.l	d0,a0
-	cmp.l	#`loca`,(a0)
+	cmp.l	#'loca',(a0)
 	bne.w	s_bogus3		;no ID
 	bra.w	s_switch
 
@@ -430,7 +433,7 @@ s_single:
 	add.l	d1,a0
 	add.l	d0,d1
 	move.l	d1,ChunkOffs(a4)
-	cmp.l	#`loca`,(a0)
+	cmp.l	#'loca',(a0)
 	bne.w	s_bogus3		;no ID
 
 ;- - mode switch - - - - - - - - - - - - - - - - - - - - - -
@@ -441,13 +444,13 @@ s_switch:
 
 	move.l	StringBuffer(a4),a0
 	move.b	(a0),d0
-	cmp.b	#`w`,d0
+	cmp.b	#'w',d0
 	beq.w	s_writetext
 
-	cmp.b	#`r`,d0
+	cmp.b	#'r',d0
 	bne.w	s_help2
 
-;= = Objekt -> Text = = = = = = = = = = = = = = = = = = = =
+;= = Object -> Text = = = = = = = = = = = = = = = = = = = =
 
 ;s_readtext:
 	move.l	TextBuffer(a4),a1	;&target
@@ -462,13 +465,13 @@ s_rchunk:
 	move.l	(a0)+,d1		;section length
 	addq.l	#8,d1
 	add.l	d1,ChunkOffs(a4)	;Offset of next section
-	cmp.l	#`loca`,d0
+	cmp.l	#'loca',d0
 	beq.s	s_rloca
 
-	cmp.l	#`unic`,d0
+	cmp.l	#'unic',d0
 	beq.s	s_runic
 
-	cmp.l	#`oem `,d0
+	cmp.l	#'oem ',d0
 	beq.s	s_roem
 	bra.s	s_rchunk
 
@@ -487,9 +490,9 @@ s_rline:
 	beq.s	s_rchunk
 
 	bsr.w	Num2Str			;Text #
-	move.b	#` `,(a1)+
-	move.b	#`=`,(a1)+
-	move.b	#` `,(a1)+
+	move.b	#' ',(a1)+
+	move.b	#'=',(a1)+
+	move.b	#' ',(a1)+
 	bsr.w	StrCopy			;text
 	move.b	#LF,(a1)+
 	bra.s	s_rline
@@ -575,7 +578,7 @@ s_rwrite:
 s_rend:
 	bra.w	s_freebuf
 
-;= = Text -> Objekt = = = = = = = = = = = = = = = = = = = =
+;= = Text -> Object = = = = = = = = = = = = = = = = = = = =
 ;- - read Text file - - - - - - - - - - - - - - - - - - - -
 
 s_writewb:
@@ -650,7 +653,7 @@ s_wlline:
 	move.b	(a0),d0
 	beq.s	s_wldone
 
-	cmp.b	#`[`,d0
+	cmp.b	#'[',d0
 	beq.s	s_wldone
 
 	bsr.w	Str2Num
@@ -661,14 +664,14 @@ s_wlline:
 	move.b	(a0)+,d1
 	beq.s	s_wldone
 
-	cmp.b	#`=`,d1
+	cmp.b	#'=',d1
 	bne.s	s_wlline		;nothing assigned
 
 	move.b	d0,(a1)+
 	bsr.w	StrCue
 s_wltext:
 	move.b	(a0)+,d0
-	cmp.b	#` `,d0
+	cmp.b	#' ',d0
 	bcs.s	s_wlnext
 
 	move.b	d0,(a1)+		;transfer to end of line
@@ -685,7 +688,7 @@ s_wldone:
 	sub.l	a0,d0
 	subq.l	#8-3,d0
 	and.w	#$fffc,d0
-	move.l	#`loca`,(a0)+
+	move.l	#'loca',(a0)+
 	move.l	d0,(a0)			;mark section length
 	bra.s	s_wlend
 s_wlskip:
@@ -707,7 +710,7 @@ s_wunic:
 
 	move.l	Buffer(a4),a1
 	add.l	ChunkOffs(a4),a1
-	move.l	#`unic`,(a1)+
+	move.l	#'unic',(a1)+
 	moveq.l	#64,d0
 	lsl.l	#3,d0
 	move.l	d0,(a1)+
@@ -727,7 +730,7 @@ s_wuline:
 	move.b	(a0),d0
 	beq.s	s_wudone		;end of Text
 
-	cmp.b	#`[`,d0
+	cmp.b	#'[',d0
 	beq.s	s_wudone		;end of section
 
 	bsr.w	Str2Num
@@ -758,7 +761,7 @@ s_woem:
 
 	move.l	Buffer(a4),a1
 	add.l	ChunkOffs(a4),a1
-	move.l	#`oem `,(a1)+
+	move.l	#'oem ',(a1)+
 	moveq.l	#64,d0
 	move.l	d0,(a1)+
 	addq.l	#8,d0
@@ -777,7 +780,7 @@ s_woline:
 	move.b	(a0),d0
 	beq.s	s_wodone		;end of Text
 
-	cmp.b	#`[`,d0
+	cmp.b	#'[',d0
 	beq.s	s_wodone		;end of section
 
 	bsr.w	Str2Num
@@ -937,11 +940,11 @@ gdp_par:
 	moveq.l	#0,d2
 gdp_char:
 	move.b	(a0)+,d0
-	cmp.b	#` `,d0
+	cmp.b	#' ',d0
 	beq.s	gdp_spc
 	bcs.s	gdp_pend
 
-	cmp.b	#`"`,d0
+	cmp.b	#'"',d0
 	beq.s	gdp_cite
 gdp_write:
 	or.w	#1,d2
@@ -963,13 +966,13 @@ gdp_cite:
 	or.w	#3,d2
 	bra.s	gdp_char
 gdp_c1:
-	cmp.b	#` `+1,(a0)
+	cmp.b	#' '+1,(a0)
 	bcc.s	gdp_write
 
 	move.b	(a0)+,d0
 gdp_pend:
 	clr.b	(a2)+
-	cmp.b	#` `,d0
+	cmp.b	#' ',d0
 	beq.s	gdp_par
 
 	btst	#0,d2
@@ -1007,7 +1010,7 @@ scu_loop:
 	cmp.b	#TAB,d0
 	beq.s	scu_loop
 
-	cmp.b	#` `,d0
+	cmp.b	#' ',d0
 	beq.s	scu_loop
 scu_end:
 	subq.l	#1,a0
@@ -1031,7 +1034,7 @@ nli_cue:
 	cmp.b	#LF,d0
 	beq.s	nli_cue			;skip empty line
 
-	cmp.b	#`;`,d0
+	cmp.b	#';',d0
 	beq.s	nli_loop		;skip comment
 nli_end:
 	subq.l	#1,a0
@@ -1081,10 +1084,10 @@ fp_mark:
 	move.l	a0,d0
 fp_loop:
 	move.b	(a0)+,d1
-	cmp.b	#`/`,d1
+	cmp.b	#'/',d1
 	beq.s	fp_mark
 
-	cmp.b	#`:`,d1
+	cmp.b	#':',d1
 	beq.s	fp_mark
 
 	tst.b	d1
@@ -1108,7 +1111,7 @@ s2n_char:
 
 	and.b	#$df,d2			;toUpper
 s2n_c1:
-	sub.b	#`0`,d2
+	sub.b	#'0',d2
 	bcs.s	s2n_hcheck
 
 	tst.l	d2
@@ -1127,7 +1130,7 @@ s2n_hchar:
 	cmp.b	#10,d2
 	bcs.s	s2n_hadd
 
-	subq.b	#`A`-`9`-1,d2
+	subq.b	#'A'-'9'-1,d2
 	bcs.s	s2n_end
 
 	cmp.b	#16,d2
@@ -1137,10 +1140,10 @@ s2n_hadd:
 	or.b	d2,d0
 	bra.s	s2n_char
 s2n_hcheck:
-	cmp.b	#`X`-`0`,d2
+	cmp.b	#'X'-'0',d2
 	beq.s	s2n_hswitch
 
-	cmp.b	#`$`-`0`,d2
+	cmp.b	#'$'-'0',d2
 	bne.s	s2n_end
 s2n_hswitch:
 	moveq.l	#0,d0
@@ -1161,7 +1164,7 @@ Num2Str:
 n2s_loop1:
 	moveq.l	#10,d1
 	bsr.s	UDivMod32
-	or.b	#`0`,d1
+	or.b	#'0',d1
 	move.b	d1,(a1)+	;append digit
 	tst.l	d0
 	bne.s	n2s_loop1
@@ -1190,19 +1193,19 @@ n2s_end:
 
 Num2Hex:
 	movem.l	d1-d2,-(sp)
-	move.b	#`0`,(a1)+
-	move.b	#`x`,(a1)+
+	move.b	#'0',(a1)+
+	move.b	#'x',(a1)+
 	lsl.w	#2,d1
 	ror.l	d1,d0
 n2h_loop:
 	rol.l	#4,d0
 	moveq.l	#15,d2
 	and.l	d0,d2
-	add.w	#`0`,d2
-	cmp.w	#`9`+1,d2
+	add.w	#'0',d2
+	cmp.w	#'9'+1,d2
 	bcs.s	n2h_put
 
-	add.w	#`a`-`9`-1,d2
+	add.w	#'a'-'9'-1,d2
 n2h_put:
 	move.b	d2,(a1)+
 	subq.w	#4,d1
@@ -1281,20 +1284,21 @@ udm32_next:
 
 ;--- Texts -------------------------------------------------
 
-		dc.b	`$VER: install95 3.18 (01.03.2013)`, LF, 0
-DosName:	dc.b	`dos.library`, 0
-Fat95Name:	dc.b	`l:`
-Fat95Name2:	dc.b	`fat95`,0
-HelpStr:	dc.b	`usage: install95 <r|w> <language>`, LF, 0
-NoFile3Str:	dc.b	`file "l:fat95" not found.`, LF, 0
-TooLarge3Str:	dc.b	`file "l:fat95" too large.`, LF, 0
-Bogus3Str:	dc.b	`file "l:fat95" is incomatible.`, LF, 0
-FileHeadStr:	dc.b	`;fat95 locale file`, LF, 0
-InstStr:	dc.b	`[installer]`,0
-LocaStr:	dc.b	`[locale]`, 0
-UnicStr:	dc.b	`[unicode]`,0
-OemStr:		dc.b	`[oem]`,0
+		VER_STRING
+		dc.b	LF, 0
+DosName:	dc.b	'dos.library', 0
+Fat95Name:	dc.b	'l:'
+Fat95Name2:	dc.b	'fat95',0
+HelpStr:	dc.b	'usage: install95 <r|w> <language>', LF, 0
+NoFile3Str:	dc.b	'file "l:fat95" not found.', LF, 0
+TooLarge3Str:	dc.b	'file "l:fat95" too large.', LF, 0
+Bogus3Str:	dc.b	'file "l:fat95" is incomatible.', LF, 0
+FileHeadStr:	dc.b	';fat95 locale file', LF, 0
+InstStr:	dc.b	'[installer]',0
+LocaStr:	dc.b	'[locale]', 0
+UnicStr:	dc.b	'[unicode]',0
+OemStr:		dc.b	'[oem]',0
 		even
 
-;*** Das war`s!!! ******************************************
+;*** that's it!!!! *****************************************
 	end

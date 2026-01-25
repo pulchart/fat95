@@ -16,8 +16,8 @@
 ; License along with this library; if not, write to the Free Software
 ; Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-FILE_VERSION	= 3
-FILE_REVISION	= 18
+; --- Includes ---
+	include	"fat95_version.i"
 
 ;--- from exec.library -------------------------------------
 
@@ -314,10 +314,10 @@ FH_Arg1		= 36
 
 ;DiskType
 ID_NONE		= -1			;no disk inserted
-ID_BUSY		= `BUSY`		;inhibited
-ID_BAD		= `BAD`<<8		;unreadable
-ID_NDOS		= `NDOS`		;readable but incomprehensible
-ID_DOS		= `DOS`<<8		;valid
+ID_BUSY		= "BUSY"		;inhibited
+ID_BAD		= "BAD"<<8		;unreadable
+ID_NDOS		= "NDOS"		;readable but incomprehensible
+ID_DOS		= "DOS"<<8		;valid
 
 ;DiskState
 ID_WRITE_PROT	= 80			;read only
@@ -934,13 +934,13 @@ s_uiscan:
 	move.l	(a2)+,d1		;data size
 	move.l	a2,a0			;&data
 	add.l	d1,a2
-	cmp.l	#`unic`,d0
+	cmp.l	#"unic",d0
 	beq.s	s_uiunicode
 
-	cmp.l	#`oem `,d0
+	cmp.l	#"oem ",d0
 	beq.s	s_uioem
 
-	cmp.l	#`loca`,d0
+	cmp.l	#"loca",d0
 	bne.s	s_uiscan		;skip unknown chunk
 s_uilocale:
 	lea	UIText(a4),a1
@@ -981,7 +981,7 @@ s_envfill:
 	bgt.s	s_envfill
 
 	move.w	#128,EnvecBuf+DE_SizeBlock+2(a4)
-	move.l	#`FAT`<<8,EnvecBuf+DE_DosType(a4)
+	move.l	#"FAT"<<8,EnvecBuf+DE_DosType(a4)
 	lea	MfmDevName(pc),a0
 	move.l	a0,DevName(a4)
 
@@ -1223,7 +1223,7 @@ MfmDevName:
 	even
 
 s_tab:
-	dc.w	Action5-s_tab		;Action5 bis Action34
+	dc.w	Action5-s_tab		;Action5 to Action34
 	dc.w	s_unknown-s_tab
 	dc.w	Action7-s_tab
 	dc.w	Action8-s_tab
@@ -1254,7 +1254,7 @@ s_tab:
 	dc.w	Action33-s_tab
 	dc.w	Action34-s_tab
 
-	dc.w	Action1004-s_tab	;Action1004 bis Action1035
+	dc.w	Action1004-s_tab	;Action1004 to Action1035
 	dc.w	Action1005-s_tab
 	dc.w	Action1006-s_tab
 	dc.w	Action1007-s_tab
@@ -1287,7 +1287,7 @@ s_tab:
 	dc.w	Action1034-s_tab
 	dc.w	Action1035-s_tab
 
-	dc.w	Action4200-s_tab	;Action4200 bis Action4202
+	dc.w	Action4200-s_tab	;Action4200 to Action4202
 	dc.w	Action4201-s_tab
 	dc.w	Action4202-s_tab
 
@@ -2060,17 +2060,17 @@ gdvn_snloop:
 
 	addq.w	#7,d0
 gdvn_n1:
-	add.w	#`0`,d0
+	add.w	#'0',d0
 	move.b	d0,(a1)+		;..as Name
 	cmp.w	#5,d2
 	bne.s	gdvn_n2
 
-	move.b	#`-`,(a1)+		;eg. "12EE-0E39"
+	move.b	#'-',(a1)+		;eg. "12EE-0E39"
 gdvn_n2:
 	subq.w	#1,d2
 	bgt.s	gdvn_snloop
 
-	move.b	#` `,(a1)+		;MSDE_Ext[1]
+	move.b	#' ',(a1)+		;MSDE_Ext[1]
 	move.w	#$2028,(a1)+		;MSDE_Ext[2], MSDE_Flags
 	moveq.l	#XMSDE_FullName+1-12,d0
 gdvn_sloop:
@@ -2556,7 +2556,7 @@ BStr2DiskName:
 	move.w	d0,d1
 	moveq.l	#11,d2
 b2d_loop:
-	moveq.l	#` `,d0			;space pad
+	moveq.l	#' ',d0			;space pad
 	subq.w	#1,d1
 	bmi.s	b2d_char
 
@@ -2584,10 +2584,10 @@ b2d_end:
 ; d0 <-> int char;
 
 Char2MS:
-	cmp.b	#`a`,d0
+	cmp.b	#'a',d0
 	bcs.s	c2ms_check
 
-	cmp.b	#`z`+1,d0
+	cmp.b	#'z'+1,d0
 	bcs.s	c2ms_upcase
 
 	tst.b	d0
@@ -2600,10 +2600,10 @@ c2ms_upcase:
 	bra.s	c2ms_end
 
 c2ms_check:
-	cmp.b	#`.`,d0
+	cmp.b	#'.',d0
 	bne.s	c2ms_end
 c2ms_block:
-	moveq.l	#`_`,d0
+	moveq.l	#'_',d0
 	bra.s	c2ms_end
 
 c2ms_special:
@@ -2651,7 +2651,7 @@ sp2a_end:
 
 MakeShortName:
 	movem.l	d2-d5/a2-a3,-(sp)
-	cmp.b	#`/`,(a0)
+	cmp.b	#'/',(a0)
 	beq.w	msn_parent		;relative path: to parent
 
 	move.l	a1,a3			;&target
@@ -2666,10 +2666,10 @@ msn_loop:
 	beq.w	msn_pass2		;until the end..
 
 	addq.l	#1,a0
-	cmp.b	#`/`,d0
+	cmp.b	#'/',d0
 	beq.w	msn_pass2		;..or next component
 
-	cmp.b	#`.`,d0
+	cmp.b	#'.',d0
 	bne.s	msn_char		;printable char
 msn_period:
 	addq.w	#3,d4			;count dots
@@ -2678,10 +2678,10 @@ msn_start:
 	beq.w	msn_pass2
 
 	addq.l	#1,a0
-	cmp.b	#`/`,d0
+	cmp.b	#'/',d0
 	beq.s	msn_pass2
 
-	cmp.b	#`.`,d0
+	cmp.b	#'.',d0
 	beq.s	msn_period		;several dots in a row
 
 	cmp.w	#3,d3
@@ -2694,7 +2694,7 @@ msn_p1:
 	move.l	a1,d2			;&next Name ext
 	subq.w	#2,d4
 msn_char:
-	cmp.b	#` `,d0
+	cmp.b	#' ',d0
 	beq.s	msn_mark		;remove spaces
 
 	tst.w	d3
@@ -2703,10 +2703,10 @@ msn_char:
 	tst.b	d0
 	bmi.s	msn_table		;special chars
 
-	cmp.b	#`a`,d0
+	cmp.b	#'a',d0
 	bcs.s	msn_c1
 
-	cmp.b	#`z`+1,d0
+	cmp.b	#'z'+1,d0
 	bcc.s	msn_c1
 
 	and.b	#$df,d0			;toUpper
@@ -2721,7 +2721,7 @@ msn_c1:
 	btst	d1,(a2)
 	beq.s	msn_write
 msn_underscore:
-	moveq.l	#`_`,d0			;invalid char
+	moveq.l	#'_',d0			;invalid char
 	moveq.l	#3,d4
 msn_write:
 	move.b	d0,(a1)+		;write char
@@ -2759,7 +2759,7 @@ msn_pass2:
 	move.l	a1,d2			;..everything as Name
 msn_ext:
 	move.l	d2,a0			;&Name extension,..
-	move.l	#`    `,d0
+	move.l	#"    ",d0
 	move.l	a1,d1
 	sub.l	d2,d1			;..and its length..
 	beq.s	msn_ewrite
@@ -2800,8 +2800,8 @@ msn_num:
 
 	add.w	d3,a0
 msn_4:
-	move.b	#`~`,(a0)+
-	move.b	#`1`,(a0)		;..or append a version #
+	move.b	#'~',(a0)+
+	move.b	#'1',(a0)		;..or append a version #
 msn_ready:
 	cmp.b	#$e5,(a3)		;special case 1. char = MSDEB_DELETED
 	bne.s	msn_5
@@ -2899,17 +2899,17 @@ usn_bump:
 	addq.l	#8,a0			;&Name[7]+1
 	moveq.l	#7,d0
 usn_beloop:
-	cmp.b	#` `,-(a0)		;end search
+	cmp.b	#' ',-(a0)		;end search
 	dbne	d0,usn_beloop
 
 	move.w	d0,d2			;Offset and..
 	move.l	a0,a1			;..&last char
 usn_bdigit:
 	move.b	(a0),d1
-	cmp.b	#`0`,d1
+	cmp.b	#'0',d1
 	bcs.s	usn_badd		;if no version..
 
-	cmp.b	#`9`,d1
+	cmp.b	#'9',d1
 	beq.s	usn_bcarry
 	bcc.s	usn_badd		;..append a "1"
 
@@ -2917,7 +2917,7 @@ usn_bdigit:
 	move.b	d1,(a0)
 	bra.s	usn_bend		;..OK, thats already it.
 usn_bcarry:
-	move.b	#`0`,(a0)		;carry otherwise
+	move.b	#'0',(a0)		;carry otherwise
 	subq.l	#1,a0
 	subq.w	#1,d0
 	bpl.s	usn_bdigit		;"HALLO~29" -> "HALLO~30"
@@ -2928,19 +2928,19 @@ usn_badd:
 	subq.w	#1,d0
 	bmi.s	usn_bend		;not enough room for..
 
-	move.b	#`~`,-1(a0)		;..1 more digit
+	move.b	#'~',-1(a0)		;..1 more digit
 	bra.s	usn_ba2			;"HASEN~99" -> "HASE~100"
 usn_bashift:
 	addq.l	#1,a1
-	move.b	#`0`,(a1)		;append a 0
+	move.b	#'0',(a1)		;append a 0
 	addq.l	#1,a0			;"TOR~99" -> "TOR~100"
 usn_ba2:
-	move.b	#`1`,(a0)		;the new digit
+	move.b	#'1',(a0)		;the new digit
 usn_bend:
 	move.l	(sp)+,d2
 	rts
 
-;--- Disk-Info-Block füllen --------------------------------
+;--- Fill Disk-Info-Block --------------------------------
 ; <- struct InfoData *target;
 ; -> BOOL ok;
 
@@ -3188,7 +3188,7 @@ oa_2:
 
 	or.w	#2,d1			;"TD64 available"
 oa_3:
-	cmp.w	#`TJ`,d0
+	cmp.w	#"TJ",d0
 	bne.s	oa_4
 
 	or.w	#16,d1			;TJ. extensions available"
@@ -3262,23 +3262,23 @@ oa_err:
 	bra.s	oa_end
 
 TimerName:
-	dc.b	`timer.device`,0
+	dc.b	"timer.device",0
 InputName:
-	dc.b	`input.device`,0
+	dc.b	"input.device",0
 IntName:
-	dc.b	`intuition.library`,0
+	dc.b	"intuition.library",0
 GrafName:
-	dc.b	`graphics.library`,0
+	dc.b	"graphics.library",0
 FSRName:
-	dc.b	`FileSystem.resource`,0
+	dc.b	"FileSystem.resource",0
 	even
 
 NodeName:
-	dc.b	`fat95`,0
-	dc.b	`$VER: `
+	dc.b	"fat95",0
+	dc.b	"$VER: "
 IDStr:
-	dc.b	`fat95 file system 3.18 (01.03.2013) `
-	dc.b	`© Torsten Jager`, LF, 0
+	VERSION_STRING
+	dc.b	"(c) Torsten Jager", LF, 0
 	even
 
 ;--- ROM-Code init -----------------------------------------
@@ -3287,7 +3287,7 @@ IDStr:
 ; a6 <- &ExecBase
 
 InitCode:
-	move.l	#`FAT`<<8+1,d0		;continued below
+	move.l	#"FAT"<<8+1,d0		;continued below
 
 ;--- register with filesystem.resource ---------------------
 ; d0 <- DosType
@@ -3407,7 +3407,7 @@ icp_5:
 	lsr.l	#2,d1
 	moveq.l	#256/4,d0
 	sub.l	d0,d1
-	move.l	#`____`,d0
+	move.l	#"____",d0
 icp_6:
 	move.l	d0,(a1)+		;line defaults
 	subq.w	#1,d1
@@ -3805,7 +3805,7 @@ tbb_end:
 	rts
 
 tbb_default:
-	dc.b	`NO NAME     `
+	dc.b	"NO NAME     "
 
 ;--- check formatting prerequisites ------------------------
 ; -> BOOL ok;
@@ -3987,7 +3987,7 @@ fmd_u4:
 	ble.s	fmd_u5			;FAT12 sample boot block or..
 
 	move.b	#$f8,21(a2)		;.. adapt media description..
-	move.b	#`6`,58(a2)		;..for "FAT16"
+	move.b	#'6',58(a2)		;..for "FAT16"
 fmd_u5:
 	moveq.l	#0,d0
 	move.l	a2,a0
@@ -4027,9 +4027,9 @@ fmd_xbfill:
 ;- - FileSysInfoBlock - - - - - - - - - - - - - - - - - - -
 
 	bsr.w	fmd_clrbuf
-	move.l	#`RRaA`,(a2)
+	move.l	#"RRaA",(a2)
 	lea	484(a2),a0
-	move.l	#`rrAa`,(a0)+
+	move.l	#"rrAa",(a0)+
 	moveq.l	#-1,d0
 	move.l	d0,(a0)+
 	move.b	#2,(a0)
@@ -4438,7 +4438,7 @@ UpdateFSInfo:
 
 	bsr.w	ReadSingle
 	tst.l	d0
-	beq.s	ufsi_end		;..oder unreadable
+	beq.s	ufsi_end		;..or unreadable
 
 	move.l	d0,a1
 	add.w	#488,a1
@@ -5370,17 +5370,17 @@ gdp_mbr:
 	or.w	#4,d3			;"low level format OK"
 	move.w	#2,FATType(a4)		;for AutoLayout()
 	move.l	(a0),d0
-	cmp.l	#`FAKE`,d0		;manually defined partition..
+	cmp.l	#"FAKE",d0		;manually defined partition..
 	beq.w	gdp_fake		;..for testing
 
 	cmp.w	#$55AA,510(a0)
 	bne.w	gdp_ndos		;no magic #??
 
-	cmp.l	#`RDSK`,d0		;Amiga partition info inside..
+	cmp.l	#"RDSK",d0		;Amiga partition info inside..
 	beq.w	gdp_ndos		;..first 256 bytes
 
 	clr.b	d0
-	cmp.l	#`DOS`<<8,d0
+	cmp.l	#"DOS"<<8,d0
 	beq.w	gdp_ndos		;an FFS media or something
 
 	clr.w	PartitionNum(a4)
@@ -6341,8 +6341,8 @@ dge_end:
 	movem.l	(sp)+,d2-d4/a2
 	rts
 
-;*** search or create an Objekt ****************************
-;--- search or create an XLock for Objekt ------------------
+;*** search or create an Object ****************************
+;--- search or create an XLock for Object ------------------
 ; <- struct XLock *base dir, struct ExtMSDirEntry *msde, LONG access mode;
 ; -> struct XLock *xn;
 
@@ -6460,7 +6460,7 @@ xlo_ncopy:
 	move.l	a2,d0
 	bra.w	xlo_end
 
-;--- search Objekt on Disk and set XLock -------------------
+;--- search Object on Disk and set XLock -------------------
 ; <- struct XLock *base dir, BPTR_BSTR *name,
 ;	ULONG access mode, struct XLock *ignore this object
 ;	(FORCE_MODE only);
@@ -6503,10 +6503,10 @@ lob_nchar:
 	bmi.s	lob_nend		;BString ends
 
 	move.b	(a0)+,d0
-	cmp.b	#`:`,d0			;if present..
+	cmp.b	#':',d0			;if present..
 	beq.s	lob_ndev		;..skip device or volume name,..
 
-	cmp.b	#`/`,d0
+	cmp.b	#'/',d0
 	beq.s	lob_ndir
 
 	subq.w	#1,d1			;limit each name component..
@@ -6616,7 +6616,7 @@ lob_cfull:
 	move.b	(a1)+,d1
 	beq.s	lob_cf1
 
-	cmp.b	#`/`,d1			;..may contain further components
+	cmp.b	#'/',d1			;..may contain further components
 	beq.s	lob_cf1
 
 	move.b	(a0)+,d0
@@ -6671,7 +6671,7 @@ lob_parent:
 lob_chdir:
 	move.l	LOB_DIRXL(a5),a1
 	bsr.w	CloseXLock
-	move.l	d3,LOB_DIRXL(a5)	;continue in this Objekt
+	move.l	d3,LOB_DIRXL(a5)	;continue in this Object
 	move.l	LOB_NAMENEXT(a5),LOB_NAME(a5)
 	bra.w	lob_scandir
 
@@ -6682,10 +6682,10 @@ lob_nomatch:
 	bne.w	lob_readentry		;check next entry
 
 lob_done:
-	tst.l	d4			;existing Objekt or..
+	tst.l	d4			;existing Object or..
 	bmi.w	lob_notfound		;..even dir not found
 
-;- - create new Objekt - - - - - - - - - - - - - - - - - -
+;- - create new Object - - - - - - - - - - - - - - - - - -
 
 	moveq.l	#ID_VALIDATED,d0
 	cmp.l	DiskState(a4),d0
@@ -6830,7 +6830,7 @@ lob_end:
 	rts
 
 lob_found:
-	move.l	LOB_DIRXL(a5),d0	;Objekt found,..
+	move.l	LOB_DIRXL(a5),d0	;Object found,..
 	move.l	d0,a0
 	cmp.w	#-2,XL_OpenCnt(a0)
 	bgt.s	lob_end			;..keep XLock
@@ -6952,7 +6952,7 @@ cxl_end:
 	movem.l	(sp)+,d2-d3
 	rts
 
-;--- Objektname ExtMSDirEntry -> BSTR ----------------------
+;--- Object name ExtMSDirEntry -> BSTR ----------------------
 ; a0 <- struct ExtMSDirEntry *source
 ; a1 <- char *target
 
@@ -6984,7 +6984,7 @@ gbn_standard:
 gbn_filename:
 	moveq.l	#8,d0
 	bsr.s	SpcStrCopy		;file-/dir name (<= 8)
-	move.b	#`.`,(a1)+		;dot
+	move.b	#'.',(a1)+		;dot
 	move.l	a1,-(sp)
 	moveq.l	#3,d0
 	bsr.s	SpcStrCopy		;Name extension (<= 3)
@@ -7021,10 +7021,10 @@ gbn_convert:
 	beq.s	gbn_end
 	bra.s	gbn_lnext
 gbn_lloop:
-	cmp.b	#`A`,d0
+	cmp.b	#'A',d0
 	bcs.s	gbn_lnext
 
-	cmp.b	#`Z`+1,d0
+	cmp.b	#'Z'+1,d0
 	bcs.s	gbn_ldown
 
 	cmp.b	#$c0,d0
@@ -7051,7 +7051,7 @@ SpcStrCopy:
 	move.l	a1,d1
 ssc_loop:
 	move.b	(a0),(a1)+
-	cmp.b	#` `,(a0)+
+	cmp.b	#' ',(a0)+
 	beq.s	ssc_next
 
 	move.l	a1,d1
@@ -7077,21 +7077,21 @@ tm2b_t1:
 	move.b	(a0)+,(a1)+
 	bne.s	tm2b_t1
 
-	move.b	#` `,-1(a1)
+	move.b	#' ',-1(a1)
 	bsr.w	MSDate2Str
-	move.b	#` `,(a1)+
+	move.b	#' ',(a1)+
 	move.l	4(sp),a0
 	move.w	MSDE_CTime(a0),d1
 	rol.w	#5,d1
 	moveq.l	#$1f,d0
 	and.w	d1,d0
 	bsr.s	Num2Str2		;h
-	move.b	#`:`,(a1)+
+	move.b	#':',(a1)+
 	rol.w	#6,d1
 	moveq.l	#$3f,d0
 	and.w	d1,d0
 	bsr.s	Num2Str2		;m
-	move.b	#`:`,(a1)+
+	move.b	#':',(a1)+
 	rol.w	#6,d1
 	moveq.l	#$3e,d0
 	and.w	d1,d0
@@ -7104,8 +7104,8 @@ tm2b_1:
 	move.w	MSDE_ADate(a0),d1
 	beq.s	tm2b_end		;no..
 
-	move.b	#`,`,(a1)+
-	move.b	#` `,(a1)+
+	move.b	#',',(a1)+
+	move.b	#' ',(a1)+
 	bra.s	tm2b_t2
 tm2b_adate:
 	move.w	MSDE_ADate(a0),d1
@@ -7116,7 +7116,7 @@ tm2b_t3:
 	move.b	(a0)+,(a1)+
 	bne.s	tm2b_t3
 
-	move.b	#` `,-1(a1)
+	move.b	#' ',-1(a1)
 	move.w	d1,d0
 	bsr.s	MSDate2Str
 tm2b_end:
@@ -7134,7 +7134,7 @@ tm2b_end:
 
 Num2Str2:
 	divu.w	#10,d0
-	or.l	#`0`<<16+`0`,d0
+	or.l	#'0'<<16+'0',d0
 	move.b	d0,(a1)+
 	swap	d0
 	move.b	d0,(a1)+
@@ -7149,12 +7149,12 @@ MSDate2Str:
 	moveq.l	#$1f,d0
 	and.w	d1,d0
 	bsr.s	Num2Str2		;day
-	move.b	#`.`,(a1)+
+	move.b	#'.',(a1)+
 	ror.w	#5,d1
 	moveq.l	#$f,d0
 	and.w	d1,d0
 	bsr.s	Num2Str2		;month
-	move.b	#`.`,(a1)+
+	move.b	#'.',(a1)+
 	ror.w	#4,d1
 	moveq.l	#$7f,d0
 	and.w	d1,d0
@@ -7607,7 +7607,7 @@ rxms_uchar:
 	move.b	(a6,d0.l),d0
 	bra.s	rxms_uwrite
 rxms_udummy:
-	moveq.l	#`_`,d0
+	moveq.l	#'_',d0
 rxms_uwrite:
 	move.b	d0,(a1)+
 	beq.s	rxms_xcstop
@@ -7766,7 +7766,7 @@ xtd_i1:
 	move.w	EXD_NEWCLU+2(a5),XL_MSDE+MSDE_1L(a0) ;new Cluster = Start
 	move.l	a2,a1
 	bsr.s	MakeIntRef		;copy of dir descriptor..
-	move.b	#`.`,(a2)		;..as self link
+	move.b	#'.',(a2)		;..as self link
 	move.l	8(a5),a0
 	move.l	XL_Parent(a0),d0
 	beq.s	xtd_i2			;no higher than root
@@ -7775,7 +7775,7 @@ xtd_i1:
 xtd_i2:
 	lea	MSDE_Sizeof(a2),a1
 	bsr.s	MakeIntRef		;..copy dir descriptor..
-	move.w	#`..`,MSDE_Sizeof(a2)	;..as parent link
+	move.w	#"..",MSDE_Sizeof(a2)	;..as parent link
 	moveq.l	#-1,d0
 	move.l	d0,EXD_CLUSTER(a5)	;"initialized"
 	bra.s	xtd_write
@@ -7786,7 +7786,7 @@ xtd_i2:
 
 MakeIntRef:
 	add.w	#XL_MSDE+MSDE_unused1,a0
-	move.l	#`    `,d0
+	move.l	#"    ",d0
 	move.l	d0,(a1)+
 	move.l	d0,(a1)+
 	move.l	d0,(a1)+
@@ -7872,7 +7872,7 @@ cds_end:
 	move.l	(sp)+,d2
 	rts
 
-;--- examine next Objekt -----------------------------------
+;--- examine next Object -----------------------------------
 ; <- struct XLock *dir, struct FileInfoBlock *fib;
 ; -> BOOL ok;
 
@@ -7925,7 +7925,7 @@ exn_read:
 	cmp.b	#MSDEB_DELETED,d0
 	beq.s	exn_read		;skip deleted,..
 
-	cmp.b	#`.`,d0
+	cmp.b	#'.',d0
 	beq.s	exn_read		;..internal and..
 
 	btst	#3,MSDE_Flags(a3)
@@ -7953,8 +7953,8 @@ exn_error:
 	moveq.l	#FALSE,d0
 	bra.s	exn_end
 
-;--- examine Objekt ----------------------------------------
-; <- struct XLock *Objekt, struct FileInfoBlock *fib;
+;--- examine Object ----------------------------------------
+; <- struct XLock *Object, struct FileInfoBlock *fib;
 ; -> BOOL ok;
 
 ExamineKey:
@@ -8029,7 +8029,7 @@ gfi_3:
 
 	or.b	#$20,d1			;..-> "pure"
 gfi_4:
-	lsr.b	#3,d0			;nicht "changed"..
+	lsr.b	#3,d0			;not "changed"..
 	bcs.s	gfi_5
 
 	or.b	#$10,d1			;..-> "Archive"
@@ -8155,7 +8155,7 @@ exa_entry:
 	cmp.b	#MSDEB_DELETED,d0
 	beq.s	exa_entry		;skip deleted,..
 
-	cmp.b	#`.`,d0
+	cmp.b	#'.',d0
 	beq.s	exa_entry		;..internal and..
 
 	btst	#3,MSDE_Flags(a0)
@@ -8317,7 +8317,7 @@ exa_n1:
 	move.l	a3,a2
 	bra.w	exa_entry
 
-;- - Rückgabe - - - - - - - - - - - - - - - - - - - - - - -
+;- - Return - - - - - - - - - - - - - - - - - - - - - - - -
 
 exa_overrun:				;if buffer full..
 	move.l	EXA_LASTKEY(a5),d0
@@ -8369,7 +8369,7 @@ SetProtect:
 	bsr.w	LocateObj
 	add.w	#12,sp
 	tst.l	d0
-	beq.s	spr_error		;Objekt not found
+	beq.s	spr_error		;Object not found
 
 	move.l	d0,a3			;&XLock
 	moveq.l	#$ffffffd8,d1
@@ -8614,10 +8614,10 @@ rf_ok:
 rf_aloop:
 	move.l	(a2),d0
 	clr.b	d0
-	cmp.l	#`DOS`<<8,d0
+	cmp.l	#"DOS"<<8,d0
 	beq.s	rf_acheck
 
-	cmp.l	#`PFS`<<8,d0
+	cmp.l	#"PFS"<<8,d0
 	beq.s	rf_acheck		;these IDs..
 rf_anext:
 	add.w	BlockSize(a4),a2
@@ -9752,7 +9752,7 @@ rff_direct:
 	bsr.w	_Read
 rff_ereturn:
 	cmp.l	d0,d5
-	bne.w	rff_error		;Lesefehler
+	bne.w	rff_error		;read error
 
 	move.w	BlockShift(a4),d1
 	move.l	d5,d0
@@ -10499,7 +10499,7 @@ fo_entry:
 	cmp.b	#MSDEB_DELETED,d0
 	beq.s	fo_enext
 
-	cmp.b	#`.`,d0
+	cmp.b	#'.',d0
 	beq.s	fo_enext
 
 	moveq.l	#$3f,d0
@@ -10654,7 +10654,7 @@ SetComment:
 	move.l	d0,a0
 	moveq.l	#0,d2
 	move.b	(a0)+,d2		;a0 = &comment
-	cmp.b	#`!`,(a0)+
+	cmp.b	#'!',(a0)+
 	bne.w	sc_error		;not a command
 
 	lea	sc_words(pc),a1
@@ -10687,7 +10687,7 @@ sc_transform:
 	add.w	#12,sp
 	move.l	d0,a2
 	tst.l	d0
-	beq.s	sc_end			;Objekt in use or not found
+	beq.s	sc_end			;Object in use or not found
 
 	btst	#3,XL_MSDE+MSDE_Flags(a2)
 	bne.s	sc_closexlock		;better dont touch root dir
@@ -10782,11 +10782,11 @@ sc_serror:
 	bra.s	sc_send
 
 sc_words:
-	dc.b	`scandisk`,0
-	dc.b	`erase`,0
-	dc.b	`control `,0
-	dc.b	`file`,0
-	dc.b	`dir`,0,0
+	dc.b	"scandisk",0
+	dc.b	"erase",0
+	dc.b	"control ",0
+	dc.b	"file",0
+	dc.b	"dir",0,0
 	even
 
 ;--- change settings ---------------------------------------
@@ -10799,13 +10799,13 @@ so_on:
 	moveq.l	#-1,d2
 so_char:
 	move.b	(a0)+,d0
-	cmp.b	#` `,d0
+	cmp.b	#' ',d0
 	bcs.s	so_end			;thats all
 
-	cmp.b	#`+`,d0
+	cmp.b	#'+',d0
 	beq.s	so_on			;turn the following ON..
 
-	cmp.b	#`-`,d0
+	cmp.b	#'-',d0
 	beq.s	so_off			;..or OFF
 
 	lea	so_tab(pc),a1
@@ -10837,12 +10837,12 @@ so_end:
 	rts
 
 so_tab:
-	dc.b	2,`s`
-	dc.b	3,`u`
-	dc.b	8,`d`
-	dc.b	9,`D`
-	dc.b	10,`L`
-	dc.b	11,`l`
+	dc.b	2,"s"
+	dc.b	3,"u"
+	dc.b	8,"d"
+	dc.b	9,"D"
+	dc.b	10,"L"
+	dc.b	11,"l"
 	dc.w	0
 
 ;--- local vars for ScanDisk() and SecurityErase() ---------
@@ -11144,10 +11144,10 @@ sd_t1:
 	btst	#4,d1
 	beq.s	sd_tfile
 
-	cmp.b	#`.`,(a2)
+	cmp.b	#'.',(a2)
 	bne.s	sd_tuserdir
 
-	cmp.b	#`.`,1(a2)
+	cmp.b	#'.',1(a2)
 	beq.s	sd_tbacklink
 
 	cmp.l	d6,d0
@@ -11310,7 +11310,7 @@ sd_fcluster:
 	moveq.l	#%1100,d1
 	and.b	d0,d1
 	cmp.b	#%0100,d1		;..or at start..
-	bne.s	sd_fcut			;wird schon benutzt
+	bne.s	sd_fcut			;already in use
 sd_f1:
 	and.b	#%1011,d0		;..enlarged
 	or.b	#%0010,d0
@@ -11359,10 +11359,10 @@ sd_fn2:
 	move.l	d2,d0
 	lsl.l	#2,d0
 	move.l	d0,a1
-	move.l	#12<<24+`fil`,(a1)+
-	move.l	#`e000`,(a1)+
-	move.l	#`/.ch`,(a1)+		;`/`=`0`-1
-	move.w	#`k`<<8,(a1)		;Dateiname voreinstellen
+	move.l	#12<<24+"fil",(a1)+
+	move.l	#"e000",(a1)+
+	move.l	#"/.ch",(a1)+		;'/'='0'-1
+	move.w	#"k"<<8,(a1)		;preset filename
 	moveq.l	#2,d4
 	move.l	a3,a2
 	addq.l	#2,a2
@@ -11389,10 +11389,10 @@ sd_lsbump:
 	move.b	(a1),d0
 	addq.b	#1,d0			;Name: bump #..
 	move.b	d0,(a1)
-	cmp.b	#`9`+1,d0
+	cmp.b	#'9'+1,d0
 	bcs.s	sd_lsfile		;..and retry
 
-	move.b	#`0`,(a1)
+	move.b	#'0',(a1)
 	subq.l	#1,a1
 	bra.s	sd_lsbump		;carry to next digit
 sd_lsfile:
@@ -11674,7 +11674,7 @@ opw_error:
 	bra.s	opw_end
 
 opw_minus:
-	dc.b	`: - `,0
+	dc.b	": - ",0
 	even
 
 ;- - init progress gfx - - - - - - - - - - - - - - - - - - -
@@ -12011,7 +12011,7 @@ rob_1:
 	beq.s	rob_write
 
 	move.l	d2,a1
-	cmp.w	#`..`,MSDE_Sizeof(a1)	;..adjust the internal back link..
+	cmp.w	#"..",MSDE_Sizeof(a1)	;..adjust the internal back link..
 	bne.s	rob_closeblock
 
 	bsr.w	BlockChanged
@@ -12380,26 +12380,26 @@ spf_loop:
 	move.b	(a0)+,d0
 	beq.s	spf_end
 
-	moveq.l	#-`%`,d1
+	moveq.l	#-'%',d1
 	add.b	d0,d1
 	beq.s	spf_percent
 
-	sub.b	#`\`-`%`,d1
+	sub.b	#$5c-$25,d1		;"\"-"%
 	beq.s	spf_backslash
 
-	subq.b	#`d`-`\`,d1
+	subq.b	#"d"-$5c,d1
 	beq.s	spf_d
 
-	subq.b	#`l`-`d`,d1
+	subq.b	#"l"-"d",d1
 	beq.s	spf_l
 
-	subq.b	#`n`-`l`,d1
+	subq.b	#"n"-"l",d1
 	beq.s	spf_n
 
-	subq.b	#`s`-`n`,d1
+	subq.b	#"s"-"n",d1
 	beq.s	spf_s
 
-	subq.b	#`u`-`s`,d1
+	subq.b	#"u"-"s",d1
 	beq.s	spf_u
 spf_write:
 	move.b	d0,(a1)+
@@ -12445,7 +12445,7 @@ spf_d2:
 	tst.l	d0
 	bpl.s	spf_n2s
 
-	move.b	#`-`,(a1)+
+	move.b	#'-',(a1)+
 	neg.l	d0
 spf_n2s:
 	bsr.s	Num2Str
@@ -12510,7 +12510,7 @@ Num2Str:
 n2s_loop1:
 	moveq.l	#10,d1
 	bsr.s	UDivMod32
-	or.b	#`0`,d1
+	or.b	#'0',d1
 	move.b	d1,(a1)+	;append digit
 	tst.l	d0
 	bne.s	n2s_loop1
@@ -12730,7 +12730,7 @@ fmp_end:
 ;--- new Message -------------------------------------------
 ; d0 <- ULONG size;
 ; a0 <- struct MsgPort *ReplyPort;
-; -> struct Message *msg oder 0
+; -> struct Message *msg or 0
 
 AllocMsg:
 	movem.l	d2-d3,-(sp)
@@ -12794,7 +12794,7 @@ _AutoRequest:
 
 BootSample12:				;FAT12 and FAT16
 	dc.b	$EB,$3E,$90		;branch to boot routine (i80x86-Code)
-	dc.b	`)GZ.,IHC`		;System ID (Win95)
+	dc.b	")GZ.,IHC"		;System ID (Win95)
 	dc.b	$00,$02			;bytes/sector (little endian)
 	dc.b	$02			;sectors/cluster
 	dc.b	$01,$00			;# reserved sectors
@@ -12810,8 +12810,8 @@ BootSample12:				;FAT12 and FAT16
 	dc.b	$00,$00			;drive #
 	dc.b	$29			;"the next 3 fields are valid"
 	dc.b	$6D,$29,$F4,$0F		;serial #
-	dc.b	`           `		;volume name duplicate
-	dc.b	`FAT12   `		;file system ID
+	dc.b	"           "		;volume name duplicate
+	dc.b	"FAT12   "		;file system ID
 	dc.b	$F1,$7D			;boot routine
 	dc.b	$FA,$33,$C9,$8E,$D1,$BC,$FC,$7B
 	dc.b	$16,$07,$BD,$78,$00,$C5,$76,$00
@@ -12873,7 +12873,7 @@ BootSample12:				;FAT12 and FAT16
 
 BootSample32:				;FAT32
 	dc.b	$EB,$58,$90		;branch to boot routine (i80x86-Code)
-	dc.b	`MSWIN4.1`		;System ID (Win98)
+	dc.b	"MSWIN4.1"		;System ID (Win98)
 	dc.b	$00,$02			;bytes/sector (little endian)
 	dc.b	$08			;sectors/cluster
 	dc.b	$20,$00			;# reserved sectors (32)
@@ -12898,8 +12898,8 @@ BootSample32:				;FAT32
 	dc.b	$80,$00			;drive #
 	dc.b	$29			;"the next 3 fields are valid"
 	dc.b	$F2,$18,$35,$14		;serial #
-	dc.b	`           `		;volume name duplicate
-	dc.b	`FAT32   `		;file system ID
+	dc.b	"           "		;volume name duplicate
+	dc.b	"FAT32   "		;file system ID
 	dc.b	$FA,$33,$C9,$8E,$D1,$BC
 	dc.b	$F8,$7B,$8E,$C1,$BD,$78,$00,$C5
 	dc.b	$76,$00,$1E,$56,$16,$55,$BF,$22
@@ -13010,31 +13010,31 @@ ExtBootEnd:
 ;--- Text for den Nutzer -----------------------------------
 
 UIModule:
-	dc.b	`loca`
+	dc.b	"loca"
 	dc.l	uit_e1-uit_s1
 uit_s1:
-	dc.b	 1,`Abbrechen`,0
-	dc.b	 2,`Übergehen`,0
-	dc.b	 3,`Wiederholen`,0
-	dc.b	 4,`Disk "%s"\nzu früh entnommen!`,0
-	dc.b	 5,`%s:\nLesefehler %ld bei Block %lu.`,0
-	dc.b	 6,`%s:\nwrite error %ld bei Block %lu.`,0
-	dc.b	 7,`%s:\nUpdate-Fehler.`,0
-	dc.b	 8,`Erstellt`,0
-	dc.b	 9,`letzter Zugriff`,0
-	dc.b	10,`Prüfe Verzeichnisse...`,0
-	dc.b	11,`Prüfe Zuordnungstabelle...`,0
-	dc.b	12,`Suche verlorene Dateien...`,0
-	dc.b	13,`%lu Fehler behoben!`,0
-	dc.b	14,`Alles in Ordnung :)`,0
-	dc.b	15,`Lösche freien Speicherplatz...`,0
-	dc.b	16,`Abbruch mit <ESC>.`,0
+	dc.b	 1,"Abort",0
+	dc.b	 2,"Skip",0
+	dc.b	 3,"Retry",0
+	dc.b	 4,"Please reinsert the disk \n",$22,"%s",$22,"!",0
+	dc.b	 5,"%s:\nRead error %ld at block %lu.",0
+	dc.b	 6,"%s:\nWrite error %ld at block %lu.",0
+	dc.b	 7,"%s:\nUpdate error %ld.",0
+	dc.b	 8,"created",0
+	dc.b	 9,"last accessed",0
+	dc.b	10,"Checking directories...",0
+	dc.b	11,"Checking file allocation table...",0
+	dc.b	12,"Searching for lost files...",0
+	dc.b	13,"%lu error(s) fixed!",0
+	dc.b	14,"Everything is fine :)",0
+	dc.b	15,"Erasing free disk space...",0
+	dc.b	16,"Press <ESC> to abort.",0
 	dc.b	 0
 	even
 NUMUITEXTS	= 16
 
 uit_e1:
-	dc.b	`oem `
+	dc.b	"oem "
 	dc.l	uit_e2-uit_s2
 uit_s2:
 	dc.l	$5fad9b9c, $5f9d7c15, $5f5fa6ae, $aac45f7e
