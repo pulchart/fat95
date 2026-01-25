@@ -5379,9 +5379,15 @@ gdp_mbr:
 	cmp.l	#"RDSK",d0		;Amiga partition info inside..
 	beq.w	gdp_ndos		;..first 256 bytes
 
-	clr.b	d0
-	cmp.l	#"DOS"<<8,d0
+	and.l	#$ffffff00,d0		;mask out low byte (filesystem type DOS\<type>)
+	cmp.l	#"DOS"<<8,d0		;check if first 3 bytes are "DOS"
 	beq.w	gdp_ndos		;an FFS media or something
+
+	cmp.l	#"PFS"<<8,d0
+	beq.w	gdp_ndos		;PFS media
+
+	cmp.l	#"SFS"<<8,d0
+	beq.w	gdp_ndos		;SFS media
 
 	clr.w	PartitionNum(a4)
 	bsr.w	IsBootBlock

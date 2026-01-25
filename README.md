@@ -2,11 +2,16 @@
 
 Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
 
-# What's New in 3.19-dev (25.01.2026)
+# What's New
 
-* Added Makefile-based build system.
-* Set English as default localization for fat95 handler.
-* Rebuild by vasm 2.0d
+## 3.19-dev (25.01.2026)
+
+* **Fork of 3.18**
+  - Added Makefile-based build system.
+  - Set English as default localization for fat95 handler.
+  - Rebuild by vasm 2.0d
+
+* Include SFS/PFS to NDOS
 
 # Purpose
 

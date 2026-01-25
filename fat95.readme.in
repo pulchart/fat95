@@ -12,8 +12,11 @@ fat95 v@VERSION@ (@DATE@) - Win95/98 compatible FAT filesystem handler for Amiga
 CHANGES IN @VERSION@ (@DATE@)
 =============================
 
-* Added Makefile-based build system
-* Set English as default localization for fat95 handler
+* Fork of 3.18
+  - Added Makefile-based build system
+  - Set English as default localization for fat95 handler
+  - Rebuild by vasm 2.0d
+* Include SFS/PFS to NDOS
 
 Purpose
 =======
