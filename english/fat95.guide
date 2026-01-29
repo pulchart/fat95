@@ -226,6 +226,10 @@ shows all fat95 packages.
     * Scans GPT partition entries for Microsoft Basic Data partitions (FAT)
     * Supports partition selection via DosType (same as MBR: FAT\1, FAT\2, etc.)
 
+  * @{b}Improved disk change handling@{ub}
+    * Non-existent partitions now show "No Disk" instead of "Uninitialized"
+    * Fixes stale partition data when switching to cards with fewer partitions
+
 ----------------------------------------
 @{"<< Prev" link What_s_New_in}  @{"Contents" link Main}  @{"Next >>" link Introduction}
 
@@ -735,127 +739,128 @@ GNU LGPL v2.1
 @node History "History"
 @{b}History@{ub}
 
-  @{b}Version@{ub}    @{b}Date@{ub}     @{b}Changes@{ub}                    
-  ---------  -------  -------------------------  
-  v3.19-dev  01/2026  GPT partition table        
-                      support, Makefile build    
-                      system                     
-  v3.18      03/2013  Open source release LGPL   
-                      (Torsten Jager)            
-  v3.17      -        No info                    
-  v3.16      -        No info                    
-  v3.15      05/2004  Added "l" option           
-                      (lowercase 8.3 names)      
-  v3.14      05/2004  Added "L" option           
-                      (uppercase initial)        
-  v3.13      02/2004  PalmOS formatted memory    
-                      card support               
-  v3.12      11/2003  Alternative disk           
-                      recognition via SCSI,      
-                      optional TD_UPDATE,        
-                      faster small writes        
-  v3.11      08/2003  Optimized short name       
-                      generator, directory       
-                      updates during writes      
-  v3.10      07/2003  Fixed directory creation   
-                      bugs, international        
-                      character fixes            
-  v3.09      04/2003  Security erase feature,    
-                      abortable scandisk         
-  v3.08      10/2002  Skipped version number     
-  v3.07      09/2002  File writing fix, SCSI     
-                      auto-select, Hungarian     
-                      localization               
-  v3.06      08/2002  Faster small file access   
-  v3.05      07/2002  New configuration options  
-  v3.04      07/2002  Removed startup messages,  
-                      scandisk fixes, improved   
-                      dd tool                    
-  v3.03      05/2002  Removed DiskUpdate error   
-                      message                    
-  v3.02      03/2002  Directory creation fix,    
-                      FAT12 CF card formatting,  
-                      SCSI error checking        
-  v3.01      02/2002  Minor short name bug fix   
-  v3.00      02/2002  User character set for     
-                      8.3 names, official FAT32  
-                      cluster sizes              
-  v2.19      01/2002  Filenames up to 104        
-                      characters                 
-  v2.18      12/2001  SetFileSize() support,     
-                      user language support      
-  v2.17      09/2001  Faster FAT32, Amiga        
-                      reformatted ZIPs           
-                      recognized                 
-  v2.16      08/2001  MaxTransfer fix,           
-                      FileSystem.resource code   
-                      sharing                    
-  v2.15      05/2001  Crash fixes, pure          
-                      attribute, error check,    
-                      boot95 tool                
-  v2.14      03/2001  FAT32 mode bug fix         
-  v2.13      02/2001  New buffering system       
-  v2.12      02/2001  SCSI direct command        
-                      support                    
-  v2.11      12/2000  Better FDA compatibility   
-  v2.10      10/2000  Exotic partition tables,   
-                      TD64 error requester       
-  v2.9       09/2000  AddBuffers fix, safer      
-                      CURRENT_VOLUME, trackwise  
-                      access                     
-  v2.8       08/2000  Software write             
-                      protection, fat95debug     
-                      tool                       
-  v2.7       08/2000  Logical drive recognition  
-                      fix                        
-  v2.6       07/2000  Disk full crash fix,       
-                      inconsistent file access   
-                      fix                        
-  v2.5       07/2000  Track-wise buffering,      
-                      FAT32 free space fix       
-  v2.4       07/2000  Exclusive locks fix, 8.3   
-                      name fixes                 
-  v2.3       07/2000  Native ExAll(),            
-                      ChangeMode(), various      
-                      bugfixes                   
-  v2.2       06/2000  Restart validator,         
-                      65-char filenames, FAT32   
-                      formatting                 
-  v2.1       04/2000  NSD and TD64 support,      
-                      FAT32 28-bit fix,          
-                      timestamp fix              
-  v2.0       04/2000  First FAT32 support        
-  v1.22      03/2000  Large sectors fix (>512    
-                      bytes)                     
-  v1.21      03/2000  Cluster-wise file access,  
-                      diskchange messages        
-  v1.20      03/2000  Separate caches,           
-                      workbench icon             
-                      suppression                
-  v1.19      03/2000  Partition selection fix    
-  v1.18      03/2000  First partition support    
-  v1.17      02/2000  Second published version,  
-                      improved FORMAT            
-  v1.16      -        No info                    
-  v1.15      02/2000  Code optimizations         
-  v1.14      02/2000  FAT copy update fix        
-  v1.13      02/2000  SERIALIZE_DISK fix         
-  v1.12      01/2000  ETD commands,              
-                      SERIALIZE_DISK, faster     
-                      FAT16 writeback            
-  v1.11      01/2000  Device workarounds,        
-                      faster drawer operations   
-  v1.10      -        No info                    
-  v1.9       -        No info                    
-  v1.8       01/2000  Workaround for             
-                      register-trashing devices  
-  v1.7       01/2000  Formatting fix,            
-                      double-mount crash fix,    
-                      reentrant code             
-  v1.6       12/1999  Large partition fix, SID2  
-                      workaround, serial         
-                      number, dir optimization   
-  v1.5       11/1999  First published version    
+  @{b}Version@{ub}  @{b}Date@{ub}     @{b}Changes@{ub}                    
+  -------  -------  -------------------------  
+  v3.19    01/2026  GPT partition table        
+                    support, improved disk     
+                    change handling, Makefile  
+                    build system               
+  v3.18    03/2013  Open source release LGPL   
+                    (Torsten Jager)            
+  v3.17    -        No info                    
+  v3.16    -        No info                    
+  v3.15    05/2004  Added "l" option           
+                    (lowercase 8.3 names)      
+  v3.14    05/2004  Added "L" option           
+                    (uppercase initial)        
+  v3.13    02/2004  PalmOS formatted memory    
+                    card support               
+  v3.12    11/2003  Alternative disk           
+                    recognition via SCSI,      
+                    optional TD_UPDATE,        
+                    faster small writes        
+  v3.11    08/2003  Optimized short name       
+                    generator, directory       
+                    updates during writes      
+  v3.10    07/2003  Fixed directory creation   
+                    bugs, international        
+                    character fixes            
+  v3.09    04/2003  Security erase feature,    
+                    abortable scandisk         
+  v3.08    10/2002  Skipped version number     
+  v3.07    09/2002  File writing fix, SCSI     
+                    auto-select, Hungarian     
+                    localization               
+  v3.06    08/2002  Faster small file access   
+  v3.05    07/2002  New configuration options  
+  v3.04    07/2002  Removed startup messages,  
+                    scandisk fixes, improved   
+                    dd tool                    
+  v3.03    05/2002  Removed DiskUpdate error   
+                    message                    
+  v3.02    03/2002  Directory creation fix,    
+                    FAT12 CF card formatting,  
+                    SCSI error checking        
+  v3.01    02/2002  Minor short name bug fix   
+  v3.00    02/2002  User character set for     
+                    8.3 names, official FAT32  
+                    cluster sizes              
+  v2.19    01/2002  Filenames up to 104        
+                    characters                 
+  v2.18    12/2001  SetFileSize() support,     
+                    user language support      
+  v2.17    09/2001  Faster FAT32, Amiga        
+                    reformatted ZIPs           
+                    recognized                 
+  v2.16    08/2001  MaxTransfer fix,           
+                    FileSystem.resource code   
+                    sharing                    
+  v2.15    05/2001  Crash fixes, pure          
+                    attribute, error check,    
+                    boot95 tool                
+  v2.14    03/2001  FAT32 mode bug fix         
+  v2.13    02/2001  New buffering system       
+  v2.12    02/2001  SCSI direct command        
+                    support                    
+  v2.11    12/2000  Better FDA compatibility   
+  v2.10    10/2000  Exotic partition tables,   
+                    TD64 error requester       
+  v2.9     09/2000  AddBuffers fix, safer      
+                    CURRENT_VOLUME, trackwise  
+                    access                     
+  v2.8     08/2000  Software write             
+                    protection, fat95debug     
+                    tool                       
+  v2.7     08/2000  Logical drive recognition  
+                    fix                        
+  v2.6     07/2000  Disk full crash fix,       
+                    inconsistent file access   
+                    fix                        
+  v2.5     07/2000  Track-wise buffering,      
+                    FAT32 free space fix       
+  v2.4     07/2000  Exclusive locks fix, 8.3   
+                    name fixes                 
+  v2.3     07/2000  Native ExAll(),            
+                    ChangeMode(), various      
+                    bugfixes                   
+  v2.2     06/2000  Restart validator,         
+                    65-char filenames, FAT32   
+                    formatting                 
+  v2.1     04/2000  NSD and TD64 support,      
+                    FAT32 28-bit fix,          
+                    timestamp fix              
+  v2.0     04/2000  First FAT32 support        
+  v1.22    03/2000  Large sectors fix (>512    
+                    bytes)                     
+  v1.21    03/2000  Cluster-wise file access,  
+                    diskchange messages        
+  v1.20    03/2000  Separate caches,           
+                    workbench icon             
+                    suppression                
+  v1.19    03/2000  Partition selection fix    
+  v1.18    03/2000  First partition support    
+  v1.17    02/2000  Second published version,  
+                    improved FORMAT            
+  v1.16    -        No info                    
+  v1.15    02/2000  Code optimizations         
+  v1.14    02/2000  FAT copy update fix        
+  v1.13    02/2000  SERIALIZE_DISK fix         
+  v1.12    01/2000  ETD commands,              
+                    SERIALIZE_DISK, faster     
+                    FAT16 writeback            
+  v1.11    01/2000  Device workarounds,        
+                    faster drawer operations   
+  v1.10    -        No info                    
+  v1.9     -        No info                    
+  v1.8     01/2000  Workaround for             
+                    register-trashing devices  
+  v1.7     01/2000  Formatting fix,            
+                    double-mount crash fix,    
+                    reentrant code             
+  v1.6     12/1999  Large partition fix, SID2  
+                    workaround, serial         
+                    number, dir optimization   
+  v1.5     11/1999  First published version    
 
 ----------------------------------------
 @{"<< Prev" link License}  @{"Contents" link Main}

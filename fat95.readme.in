@@ -24,6 +24,10 @@ CHANGES IN @VERSION@ (@DATE@)
   - Scans GPT partition entries for Microsoft Basic Data partitions (FAT)
   - Supports partition selection via DosType (same as MBR: FAT\1, FAT\2, etc.)
 
+* Improved disk change handling
+  - Non-existent partitions now show "No Disk" instead of "Uninitialized"
+  - Fixes stale partition data when switching to cards with fewer partitions
+
 Purpose
 =======
 

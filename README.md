@@ -64,6 +64,10 @@ Improvements to this handler are developed in my free time. If you'd like to sup
   - Scans GPT partition entries for Microsoft Basic Data partitions (FAT)
   - Supports partition selection via DosType (same as MBR: FAT\1, FAT\2, etc.)
 
+* **Improved disk change handling**
+  - Non-existent partitions now show "No Disk" instead of "Uninitialized"
+  - Fixes stale partition data when switching to cards with fewer partitions
+
 
 ## Introduction
 
@@ -393,7 +397,7 @@ GNU LGPL v2.1
 
 | Version | Date | Changes |
 |---------|------|---------|
-| v3.19 | 01/2026 | GPT partition table support, Makefile build system |
+| v3.19 | 01/2026 | GPT partition table support, improved disk change handling, Makefile build system |
 | v3.18 | 03/2013 | Open source release LGPL (Torsten Jager) |
 | v3.17 | - | No info |
 | v3.16 | - | No info |

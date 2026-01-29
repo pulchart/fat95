@@ -5341,6 +5341,12 @@ GetDiskParams:
 
 	clr.b	SearchCount(a4)
 	bsr.w	FreeFATBuf
+	;Clear all partition state before detection
+	clr.l	FirstBlock(a4)
+	clr.l	TotalBlocks(a4)
+	clr.l	HiddenBlocks(a4)
+	clr.w	PartitionNum(a4)
+	clr.w	FATType(a4)
 	bsr.w	DiskStatus
 	move.w	d0,d3
 	beq.w	gdp_none		;no disk
@@ -5540,7 +5546,7 @@ gdp_gpt_found:
 
 gdp_gpt_cleanup:
 	addq.l	#2,sp			;discard saved d3
-	bra.w	gdp_ndos
+	bra.w	gdp_none		;partition not found = no disk
 
 ;- - search MBR partition  - - - - - - - - - - - - - - - - -
 gdp_mbr_search:
@@ -5569,7 +5575,7 @@ gdp_plog:
 	moveq.l	#0,d0
 	bsr.w	GetPartition
 	move.l	d0,d4
-	beq.w	gdp_ndos		;extended partition missing..
+	beq.w	gdp_none		;partition not found = no disk
 
 	bsr.w	Test64
 	tst.l	d0
