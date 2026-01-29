@@ -7,7 +7,7 @@ Architecture: m68k-amigaos
 Distribution: Aminet
 Kurz:         Win95/98-kompatibles Dateisystem
 
-fat95 v@VERSION@ (@DATE@) - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
+fat95 - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
 
 CHANGES IN @VERSION@ (@DATE@)
 ============================
@@ -17,7 +17,7 @@ CHANGES IN @VERSION@ (@DATE@)
   - Set English as default localization for fat95 handler
   - Rebuild by vasm 2.0d
 
-* Include SFS/PFS to NDOS
+* Detect SFS/PFS/FFS/RDB as foreign disk formats
 
 * GPT partition table support
   - Automatic detection of GPT disks via protective MBR (type 0xEE)
@@ -26,6 +26,7 @@ CHANGES IN @VERSION@ (@DATE@)
 
 * Improved disk change handling
   - Non-existent partitions now show "No Disk" instead of "Uninitialized"
+  - Foreign formats (RDB, PFS, SFS) show "Uninitialized" only for partition 1
   - Fixes stale partition data when switching to cards with fewer partitions
 
 Purpose
@@ -44,7 +45,7 @@ System requirements
 Features
 ========
 
-See english/fat95.guide for full documentation.
+See fat95.guide for full documentation.
 
 * Workbench and applications support
 * Diskchange autosense
@@ -72,6 +73,8 @@ CHECKSUMS
 
 CONTENTS
 ========
+fat95/fat95.guide - FAT95 filesystem handler documentation
+
 fat95/l/fat95 - FAT95 filesystem handler
 fat95/l/install95 - Locale installer tool (read/write locale files)
 fat95/c/dd - Raw block transfer tool

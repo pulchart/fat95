@@ -57,7 +57,7 @@ Improvements to this handler are developed in my free time. If you'd like to sup
   - Set English as default localization for fat95 handler
   - Rebuild by vasm 2.0d
 
-* Include SFS/PFS to NDOS
+* Detect SFS/PFS/FFS/RDB as foreign disk formats
 
 * **GPT partition table support**
   - Automatic detection of GPT disks via protective MBR (type 0xEE)
@@ -67,6 +67,7 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 * **Improved disk change handling**
   - Non-existent partitions now show "No Disk" instead of "Uninitialized"
   - Fixes stale partition data when switching to cards with fewer partitions
+  - Foreign disk formats (RDB, PFS, SFS) show appropriate status per partition
 
 
 ## Introduction
@@ -85,6 +86,13 @@ There are always 2 programs involved:
 
 We now have to bring those two together. For that purpose
 we will write a special text, also known as a Mountlist.
+
+## Installation
+
+1. Edit the `install_fat95` text file of your language
+2. Doubleclick `install_fat95` icon to activate changes
+3. Doubleclick `MS0` or `MS1` example icons to mount now
+4. Copy to `DEVS:DOSDrivers` for auto-mount at boot
 
 ## Mountlist Configuration
 
@@ -193,7 +201,7 @@ BlocksPerTrack = 1
 Surfaces = 1
 ```
 
-#### DosType Values
+**DosType Values**
 
 The **DosType** controls which partition to mount:
 
@@ -207,19 +215,32 @@ The **DosType** controls which partition to mount:
 | FAT\5 | 0x46415405 | First logical drive (extended partition) |
 | FAT\6 | 0x46415406 | Second logical drive, etc. |
 
-**Note:** For GPT disks, fat95 counts only FAT partitions (Microsoft Basic Data GUID).
+**Recognized partition types:**
+
+For MBR disks, fat95 recognizes these partition types:
+
+| Type | Description |
+|------|-------------|
+| 0x01 | FAT12 |
+| 0x04 | FAT16, < 32 MB |
+| 0x06 | FAT16, >= 32 MB |
+| 0x0B | FAT32 |
+| 0x0C | FAT32, LBA |
+| 0x0E | FAT16, LBA |
+| 0x05, 0x0F | Extended partition (for logical partitions) |
+
+For GPT disks, fat95 counts only FAT partitions (Microsoft Basic Data GUID: `EBD0A0A2-B9E5-4433-87C0-68B6B72699C7`).
 Non-FAT partitions (EFI System, Windows Recovery, etc.) are automatically skipped.
 
-#### GPT vs MBR Detection
+**GPT vs MBR Detection**
 
 fat95 automatically detects the partition table type:
-
 1. Reads block 0 (MBR)
 2. Checks for protective MBR (partition type 0xEE)
 3. If found, reads GPT header at LBA 1 and scans GPT entries
 4. Otherwise, parses standard MBR partition table
 
-## Manual Partition Definition
+### Manual Partition Definition
 
 For special cases like damaged partition tables:
 
@@ -233,7 +254,9 @@ LowCyl = <StartBlockNumber>
 HighCyl = <LastBlock>
 ```
 
-## Complete Mountlist Example
+## Mounting the Drive
+
+### Complete Mountlist Example
 
 ```
 CF0:
@@ -255,10 +278,7 @@ CF0:
     GlobVec        = -1
     DosType        = 0x46415401 /* FAT\1 = first FAT partition */
     Activate       = 1
-#
 ```
-
-## Mounting the Drive
 
 ### Method A: Shell Command
 
@@ -284,7 +304,6 @@ Edit `DEVS:MountList` and append:
 CF0:
     Device = scsi.device
     /* ... other entries ... */
-#
 ```
 
 Then mount with:
@@ -293,31 +312,11 @@ Then mount with:
 mount CF0:
 ```
 
-## Booting from FAT Partition
-
-```
-boot95 CF0:
-```
-
-This installs an Amiga automount sequence in the unused area between
-the MBR and first partition (~30KB). Requires fat95 in `L:` drawer.
-
-**Caution:** Overwrites existing Amiga style partitioning info.
-
-## Installation
-
-1. Edit the `install_fat95` text file of your language
-2. Doubleclick `install_fat95` icon to activate changes
-3. Doubleclick `MS0` or `MS1` example icons to mount now
-4. Copy to `DEVS:DOSDrivers` for auto-mount at boot
-
 ## Special Features
-
-### The Console Commands
 
 fat95 uses file comments for special commands:
 
-#### Scandisk
+**Scandisk**
 
 ```
 filenote CF0:anyfile "!scandisk"
@@ -325,7 +324,7 @@ filenote CF0:anyfile "!scandisk"
 
 Recovers lost files and fixes disk errors.
 
-#### Control Options
+**Control Options**
 
 ```
 filenote CF0:anyfile "!control -dD"
@@ -333,7 +332,7 @@ filenote CF0:anyfile "!control -dD"
 
 Changes configuration options at runtime.
 
-#### Security Erase
+**Security Erase**
 
 ```
 filenote CF0:anyfile "!erase"
@@ -346,6 +345,8 @@ Works with CompactFlash built-in erase when available.
 
 ## Troubleshooting
 
+**Report issues at:** https://github.com/pulchart/fat95/issues
+
 **Q: "object not found" when mounting?**
 
 A: Check the `Device =`, `Unit =` and `Flags =` entries.
@@ -357,6 +358,40 @@ debug95 CF0: ram:cf0.log
 ```
 
 Creates a dump of internal fat95 variables for diagnosis.
+
+### FAT32 Notes
+
+* FAT32 FAT table can be huge (8MB for 8GB partition)
+* fat95 does not cache entire FAT32 table to save memory
+* Free space calculation happens after mount ("volume is validating")
+
+### Disk Status Meanings
+
+Fat95 reports different disk statuses depending on what it finds:
+
+| Status | Icon | Meaning |
+|--------|------|---------|
+| **Mounted** | Volume name shown | FAT partition found and mounted successfully |
+| **Uninitialized** (NDOS) | `CF0:NDOS` or `CF0:Uninitialized` | Disk present but not FAT format (e.g., RDB, PFS, SFS, FFS) or bad MBR partition table |
+| **No Disk** (ID_NONE) | None | No media inserted OR requested partition doesn't exist |
+| **Unreadable** (ID_BAD) | `BAD` | Disk read error |
+
+**Partition-specific behavior:**
+
+When you have multiple mount points (e.g., FAT\1, FAT\2, FAT\3) and insert a disk:
+
+| Scenario | FAT\1 | FAT\2 | FAT\3 |
+|----------|-------|-------|-------|
+| 3-partition FAT disk | Mounted | Mounted | Mounted |
+| 1-partition FAT disk | Mounted | No Disk | No Disk |
+| RDB/PFS/SFS disk | Uninitialized | No Disk | No Disk |
+| No disk inserted | No Disk | No Disk | No Disk |
+
+This behavior ensures:
+- **FAT\1** correctly shows "Uninitialized" for foreign formats (disk present, wrong type)
+- **FAT\2, FAT\3, etc.** correctly show "No Disk" when the requested partition doesn't exist
+
+The exact status shown may depend on the order of disk insertion and reinsertion.
 
 ## Tools Included
 
@@ -383,11 +418,24 @@ Write file back to disk:
 dd ram:dump scsi.device 1 0 128
 ```
 
-## FAT32 Notes
+### Debug95
 
-* FAT32 FAT table can be huge (8MB for 8GB partition)
-* fat95 does not cache entire FAT32 table to save memory
-* Free space calculation happens after mount ("volume is validating")
+Creates a dump of internal fat95 variables for diagnosis.
+```
+debug95 CF0: ram:cf0.log
+```
+
+### boot95
+
+Booting from FAT Partition
+```
+boot95 CF0:
+```
+
+This installs an Amiga automount sequence in the unused area between
+the MBR and first partition (~30KB). Requires fat95 in `L:` drawer.
+
+**Caution:** Overwrites existing Amiga style partitioning info.
 
 ## License
 

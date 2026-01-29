@@ -8,7 +8,7 @@
 VERSION_MAJOR = 3
 VERSION_MINOR = 19
 VERSION_SUFFIX = -dev
-DATE = 29.01.2026
+DATE = 30.01.2026
 
 # Versions (update these for new releases)
 INSTALL95_VERSION_MAJOR = 3
@@ -70,7 +70,7 @@ VASM_HOME = /opt/vasm
 VASM = $(VASM_HOME)/bin/vasmm68k_mot
 
 # Flags
-VASMFLAGS = -Fhunkexe -m68020 -nosym $(DEFINITIONS)
+VASMFLAGS = -Fhunkexe -m68000 -nosym $(DEFINITIONS)
 
 # Directories
 SRCDIR = src
@@ -97,7 +97,7 @@ SOURCE_BOOT95 = $(SRCDIR)/boot95.s
 TARGET_BOOT95 = c/boot95
 
 # Files: Release
-RELEASE_NAME = fat95.$(VERSION_FILENAME)
+RELEASE_NAME = fat95.v$(VERSION_FILENAME)
 ARCHIVE_NAME = $(RELEASE_NAME).lha
 README_NAME = $(RELEASE_NAME).readme
 README_TEMPLATE = fat95.readme.in
@@ -109,7 +109,7 @@ LHA = lha
 # ============================================================
 
 # Default target
-all: $(TARGET) $(TARGET_INSTALL95) $(TARGET_DD) $(TARGET_DEBUG95) $(TARGET_SETFILESIZE) $(TARGET_BOOT95)
+all: version-readme $(TARGET) $(TARGET_INSTALL95) $(TARGET_DD) $(TARGET_DEBUG95) $(TARGET_SETFILESIZE) $(TARGET_BOOT95)
 
 # Generate version include file (always check, only update if changed)
 # Uses a stamp file to track the current version string
@@ -124,6 +124,12 @@ $(VERSION_STAMP): FORCE
 	else \
 		rm -f $(VERSION_STAMP).tmp; \
 	fi
+
+# Update version suffix in README.md (in-place)
+# Updates the "What's New" section header: ### 3.19 or ### 3.19-dev
+version-readme:
+	$(Q)sed -i 's/^### $(VERSION_MAJOR)\.$(VERSION_MINOR)[^[:space:]]*/### $(VERSION)/' README.md
+	$(Q)echo "  README  version updated to $(VERSION)"
 
 # Unified version include file generation function
 # Usage: $(call gen_version_inc,output_file,tool_name,version_major,version_minor,version_string,macro_name,date)
@@ -249,7 +255,7 @@ check-lha:
 	}
 
 # Create Aminet-compatible LHA release
-release: all $(README_NAME) $(README_NAME).info check-lha
+release: version-readme all $(README_NAME) $(README_NAME).info $(GUIDE_OUTPUT) check-lha
 	@echo "Creating Aminet release: $(ARCHIVE_NAME)"
 	@echo "=================================="
 	@STAGING=$$(mktemp -d); \
@@ -265,6 +271,8 @@ release: all $(README_NAME) $(README_NAME).info check-lha
 	cp src/*.i "$$STAGING/fat95/src/"; \
 	cp $(README_NAME) "$$STAGING/fat95/"; \
 	cp LICENSE "$$STAGING/fat95/"; \
+	cp "$(GUIDE_OUTPUT)" "$$STAGING/fat95/"; \
+	cp "$(GUIDE_OUTPUT).info" "$$STAGING/fat95/"; \
 	for langdir in english deutsch magyar polska russian espa* fran*; do \
 		if [ -d "$$langdir" ] && [ -n "$$(ls -A "$$langdir")" ]; then \
 			mkdir -p "$$STAGING/fat95/$$langdir"; \
@@ -342,8 +350,9 @@ help:
 	@echo "  guide   - Generate AmigaGuide from README.md"
 	@echo ""
 	@echo "Release targets:"
-	@echo "  readme  - Generate $(README_NAME) from template"
-	@echo "  release - Create Aminet LHA archive + readme"
+	@echo "  version-readme - Update version suffix in README.md (in-place)"
+	@echo "  readme         - Generate $(README_NAME) from template"
+	@echo "  release        - Create Aminet LHA archive + readme"
 	@echo ""
 	@echo "Utility targets:"
 	@echo "  clean     - Remove built files"
@@ -367,7 +376,7 @@ help:
 # ============================================================
 
 # Generate AmigaGuide documentation from README.md
-GUIDE_OUTPUT = english/fat95.guide
+GUIDE_OUTPUT = fat95.guide
 MD2GUIDE = ../cfd/tools/md2guide.py
 
 guide: $(GUIDE_OUTPUT)
@@ -376,7 +385,7 @@ $(GUIDE_OUTPUT): README.md $(MD2GUIDE)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) README.md $@ --version $(VERSION) --date $(DATE) --title "fat95" --ver-title "fat95 guide"
 
-.PHONY: all fat95 install95 dd debug95 setfilesize boot95 clean distclean readme release check-lha guide help FORCE
+.PHONY: all fat95 install95 dd debug95 setfilesize boot95 clean distclean readme release check-lha guide help version-readme FORCE
 
 # Individual tool targets
 fat95: $(TARGET)

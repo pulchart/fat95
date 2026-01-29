@@ -5341,12 +5341,6 @@ GetDiskParams:
 
 	clr.b	SearchCount(a4)
 	bsr.w	FreeFATBuf
-	;Clear all partition state before detection
-	clr.l	FirstBlock(a4)
-	clr.l	TotalBlocks(a4)
-	clr.l	HiddenBlocks(a4)
-	clr.w	PartitionNum(a4)
-	clr.w	FATType(a4)
 	bsr.w	DiskStatus
 	move.w	d0,d3
 	beq.w	gdp_none		;no disk
@@ -5380,20 +5374,30 @@ gdp_mbr:
 	beq.w	gdp_fake		;..for testing
 
 	cmp.w	#$55AA,510(a0)
-	bne.w	gdp_ndos		;no magic #??
+	bne.s	gdp_foreign		;no magic #??
 
 	cmp.l	#"RDSK",d0		;Amiga partition info inside..
-	beq.w	gdp_ndos		;..first 256 bytes
+	beq.s	gdp_foreign		;..first 256 bytes
 
 	and.l	#$ffffff00,d0		;mask out low byte (filesystem type DOS\<type>)
 	cmp.l	#"DOS"<<8,d0		;check if first 3 bytes are "DOS"
-	beq.w	gdp_ndos		;an FFS media or something
+	beq.s	gdp_foreign		;an FFS media or something
 
 	cmp.l	#"PFS"<<8,d0
-	beq.w	gdp_ndos		;PFS media
+	beq.s	gdp_foreign		;PFS media
 
 	cmp.l	#"SFS"<<8,d0
-	beq.w	gdp_ndos		;SFS media
+	bne.s	gdp_notforeign		;not a known foreign format
+
+gdp_foreign:
+	;Foreign disk format detected (RDB, PFS, SFS, FFS, or no MBR signature)
+	;For partition 1: show NDOS (disk present but wrong format)
+	;For partition 2+: show ID_NONE (partition doesn't exist)
+	cmp.b	#2,DosType+3(a4)
+	bcc.w	gdp_none		;partition 2+ -> "No Disk"
+	bra.w	gdp_ndos		;partition 0/1 -> "Uninitialized"
+
+gdp_notforeign:
 
 	clr.w	PartitionNum(a4)
 	bsr.w	IsBootBlock
