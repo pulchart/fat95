@@ -2,5 +2,5 @@
 FILE_VERSION	= 3
 FILE_REVISION	= 19
 VERSION_STRING	macro
-	dc.b	"fat95 3.19-dev (25.01.2026)"
+	dc.b	"fat95 3.19-dev (29.01.2026)"
 	endm

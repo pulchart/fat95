@@ -5397,8 +5397,153 @@ gdp_mbr:
 	tst.b	SearchMode(a4)
 	bne.w	gdp_ndos		;set manually, dont search
 
-;- - search partition  - - - - - - - - - - - - - - - - - - -
+;- - check for GPT partition table - - - - - - - - - - - - -
+	;
+	; GPT Detection Flow:
+	; ~~~~~~~~~~~~~~~~~~~
+	; MBR block 0 loaded (a0)
+	;       |
+	; Check partition type 0xEE (protective MBR)?
+	;       |-- No --> gdp_mbr_search (normal MBR parsing)
+	;       |
+	;      Yes
+	;       |
+	; Read LBA 1 (GPT header)
+	;       |
+	; Check "EFI PART" signature
+	;       |
+	; Scan partition entries for FAT GUID (EBD0A0A2-...)
+	;       |
+	; Mount partition --> gdp_bootfound
+	;
+	;a0 still points to block 0 (MBR)
+	;Check if first partition entry is type 0xEE (protective MBR for GPT)
+	cmp.b	#$EE,446+4(a0)		;partition type at offset 446+4
+	bne.w	gdp_mbr_search		;not GPT, try MBR
 
+	;Protective MBR found - save d3 (disk status) and read GPT header
+	move.w	d3,-(sp)		;save disk status (contains write-protect flag)
+	addq.b	#1,SearchCount(a4)
+	moveq.l	#1,d0			;LBA 1 = GPT header
+	bsr.w	ReadSingle		;FirstBlock is 0 here
+	tst.l	d0
+	beq.w	gdp_gpt_cleanup		;read failed
+
+	move.l	d0,a1			;&GPT header
+	cmp.l	#"EFI ",(a1)		;check "EFI PART" signature
+	bne.w	gdp_gpt_cleanup
+	cmp.l	#"PART",4(a1)
+	bne.w	gdp_gpt_cleanup
+
+	;GPT header valid - get partition entry info
+	move.l	72(a1),d4		;Partition entries LBA low (little-endian)
+	ReverseL d4
+	move.l	76(a1),d0		;Partition entries LBA high
+	tst.l	d0
+	bne.w	gdp_gpt_cleanup		;beyond 32-bit addressing
+	move.l	80(a1),d5		;Number of partition entries (little-endian)
+	ReverseL d5
+	move.l	84(a1),d6		;Size of partition entry (little-endian)
+	ReverseL d6
+	tst.w	d6
+	beq.w	gdp_gpt_cleanup		;invalid entry size
+
+	;Get requested partition number
+	moveq.l	#0,d2
+	move.b	DosType+3(a4),d2
+	bgt.s	gdp_gpt_p1
+	moveq.l	#1,d2			;autoselect first FAT partition
+gdp_gpt_p1:
+	move.w	d2,PartitionNum(a4)
+	subq.w	#1,d2			;convert to 0-based index
+	bmi.w	gdp_gpt_cleanup		;invalid partition number
+
+	;Scan GPT entries for FAT partition
+	moveq.l	#0,d7			;FAT partition counter
+	moveq.l	#0,d0			;current entry index
+gdp_gpt_loop:
+	cmp.w	d5,d0			;scanned all entries?
+	bcc.w	gdp_gpt_cleanup		;not found
+
+	;Calculate LBA and offset for this entry
+	move.l	d0,d1
+	mulu.w	d6,d1			;byte offset = index * entry_size
+	move.w	BlockSize(a4),d3
+	divu.w	d3,d1			;d1.w = block offset, remainder in high word
+	swap	d1
+	move.w	d1,d3			;d3 = byte offset within block
+	clr.w	d1			;clear remainder from low word
+	swap	d1			;d1 = block offset (quotient only)
+	add.l	d4,d1			;d1 = absolute LBA
+
+	;Read block containing this entry
+	move.l	d0,-(sp)		;save entry index
+	move.l	d1,d0
+	bsr.w	ReadSingle
+	move.l	(sp)+,d1		;restore entry index to d1 temporarily
+	tst.l	d0			;check if read succeeded
+	beq.s	gdp_gpt_cleanup		;read failed
+	move.l	d0,a1			;block data
+	move.l	d1,d0			;restore entry index to d0
+
+	add.w	d3,a1			;a1 = &partition entry
+
+	;Check if entry is used (GUID not all zeros)
+	tst.l	(a1)
+	beq.s	gdp_gpt_next		;unused entry
+
+	;Check partition type GUID for Microsoft Basic Data
+	;GUID: EBD0A0A2-B9E5-4433-87C0-68B6B72699C7 (little-endian)
+	cmp.l	#$A2A0D0EB,(a1)		;first 4 bytes (already little-endian in memory)
+	bne.s	gdp_gpt_next		;not FAT partition
+
+	;Found FAT partition - is it the one we want?
+	cmp.w	d2,d7			;d7 = FAT partition counter, d2 = requested index
+	beq.s	gdp_gpt_found
+	addq.w	#1,d7			;next FAT partition
+gdp_gpt_next:
+	addq.w	#1,d0			;next entry
+	bra.s	gdp_gpt_loop
+
+gdp_gpt_found:
+	;Get partition start and end LBA (little-endian, 64-bit)
+	move.l	32(a1),d0		;First LBA low
+	ReverseL d0
+	move.l	36(a1),d1		;First LBA high
+	tst.l	d1
+	bne.s	gdp_gpt_cleanup		;beyond 32-bit addressing
+
+	move.l	40(a1),d1		;Last LBA low
+	ReverseL d1
+	move.l	44(a1),d3		;Last LBA high
+	tst.l	d3
+	bne.s	gdp_gpt_cleanup		;beyond 32-bit addressing
+
+	;Calculate size and set partition info
+	sub.l	d0,d1
+	addq.l	#1,d1			;size = last - first + 1
+	move.w	#2,FATType(a4)		;auto-detect FAT type
+	move.l	d0,FirstBlock(a4)
+	move.l	d1,TotalBlocks(a4)
+	clr.l	HiddenBlocks(a4)
+
+	;Verify partition end is within 32-bit range
+	add.l	d1,d0
+	subq.l	#1,d0
+	bsr.w	Test64
+	tst.l	d0
+	beq.s	gdp_gpt_cleanup		;partition exceeds 4 Gbyte
+
+	;Restore d3 and use shared boot block validation
+	move.w	(sp)+,d3		;restore disk status
+	bra.s	gdp_readboot		;share boot block code with MBR path
+
+gdp_gpt_cleanup:
+	addq.l	#2,sp			;discard saved d3
+	bra.w	gdp_ndos
+
+;- - search MBR partition  - - - - - - - - - - - - - - - - -
+gdp_mbr_search:
 	move.l	a5,a2			;&frame table
 	clr.l	-(a2)			;start frame: from beginning..
 	moveq.l	#-1,d0
@@ -5453,6 +5598,7 @@ gdp_pfound:
 	tst.l	d0
 	beq.w	gdp_none		;partition exceeds 4 Gbyte
 
+gdp_readboot:				;shared entry point for GPT
 	addq.b	#1,SearchCount(a4)
 	moveq.l	#0,d0
 	bsr.w	ReadSingle		;read Boot block

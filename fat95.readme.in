@@ -10,13 +10,19 @@ Kurz:         Win95/98-kompatibles Dateisystem
 fat95 v@VERSION@ (@DATE@) - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
 
 CHANGES IN @VERSION@ (@DATE@)
-=============================
+============================
 
 * Fork of 3.18
   - Added Makefile-based build system
   - Set English as default localization for fat95 handler
   - Rebuild by vasm 2.0d
+
 * Include SFS/PFS to NDOS
+
+* GPT partition table support
+  - Automatic detection of GPT disks via protective MBR (type 0xEE)
+  - Scans GPT partition entries for Microsoft Basic Data partitions (FAT)
+  - Supports partition selection via DosType (same as MBR: FAT\1, FAT\2, etc.)
 
 Purpose
 =======
@@ -29,32 +35,32 @@ System requirements
 
 * every AMIGA, OS 1.3+ (OS 2.0+ for full functionality)
 * a suitable device file for low level disk access, like the
-  mfm.device for floppies.
-* rebuild by vasm 2.0d
+  mfm.device for floppies, compactflash.device for CF in PCMCIA
 
 Features
 ========
 
-PLEASE READ english/readme.too REALLY!
+See english/fat95.guide for full documentation.
 
-* workbench and applications support
-* diskchange autosense
-* format type autosense: FAT12, FAT16 and FAT32
-* simple LINUX style partition selection or manual definition
-* up to 4 GBytes of partition size for FAT16
-* large harddisk support via TD64 or direct SCSI
-* long filenames (up to 104 chars for now)
-* inquiry, read, write, and maintenance access
-* built-in error check utility
-* disk formatting using the OS 2.0+ format command
+* Workbench and applications support
+* Diskchange autosense
+* Format type autosense: FAT12, FAT16 and FAT32
+* MBR and GPT partition table support
+* Simple LINUX style partition selection or manual definition
+* Up to 4 GBytes of partition size for FAT16
+* Large harddisk support via TD64 or direct SCSI
+* Long filenames (up to 104 chars for now)
+* Inquiry, read, write, and maintenance access
+* Built-in error check utility
+* Disk formatting using the OS 2.0+ format command
 * MS-DOS 8.3 downward compatibility
-* user definable language and code page
-* date range Jan 1st, 1980 through Dec 31st, 2107
-* extended datestamp support: creation date and time, last accessed date
+* User definable language and code page
+* Date range Jan 1st, 1980 through Dec 31st, 2107
+* Extended datestamp support: creation date and time, last accessed date
   (written automatically, readable as file comment text)
-* volume serial number as name for unnamed volumes
-* automatic directory optimization
-* written entirely in assembly language
+* Volume serial number as name for unnamed volumes
+* Automatic directory optimization
+* Written entirely in assembly language
 
 CHECKSUMS
 =========

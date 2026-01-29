@@ -8,7 +8,7 @@
 VERSION_MAJOR = 3
 VERSION_MINOR = 19
 VERSION_SUFFIX = -dev
-DATE = 25.01.2026
+DATE = 29.01.2026
 
 # Versions (update these for new releases)
 INSTALL95_VERSION_MAJOR = 3
@@ -268,7 +268,7 @@ release: all $(README_NAME) $(README_NAME).info check-lha
 	for langdir in english deutsch magyar polska russian espa* fran*; do \
 		if [ -d "$$langdir" ] && [ -n "$$(ls -A "$$langdir")" ]; then \
 			mkdir -p "$$STAGING/fat95/$$langdir"; \
-			cp "$$langdir"/* "$$STAGING/fat95/$$langdir/"; \
+			cp -r "$$langdir"/* "$$STAGING/fat95/$$langdir/"; \
 		fi; \
 	done; \
 	cp fat95.info "$$STAGING/"; \
@@ -338,6 +338,9 @@ help:
 	@echo "  V=1                 - Verbose output (show full assembler messages)"
 	@echo "  VASM_HOME=/opt/vbcc - vasm installation path"
 	@echo ""
+	@echo "Documentation targets:"
+	@echo "  guide   - Generate AmigaGuide from README.md"
+	@echo ""
 	@echo "Release targets:"
 	@echo "  readme  - Generate $(README_NAME) from template"
 	@echo "  release - Create Aminet LHA archive + readme"
@@ -359,7 +362,21 @@ help:
 	@echo ""
 	@echo "Version: $(VERSION) ($(DATE))"
 
-.PHONY: all fat95 install95 dd debug95 setfilesize boot95 clean distclean readme release check-lha help FORCE
+# ============================================================
+# Documentation targets
+# ============================================================
+
+# Generate AmigaGuide documentation from README.md
+GUIDE_OUTPUT = english/fat95.guide
+MD2GUIDE = ../cfd/tools/md2guide.py
+
+guide: $(GUIDE_OUTPUT)
+
+$(GUIDE_OUTPUT): README.md $(MD2GUIDE)
+	$(Q)echo "  GUIDE   $@"
+	$(Q)python3 $(MD2GUIDE) README.md $@ --version $(VERSION) --date $(DATE) --title "fat95" --ver-title "fat95 guide"
+
+.PHONY: all fat95 install95 dd debug95 setfilesize boot95 clean distclean readme release check-lha guide help FORCE
 
 # Individual tool targets
 fat95: $(TARGET)
