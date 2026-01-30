@@ -1,32 +1,32 @@
-# fat95
+# Win95/98 compatible FAT filesystem handler for AmigaOS.
 
-Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
+Based on Torsten Jager's fat95 v3.18 (Aminet: [disk/misc/fat95.lha](https://aminet.net/package/disk/misc/fat95)).
 
-## Download
+## fat95 handler
 
-**GitHub**: [Releases](https://github.com/pulchart/fat95/releases)
+**Download** at GitHub [Releases](https://github.com/pulchart/fat95/releases)
 
-## Purpose
+**Purpose**
 
 "fat95" is a DOS handler to mount and use Win95/98 volumes just as if they were AMIGA volumes.
 
-### Personal Note
+**Personal Note**
 
 Improvements to this handler are developed in my free time. If you'd like to support ongoing maintenance and experimentation, you can do so on [Ko-fi](https://ko-fi.com/jaroslavpulchart).
 
-### Community Links
+**Community Links**
 
 - **English Amiga Forum Thread:** [Discussion Thread](https://eab.abime.net/showthread.php?t=121575) user questions and troubleshooting.
 - **Aminet fat95 Advanced Search:** [CFD releases (m68k, AmigaOS)](
   https://aminet.net/search?type=advanced&name=fat95&q_path=AND&path%5B%5D=disk%2Fmisc&q_date=AND&o_date=equal&date=&q_desc=AND&desc=&q_readme=AND&readme=&q_content=AND&content=&q_arch=AND&search=search) shows all fat95 packages.
 
-## System Requirements
+**System Requirements**
 
 * Every AMIGA, OS 1.3+ (OS 2.0+ for full functionality)
 * A suitable device file for low level disk access, like the
   mfm.device for floppies, compactflash.device for CF in PCMCIA.
 
-## Features
+**Features**
 
 * Workbench and applications support
 * Diskchange autosense
@@ -69,30 +69,25 @@ Improvements to this handler are developed in my free time. If you'd like to sup
   - Fixes stale partition data when switching to cards with fewer partitions
   - Foreign disk formats (RDB, PFS, SFS) show appropriate status per partition
 
-
-## Introduction
-
-Installing disk drives under AmigaOS is really quite simple.
-There are always 2 programs involved:
-
-1. A **hardware driver**, giving block-wise access to the drive
-   as a whole. That driver is either part of the Kickstart ROM,
-   or it is a separate file by a name like `DEVS:xxx.device`.
-
-2. A **file system**. That is some sort of storage manager in
-   charge of such things as partitions, drawers and files.
-   The standard file system is in ROM as well. Others, like
-   fat95, are files inside the `L:` drawer.
-
-We now have to bring those two together. For that purpose
-we will write a special text, also known as a Mountlist.
-
 ## Installation
 
-1. Edit the `install_fat95` text file of your language
-2. Doubleclick `install_fat95` icon to activate changes
-3. Doubleclick `MS0` or `MS1` example icons to mount now
-4. Copy to `DEVS:DOSDrivers` for auto-mount at boot
+**Introduction**
+
+Installing disk drives under AmigaOS requires *two* components:
+
+1. A **hardware driver** that provides block-level access to the drive. This can be part of the Kickstart ROM (e.g., `trackdisk.device`) or a separate file (e.g., `Devs:compactflash.device`).
+2. A **filesystem handler** that manages partitions, directories, and files. The standard filesystem is in ROM. Others, like fat95, are files in the `L:` drawer.
+
+These two components are connected via a **mountlist** - a configuration file that tells AmigaOS how to mount the drive.
+
+**Installation**
+
+1. Edit the `install_fat95` text file for your language
+2. Double-click the `install_fat95` icon to activate the changes
+3. Optionally double-click example mountlist icons like `MS0` or `MS1` to mount immediately, but it's recommended to follow the [Mountlist Configuration](#mountlist-configuration) section to prepare a mountlist for your specific disk
+4. Copy mountlists to:
+   - `DEVS:DOSDrivers/` for automatic mounting at boot, or
+   - `SYS:Storage/DOSDrives/` for manual mounting via shell command (Method A: Shell Command)
 
 ## Mountlist Configuration
 
@@ -371,10 +366,11 @@ Fat95 reports different disk statuses depending on what it finds:
 
 | Status | Icon | Meaning |
 |--------|------|---------|
-| **Mounted** | Volume name shown | FAT partition found and mounted successfully |
-| **Uninitialized** (NDOS) | `CF0:NDOS` or `CF0:Uninitialized` | Disk present but not FAT format (e.g., RDB, PFS, SFS, FFS) or bad MBR partition table |
-| **No Disk** (ID_NONE) | None | No media inserted OR requested partition doesn't exist |
-| **Unreadable** (ID_BAD) | `BAD` | Disk read error |
+| **Mounted** (ID_DOS ) | `Volume name` | FAT partition found and mounted successfully |
+| **Uninitialized** (ID_NDOS) `CF0:NDOS` or `CF0:Uninitialized` | Disk present but not FAT format (e.g., RDB, PFS, SFS, FFS) or bad MBR partition table |
+| **No Disk** (ID_NONE) | (none) | No media inserted OR requested partition doesn't exist |
+| **Unreadable** (ID_BAD) | `CF0:BAD` | Disk read error or hardware failure |
+| **Busy** (ID_BUSY) | `CF0:BUSY` | Handler is inhibited (via `INHIBIT` command) |
 
 **Partition-specific behavior:**
 
