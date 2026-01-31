@@ -1,5 +1,4 @@
 # Makefile for fat95 filesystem handler
-# Build using vasm (assembler)
 #
 # Usage: make [options] [target]
 #   help - show detailed usage output
@@ -7,10 +6,10 @@
 # Driver Version (update these for new releases)
 VERSION_MAJOR = 3
 VERSION_MINOR = 19
-VERSION_SUFFIX = -dev
-DATE = 31.01.2026
+VERSION_SUFFIX =
+DATE = 01.02.2026
 
-# Versions (update these for new releases)
+# Tools versions
 INSTALL95_VERSION_MAJOR = 3
 INSTALL95_VERSION_MINOR = 19
 INSTALL95_VERSION_SUFFIX =
@@ -64,8 +63,7 @@ else
   DEFINITIONS = -quiet
 endif
 
-# Tools (override these for different installations)
-#VASM_HOME = /opt/vbcc
+# Build tools
 VASM_HOME = /opt/vasm
 VASM = $(VASM_HOME)/bin/vasmm68k_mot
 
@@ -74,7 +72,7 @@ VASMFLAGS = -Fhunkexe -m68000 -nosym $(DEFINITIONS)
 
 # Directories
 SRCDIR = src
-OUTDIR = l
+OUTDIR = dist/l
 
 # Files: Driver
 SOURCE = $(SRCDIR)/fat95.s
@@ -85,23 +83,23 @@ SOURCE_INSTALL95 = $(SRCDIR)/install95.s
 TARGET_INSTALL95 = $(OUTDIR)/install95
 
 SOURCE_DD = $(SRCDIR)/dd.s
-TARGET_DD = c/dd
+TARGET_DD = dist/c/dd
 
 SOURCE_DEBUG95 = $(SRCDIR)/debug95.s
-TARGET_DEBUG95 = c/debug95
+TARGET_DEBUG95 = dist/c/debug95
 
 SOURCE_SETFILESIZE = $(SRCDIR)/setfilesize.s
-TARGET_SETFILESIZE = c/SetFileSize
+TARGET_SETFILESIZE = dist/c/SetFileSize
 
 SOURCE_BOOT95 = $(SRCDIR)/boot95.s
-TARGET_BOOT95 = c/boot95
+TARGET_BOOT95 = dist/c/boot95
 
 # Files: Release
 RELEASE_NAME = fat95.v$(VERSION_FILENAME)
 ARCHIVE_NAME = $(RELEASE_NAME).lha
 README_NAME = $(RELEASE_NAME).readme
-README_TEMPLATE = fat95.readme.in
-README_INFO_TEMPLATE = fat95.readme.info.in
+README_TEMPLATE = dist.readme.in
+README_INFO = dist/fat95.readme.info
 LHA = lha
 
 # ============================================================
@@ -201,6 +199,13 @@ $(TARGET_BOOT95): $(SOURCE_BOOT95) $(VERSION_BOOT95_INC)
 	$(Q)$(VASM) $(VASMFLAGS) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
+fat95: $(TARGET)
+install95: $(TARGET_INSTALL95)
+dd: $(TARGET_DD)
+debug95: $(TARGET_DEBUG95)
+setfilesize: $(TARGET_SETFILESIZE)
+boot95: $(TARGET_BOOT95)
+
 # ============================================================
 # Release targets
 # ============================================================
@@ -242,65 +247,27 @@ readme: $(README_NAME)
 
 # Check if lha is installed
 check-lha:
-	@command -v $(LHA) >/dev/null 2>&1 || { \
-		echo "ERROR: lha command not found!"; \
-		echo "Install with: sudo dnf install lha"; \
-		exit 1; \
-	}
+	@command -v $(LHA) >/dev/null 2>&1 || { echo "ERROR: lha not found (sudo dnf install lha)"; exit 1; }
 
 # Create Aminet-compatible LHA release
 release: version-readme all $(README_NAME) $(GUIDE_OUTPUT) check-lha
-	@echo "Creating Aminet release: $(ARCHIVE_NAME)"
-	@echo "=================================="
-	@STAGING=$$(mktemp -d); \
-	mkdir -p "$$STAGING/fat95/l" "$$STAGING/fat95/c" "$$STAGING/fat95/src"; \
-	echo "Copying files..."; \
-	cp $(TARGET) "$$STAGING/fat95/l/"; \
-	cp $(TARGET_INSTALL95) "$$STAGING/fat95/l/"; \
-	cp $(TARGET_DD) "$$STAGING/fat95/c/"; \
-	cp $(TARGET_DEBUG95) "$$STAGING/fat95/c/"; \
-	cp $(TARGET_SETFILESIZE) "$$STAGING/fat95/c/"; \
-	cp $(TARGET_BOOT95) "$$STAGING/fat95/c/"; \
-	cp src/*.s "$$STAGING/fat95/src/"; \
-	cp src/*.i "$$STAGING/fat95/src/"; \
-	cp $(README_NAME) "$$STAGING/fat95/fat95.readme"; \
-	cp $(README_INFO_TEMPLATE) "$$STAGING/fat95/fat95.readme.info"; \
-	cp LICENSE "$$STAGING/fat95/"; \
-	cp "$(GUIDE_OUTPUT)" "$$STAGING/fat95/"; \
-	cp "$(GUIDE_OUTPUT).info" "$$STAGING/fat95/"; \
-	cp fat95.info "$$STAGING/"; \
-	for dir in DOSDrivers english deutsch magyar polska russian espa* fran*; do \
-		[ -d "$$dir" ] && cp -r "$$dir" "$$STAGING/fat95/"; \
+	@echo "Creating $(ARCHIVE_NAME)..."
+	@S=$$(mktemp -d); \
+	mkdir -p "$$S/fat95/l" "$$S/fat95/c" "$$S/fat95/src"; \
+	cp $(OUTDIR)/* "$$S/fat95/l/"; \
+	cp dist/c/* "$$S/fat95/c/"; \
+	cp src/*.s src/*.i "$$S/fat95/src/"; \
+	cp $(README_NAME) "$$S/fat95/fat95.readme"; \
+	cp $(README_INFO) LICENSE $(GUIDE_OUTPUT) $(GUIDE_OUTPUT).info "$$S/fat95/"; \
+	cp dist.info "$$S/fat95.info"; \
+	for d in dist/DOSDrivers dist/english dist/deutsch dist/magyar dist/polska dist/russian dist/espa* dist/fran*; do \
+		[ -d "$$d" ] && cp -r "$$d" "$$S/fat95/"; \
 	done; \
-	for f in *.info; do \
-		[ -f "$$f" ] && [ "$$f" != "fat95.info" ] && [ "$$f" != "$(README_NAME).info" ] && cp "$$f" "$$STAGING/fat95/"; \
-	done; \
-	echo "Creating LHA archive..."; \
-	rm -f "$(ARCHIVE_NAME)"; \
-	ARCHIVE_PATH="$$STAGING/$(ARCHIVE_NAME)"; \
-	CURDIR="$$(pwd)"; \
-	(cd "$$STAGING" && LC_ALL=C $(LHA) c "$(ARCHIVE_NAME)" fat95 fat95.info 2>&1 | grep -v "iconv\|multibyte\|Invalid or incomplete"); \
-	if [ -f "$$ARCHIVE_PATH" ]; then \
-		mv "$$ARCHIVE_PATH" "$$CURDIR/"; \
-		echo ""; \
-		echo "=================================="; \
-		echo "Created: $(ARCHIVE_NAME)"; \
-		ls -lh "$(ARCHIVE_NAME)"; \
-		echo ""; \
-		echo "Contents:"; \
-		$(LHA) l "$(ARCHIVE_NAME)"; \
-		echo ""; \
-		echo "For Aminet upload:"; \
-		echo "  1. $(ARCHIVE_NAME)"; \
-		echo "  2. $(README_NAME)"; \
-		echo ""; \
-		echo "Upload to: ftp://main.aminet.net/new"; \
-	else \
-		echo "ERROR: Failed to create archive"; \
-		rm -rf "$$STAGING"; \
-		exit 1; \
-	fi; \
-	rm -rf "$$STAGING"
+	for f in dist/*.info; do [ -f "$$f" ] && cp "$$f" "$$S/fat95/"; done; \
+	(cd "$$S" && LC_ALL=C $(LHA) c "$(ARCHIVE_NAME)" fat95 fat95.info 2>&1 | grep -v "iconv\|multibyte\|Invalid"); \
+	mv "$$S/$(ARCHIVE_NAME)" . && rm -rf "$$S"; \
+	echo "Created: $(ARCHIVE_NAME)" && $(LHA) l "$(ARCHIVE_NAME)"; \
+	echo ""; echo "For Aminet upload:"; echo "  1. $(ARCHIVE_NAME)"; echo "  2. $(README_NAME)"
 
 # ============================================================
 # Utility targets
@@ -362,7 +329,7 @@ help:
 # ============================================================
 
 # Generate AmigaGuide documentation from README.md
-GUIDE_OUTPUT = fat95.guide
+GUIDE_OUTPUT = dist/fat95.guide
 MD2GUIDE = ../cfd/tools/md2guide.py
 
 guide: $(GUIDE_OUTPUT)
@@ -372,11 +339,3 @@ $(GUIDE_OUTPUT): README.md $(MD2GUIDE)
 	$(Q)python3 $(MD2GUIDE) README.md $@ --version $(VERSION) --date $(DATE) --title "fat95" --ver-title "fat95 guide"
 
 .PHONY: all fat95 install95 dd debug95 setfilesize boot95 clean distclean readme release check-lha guide help version-readme FORCE
-
-# Individual tool targets
-fat95: $(TARGET)
-install95: $(TARGET_INSTALL95)
-dd: $(TARGET_DD)
-debug95: $(TARGET_DEBUG95)
-setfilesize: $(TARGET_SETFILESIZE)
-boot95: $(TARGET_BOOT95)

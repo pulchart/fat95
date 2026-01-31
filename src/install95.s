@@ -1,4 +1,4 @@
-; fat95 installer V3.18
+; fat95 installer
 ; Copyright (C) 2013  Torsten Jager <t.jager@gmx.de>
 ; This file is part of FAT95, a free FAT compatible file system for Amiga.
 ;

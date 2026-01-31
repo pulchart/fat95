@@ -50,7 +50,7 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 ## What's New in
 
-### 3.19-dev (31.01.2026)
+### 3.19 (31.01.2026)
 
 * **Fork of 3.18**
   - Set English as default localization for fat95 handler
@@ -70,7 +70,8 @@ Improvements to this handler are developed in my free time. If you'd like to sup
   - Foreign disk formats (RDB, PFS, SFS) show appropriate status per partition
 
 * **Bug fixes**
-  - Fixed trailing and consecutive slashes in path names (e.g., `makedir cf0:temp/` now correctly creates "temp")
+  - Fixed trailing slashes in path names (e.g., "makedir cf0:temp/" now correctly creates "temp")
+    WARNING: Using trailing slashes with 3.18 corrupted the filesystem
 
 ## Installation
 
@@ -448,7 +449,7 @@ GNU LGPL v2.1
 
 | Version | Date | Changes |
 |---------|------|---------|
-| v3.19 | 01/2026 | GPT partition table support, improved disk change handling, Makefile build system |
+| v3.19 | 02/2026 | GPT partition table support, improved disk change handling, Fixed trailing slashes in path names |
 | v3.18 | 03/2013 | Open source release LGPL (Torsten Jager) |
 | v3.17 | - | No info |
 | v3.16 | - | No info |

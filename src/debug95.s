@@ -1,4 +1,4 @@
-; fat95 debug tool v3.18
+; fat95 debug tool
 ; Copyright (C) 2013  Torsten Jager <t.jager@gmx.de>
 ; This file is part of FAT95, a free FAT compatible file system for Amiga.
 ;

@@ -30,7 +30,8 @@ CHANGES IN @VERSION@ (@DATE@)
   - Fixes stale partition data when switching to cards with fewer partitions
 
 * Bug fixes
-  - Fixed trailing and consecutive slashes in path names (e.g., "makedir cf0:temp/" now correctly creates "temp")
+  - Fixed trailing slashes in path names (e.g., "makedir cf0:temp/" now correctly creates "temp")
+    WARNING: Using trailing slashes with 3.18 corrupted the filesystem
 
 Purpose
 =======
@@ -70,6 +71,22 @@ See fat95.guide for full documentation.
 * Automatic directory optimization
 * Written entirely in assembly language
 
+SOURCE CODE
+===========
+Source code available at: https://github.com/pulchart/fat95
+
+Licensed under GNU LGPL v2.1
+
+SUPPORT
+=======
+The improvements to this driver are developed in my free time.
+If you'd like to support ongoing maintenance and experimentation,
+you can do so on Ko-fi: https://ko-fi.com/jaroslavpulchart
+
+HISTORY
+=======
+see https://github.com/pulchart/fat95/blob/master/README.md for complete history
+
 CHECKSUMS
 =========
 @TOOL_CHECKSUMS@
@@ -78,14 +95,14 @@ CONTENTS
 ========
 fat95/fat95.guide - FAT95 filesystem handler documentation
 
-DOSDrivers - Mount list examples
-
 fat95/l/fat95 - FAT95 filesystem handler
 fat95/l/install95 - Locale installer tool (read/write locale files)
 fat95/c/dd - Raw block transfer tool
 fat95/c/debug95 - Debug information tool
 fat95/c/SetFileSize - File size modification utility
 fat95/c/boot95 - Boot partition creation tool
+
+fat95/DOSDrivers/ - Mount list examples
 
 fat95/src/ - Full source code
 

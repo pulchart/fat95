@@ -1,6 +1,5 @@
-c/* filter=lfs diff=lfs merge=lfs -text
-l/* filter=lfs diff=lfs merge=lfs -text
-*.device* filter=lfs diff=lfs merge=lfs -text
-*.info* filter=lfs diff=lfs merge=lfs -text
+dist/c/* filter=lfs diff=lfs merge=lfs -text
+dist/l/* filter=lfs diff=lfs merge=lfs -text
+dist/**/*.info filter=lfs diff=lfs merge=lfs -text
 *.jpg filter=lfs diff=lfs merge=lfs -text
-c/* filter=lfs diff=lfs merge=lfs -text
+*.info filter=lfs diff=lfs merge=lfs -text

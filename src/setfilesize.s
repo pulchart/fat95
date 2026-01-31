@@ -1,4 +1,4 @@
-; Alter size of file tool V1.02
+; Alter size of file tool
 ; Copyright (C) 2001  Torsten Jager <t.jager@gmx.de>
 ; This file is part of FAT95, a free FAT compatible file system for Amiga.
 ;
