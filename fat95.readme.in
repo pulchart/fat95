@@ -13,9 +13,9 @@ CHANGES IN @VERSION@ (@DATE@)
 ============================
 
 * Fork of 3.18
-  - Added Makefile-based build system
   - Set English as default localization for fat95 handler
   - Rebuild by vasm 2.0d
+  - Consolidated documentation into fat95.guide
 
 * Detect SFS/PFS/FFS/RDB as foreign disk formats
 
@@ -74,6 +74,8 @@ CHECKSUMS
 CONTENTS
 ========
 fat95/fat95.guide - FAT95 filesystem handler documentation
+
+DOSDrivers - Mount list examples
 
 fat95/l/fat95 - FAT95 filesystem handler
 fat95/l/install95 - Locale installer tool (read/write locale files)

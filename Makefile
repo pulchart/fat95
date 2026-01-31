@@ -8,7 +8,7 @@
 VERSION_MAJOR = 3
 VERSION_MINOR = 19
 VERSION_SUFFIX = -dev
-DATE = 30.01.2026
+DATE = 31.01.2026
 
 # Versions (update these for new releases)
 INSTALL95_VERSION_MAJOR = 3
@@ -205,12 +205,6 @@ $(TARGET_BOOT95): $(SOURCE_BOOT95) $(VERSION_BOOT95_INC)
 # Release targets
 # ============================================================
 
-# Generate readme.info from template
-$(README_NAME).info: $(README_INFO_TEMPLATE)
-	@echo "Generating $(README_NAME).info from template..."
-	@cp $(README_INFO_TEMPLATE) $(README_NAME).info
-	@echo "Generated: $@"
-
 # List of all tools for checksum generation (tool_name:target_file:version:date pairs)
 TOOLS = fat95:$(TARGET):$(VERSION):$(DATE) \
 	install95:$(TARGET_INSTALL95):$(INSTALL95_VERSION):$(INSTALL95_DATE) \
@@ -221,7 +215,7 @@ TOOLS = fat95:$(TARGET):$(VERSION):$(DATE) \
 TOOLS_TARGETS = $(TARGET) $(TARGET_INSTALL95) $(TARGET_DD) $(TARGET_DEBUG95) $(TARGET_SETFILESIZE) $(TARGET_BOOT95)
 
 # Generate readme from template
-$(README_NAME): $(README_TEMPLATE) $(TOOLS_TARGETS) $(README_NAME).info
+$(README_NAME): $(README_TEMPLATE) $(TOOLS_TARGETS)
 	@echo "Generating $(README_NAME) from template..."
 	@# Generate checksum sections for all tools
 	@tool_checksums=""; \
@@ -244,7 +238,7 @@ $(README_NAME): $(README_TEMPLATE) $(TOOLS_TARGETS) $(README_NAME).info
 	@echo "Generated: $@"
 
 # Generate readme only
-readme: $(README_NAME) $(README_NAME).info
+readme: $(README_NAME)
 
 # Check if lha is installed
 check-lha:
@@ -255,7 +249,7 @@ check-lha:
 	}
 
 # Create Aminet-compatible LHA release
-release: version-readme all $(README_NAME) $(README_NAME).info $(GUIDE_OUTPUT) check-lha
+release: version-readme all $(README_NAME) $(GUIDE_OUTPUT) check-lha
 	@echo "Creating Aminet release: $(ARCHIVE_NAME)"
 	@echo "=================================="
 	@STAGING=$$(mktemp -d); \
@@ -269,25 +263,17 @@ release: version-readme all $(README_NAME) $(README_NAME).info $(GUIDE_OUTPUT) c
 	cp $(TARGET_BOOT95) "$$STAGING/fat95/c/"; \
 	cp src/*.s "$$STAGING/fat95/src/"; \
 	cp src/*.i "$$STAGING/fat95/src/"; \
-	cp $(README_NAME) "$$STAGING/fat95/"; \
+	cp $(README_NAME) "$$STAGING/fat95/fat95.readme"; \
+	cp $(README_INFO_TEMPLATE) "$$STAGING/fat95/fat95.readme.info"; \
 	cp LICENSE "$$STAGING/fat95/"; \
 	cp "$(GUIDE_OUTPUT)" "$$STAGING/fat95/"; \
 	cp "$(GUIDE_OUTPUT).info" "$$STAGING/fat95/"; \
-	for langdir in english deutsch magyar polska russian espa* fran*; do \
-		if [ -d "$$langdir" ] && [ -n "$$(ls -A "$$langdir")" ]; then \
-			mkdir -p "$$STAGING/fat95/$$langdir"; \
-			cp -r "$$langdir"/* "$$STAGING/fat95/$$langdir/"; \
-		fi; \
-	done; \
 	cp fat95.info "$$STAGING/"; \
-	cp $(README_NAME).info "$$STAGING/fat95/"; \
-	for infofile in LICENSE.info english.info deutsch.info magyar.info polska.info russian.info disk.info espa*.info fran*.info; do \
-		if [ -f "$$infofile" ]; then cp "$$infofile" "$$STAGING/fat95/"; fi; \
+	for dir in DOSDrivers english deutsch magyar polska russian espa* fran*; do \
+		[ -d "$$dir" ] && cp -r "$$dir" "$$STAGING/fat95/"; \
 	done; \
-	for langdir in english deutsch magyar polska russian espa* fran*; do \
-		if [ -d "$$langdir" ]; then \
-			find "$$langdir" -name "*.info" -exec cp --parents {} "$$STAGING/fat95/" \; ; \
-		fi; \
+	for f in *.info; do \
+		[ -f "$$f" ] && [ "$$f" != "fat95.info" ] && [ "$$f" != "$(README_NAME).info" ] && cp "$$f" "$$STAGING/fat95/"; \
 	done; \
 	echo "Creating LHA archive..."; \
 	rm -f "$(ARCHIVE_NAME)"; \
