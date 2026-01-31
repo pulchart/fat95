@@ -6677,7 +6677,11 @@ lob_nchar:
 	move.b	d0,(a1)+
 	bra.s	lob_nchar
 lob_ndir:
-	move.b	d0,(a1)+
+	tst.w	d2			;any chars remaining after '/'?
+	beq.s	lob_nend		;no - trailing slash, skip it
+	cmp.b	#'/',(a0)		;is next char also '/'?
+	beq.s	lob_npart		;yes - skip consecutive slashes
+	move.b	d0,(a1)+		;no - copy this '/' as path separator
 	bra.s	lob_npart
 lob_ndev:
 	move.l	LOB_NAME(a5),a1		;..eg. Workbench-Device " ^WB^:"

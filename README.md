@@ -69,6 +69,9 @@ Improvements to this handler are developed in my free time. If you'd like to sup
   - Fixes stale partition data when switching to cards with fewer partitions
   - Foreign disk formats (RDB, PFS, SFS) show appropriate status per partition
 
+* **Bug fixes**
+  - Fixed trailing and consecutive slashes in path names (e.g., `makedir cf0:temp/` now correctly creates "temp")
+
 ## Installation
 
 **Introduction**

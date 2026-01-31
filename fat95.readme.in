@@ -29,6 +29,9 @@ CHANGES IN @VERSION@ (@DATE@)
   - Foreign formats (RDB, PFS, SFS) show "Uninitialized" only for partition 1
   - Fixes stale partition data when switching to cards with fewer partitions
 
+* Bug fixes
+  - Fixed trailing and consecutive slashes in path names (e.g., "makedir cf0:temp/" now correctly creates "temp")
+
 Purpose
 =======
 

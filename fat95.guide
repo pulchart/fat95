@@ -188,6 +188,10 @@ shows all fat95 packages.
     * Fixes stale partition data when switching to cards with fewer partitions
     * Foreign disk formats (RDB, PFS, SFS) show appropriate status per partition
 
+  * @{b}Bug fixes@{ub}
+    * Fixed trailing and consecutive slashes in path names (e.g.,
+      @{fg shine}makedir cf0:temp/@{fg text} now correctly creates "temp")
+
 ----------------------------------------
 @{"<< Prev" link What_s_New_in}  @{"Contents" link Main}  @{"Next >>" link Installation}
 
