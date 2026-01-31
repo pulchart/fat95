@@ -1298,9 +1298,7 @@ udm32_next:
 
 ;--- Texts -------------------------------------------------
 
-		dc.b	'$VER: '
 		VER_STRING
-		dc.b	LF,0
 DosName:	dc.b	'dos.library',0
 HelpStr:	dc.b	'Usage: boot95 <device> [<filesystem>]',LF,0
 DefFileName:	dc.b	'L:fat95',0

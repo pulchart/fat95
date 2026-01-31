@@ -207,9 +207,7 @@ re_end:
 
 ;--- Texts -------------------------------------------------
 
-		dc.b	'$VER: '
 		VER_STRING
-		dc.b	LF,0
 DosName:	dc.b	'dos.library',0
 HelpStr:	dc.b	'usage: fat95debug <device> <logfile>',LF,0
 NoDevStr:	dc.b	'device not found.',LF,0

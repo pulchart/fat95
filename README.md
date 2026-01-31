@@ -66,7 +66,7 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 * **Improved disk change handling**
   - Non-existent partitions now show "No Disk" instead of "Uninitialized"
-  - Fixes stale partition data when switching to cards with fewer partitions
+  - Fixes stale partition data when switching to cards with fewer partitions (see [Disk Status Meanings](#disk-status-meanings))
   - Foreign disk formats (RDB, PFS, SFS) show appropriate status per partition
 
 * **Bug fixes**
@@ -91,7 +91,6 @@ These two components are connected via a **mountlist** - a configuration file th
 3. Optionally double-click example mountlist icons in `DOSDrivers/`:
    - `MS0`/`MS1` - FAT-formatted PC DD 720k floppy (mfm.device)
    - `CF0` - FAT partition on CompactFlash in PCMCIA slot (compactflash.device), supports MBR and GPT
-   
    For custom configurations, see the [Mountlist Configuration](#mountlist-configuration) section.
 4. Copy mountlists to:
    - `DEVS:DOSDrivers/` for automatic mounting at boot, or
@@ -372,15 +371,15 @@ Creates a dump of internal fat95 variables for diagnosis.
 
 Fat95 reports different disk statuses depending on what it finds:
 
-| Status | Icon | Meaning |
-|--------|------|---------|
-| **Mounted** (ID_DOS ) | `Volume name` | FAT partition found and mounted successfully |
-| **Uninitialized** (ID_NDOS) `CF0:NDOS` or `CF0:Uninitialized` | Disk present but not FAT format (e.g., RDB, PFS, SFS, FFS) or bad MBR partition table |
-| **No Disk** (ID_NONE) | (none) | No media inserted OR requested partition doesn't exist |
-| **Unreadable** (ID_BAD) | `CF0:BAD` | Disk read error or hardware failure |
-| **Busy** (ID_BUSY) | `CF0:BUSY` | Handler is inhibited (via `INHIBIT` command) |
+| Status | ID | Icon | Meaning |
+|--------|----|------|---------|
+| **Mounted** | `ID_DOS` | `Volume name` | FAT partition found and mounted successfully |
+| **Uninitialized** | `ID_NDOS` | `CF0:NDOS` or `CF0:Uninitialized` | Disk present but not FAT format (e.g., RDB, PFS, SFS, FFS) or bad MBR partition table |
+| **No Disk** | `ID_NONE` | (none) | No media inserted OR requested partition doesn't exist |
+| **Unreadable** | `ID_BAD` | `CF0:BAD` | Disk read error or hardware failure |
+| **Busy** | `ID_BUSY` | `CF0:BUSY` | Handler is inhibited (via `INHIBIT` command) |
 
-**Partition-specific behavior:**
+**Partition specific behavior**
 
 When you have multiple mount points (e.g., FAT\1, FAT\2, FAT\3) and insert a disk:
 

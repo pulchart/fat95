@@ -1636,10 +1636,7 @@ fmsg_end:
 
 ;--- Texts -------------------------------------------------
 
-	dc.b	'$VER: '
 	VER_STRING
-	dc.b	LF, 0
-	dc.b	'(c) Torsten Jager', 0
 TimerName:
 	dc.b	'timer.device',0
 SizeWarnStr1:

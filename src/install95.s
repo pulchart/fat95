@@ -1285,7 +1285,6 @@ udm32_next:
 ;--- Texts -------------------------------------------------
 
 		VER_STRING
-		dc.b	LF, 0
 DosName:	dc.b	'dos.library', 0
 Fat95Name:	dc.b	'l:'
 Fat95Name2:	dc.b	'fat95',0

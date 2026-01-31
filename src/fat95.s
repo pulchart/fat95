@@ -3275,10 +3275,9 @@ FSRName:
 
 NodeName:
 	dc.b	"fat95",0
-	dc.b	"$VER: "
 IDStr:
 	VERSION_STRING
-	dc.b	"(c) Torsten Jager", LF, 0
+	dc.b	" (c) Torsten Jager, modified 2026 by Jaroslav Pulchart", LF, 0
 	even
 
 ;--- ROM-Code init -----------------------------------------
