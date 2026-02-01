@@ -12,7 +12,7 @@
 
     @{"fat95 handler" link fat95_handler}
     @{"What's New in" link What_s_New_in}
-        @{"3.19 (31.01.2026)" link 3_19__31_01_2026_}
+        @{"3.19 (01.02.2026)" link 3_19__01_02_2026_}
     @{"Installation" link Installation}
     @{"Mountlist Configuration" link Mountlist_Configuration}
         @{"Device Driver Settings" link Device_Driver_Settings}
@@ -44,7 +44,7 @@
 @node Index "Index"
 @{b}Index@{ub}
 
-  @{"3.19 (31.01.2026)" link 3_19__31_01_2026_}
+  @{"3.19 (01.02.2026)" link 3_19__01_02_2026_}
 @{b}A@{ub}
   @{"Automatic Partition Search (Recommended)" link Automatic_Partition_Search__Recommended_}
 @{b}B@{ub}
@@ -161,15 +161,15 @@ shows all fat95 packages.
 @node What_s_New_in "What's New in"
 @{b}What's New in@{ub}
 @{i}Subsections:@{ui}
-  @{"  3.19 (31.01.2026)  " link 3_19__31_01_2026_}
+  @{"  3.19 (01.02.2026)  " link 3_19__01_02_2026_}
 
 ----------------------------------------
-@{"<< Prev" link fat95_handler}  @{"Contents" link Main}  @{"Next >>" link 3_19__31_01_2026_}
+@{"<< Prev" link fat95_handler}  @{"Contents" link Main}  @{"Next >>" link 3_19__01_02_2026_}
 
 @endnode
 
-@node 3_19__31_01_2026_ "3.19 (31.01.2026)"
-@{i}3.19 (31.01.2026)@{ui}
+@node 3_19__01_02_2026_ "3.19 (01.02.2026)"
+@{i}3.19 (01.02.2026)@{ui}
 
   * @{b}Fork of 3.18@{ub}
     * Set English as default localization for fat95 handler
@@ -231,7 +231,7 @@ file that tells AmigaOS how to mount the drive.
       Shell Command)
 
 ----------------------------------------
-@{"<< Prev" link 3_19__31_01_2026_}  @{"Contents" link Main}  @{"Next >>" link Mountlist_Configuration}
+@{"<< Prev" link 3_19__01_02_2026_}  @{"Contents" link Main}  @{"Next >>" link Mountlist_Configuration}
 
 @endnode
 

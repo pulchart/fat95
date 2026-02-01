@@ -123,11 +123,11 @@ $(VERSION_STAMP): FORCE
 		rm -f $(VERSION_STAMP).tmp; \
 	fi
 
-# Update version suffix in README.md (in-place)
-# Updates the "What's New" section header: ### 3.19 or ### 3.19-dev
+# Update version and date in README.md (in-place)
+# Updates the "What's New" section header: ### 3.19 (DD.MM.YYYY)
 version-readme:
-	$(Q)sed -i 's/^### $(VERSION_MAJOR)\.$(VERSION_MINOR)[^[:space:]]*/### $(VERSION)/' README.md
-	$(Q)echo "  README  version updated to $(VERSION)"
+	$(Q)sed -i 's/^### $(VERSION_MAJOR)\.$(VERSION_MINOR)[^ ]* ([0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{4\})/### $(VERSION) ($(DATE))/' README.md
+	$(Q)echo "  README  version updated to $(VERSION) ($(DATE))"
 
 # Version include file generation
 # Parameters: 1=file, 2=name, 3=major, 4=minor, 5=version, 6=macro_name, 7=date, 8=add_lf_null

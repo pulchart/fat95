@@ -50,7 +50,7 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 ## What's New in
 
-### 3.19 (31.01.2026)
+### 3.19 (01.02.2026)
 
 * **Fork of 3.18**
   - Set English as default localization for fat95 handler
