@@ -4,7 +4,6 @@ Author:       jaroslav.pulchart@gmail.com (Jaroslav Pulchart), based on work by 
 Type:         disk/misc
 Version:      @VERSION@
 Architecture: m68k-amigaos
-Distribution: Aminet
 Kurz:         Win95/98-kompatibles Dateisystem
 
 fat95 - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
