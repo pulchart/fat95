@@ -121,9 +121,9 @@ on Ko-fi (https://ko-fi.com/jaroslavpulchart).
   * @{b}English Amiga Forum Thread:@{ub} Discussion Thread
     (https://eab.abime.net/showthread.php?t=121575) user questions and
     troubleshooting.
-  * @{b}Aminet fat95 Advanced Search:@{ub} [CFD releases (m68k, AmigaOS)](
-https://aminet.net/search?type=advanced&name=fat95&q_path=AND&path%5B%5D=disk%2Fmisc&q_date=AND&o_date=equal&date=&q_desc=AND&desc=&q_readme=AND&readme=&q_content=AND&content=&q_arch=AND&search=search)
-shows all fat95 packages.
+  * @{b}Aminet fat95 Advanced Search:@{ub} FAT95 releases (m68k, AmigaOS)
+    (https://aminet.net/search?type=advanced&name=fat95&q_path=AND&path%5B%5D=disk%2Fmisc&q_date=AND&o_date=equal&date=&q_desc=AND&desc=&q_readme=AND&readme=&q_content=AND&content=&q_arch=AND&arch%5B%5D=m68k-amigaos&search=search)
+    shows all fat95 packages.
 
 @{b}System Requirements@{ub}
 

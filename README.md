@@ -17,8 +17,7 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 **Community Links**
 
 - **English Amiga Forum Thread:** [Discussion Thread](https://eab.abime.net/showthread.php?t=121575) user questions and troubleshooting.
-- **Aminet fat95 Advanced Search:** [CFD releases (m68k, AmigaOS)](
-  https://aminet.net/search?type=advanced&name=fat95&q_path=AND&path%5B%5D=disk%2Fmisc&q_date=AND&o_date=equal&date=&q_desc=AND&desc=&q_readme=AND&readme=&q_content=AND&content=&q_arch=AND&search=search) shows all fat95 packages.
+- **Aminet fat95 Advanced Search:** [FAT95 releases (m68k, AmigaOS)](https://aminet.net/search?type=advanced&name=fat95&q_path=AND&path%5B%5D=disk%2Fmisc&q_date=AND&o_date=equal&date=&q_desc=AND&desc=&q_readme=AND&readme=&q_content=AND&content=&q_arch=AND&arch%5B%5D=m68k-amigaos&search=search) shows all fat95 packages.
 
 **System Requirements**
 
