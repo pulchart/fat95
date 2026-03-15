@@ -49,6 +49,13 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 ## What's New in
 
+### 3.20 (16.03.2026)
+
+* **NTFS volume rejection**
+  - NTFS volumes are now explicitly rejected and reported as unrecognised instead of being incorrectly mounted as an unnamed FAT volume with its serial number as the volume name (e.g. "0000-0100").
+  - Affects GPT disks (both FAT and NTFS share the same "Microsoft Basic Data" partition GUID), MBR disks where an NTFS partition was placed in a FAT partition slot (e.g. type 0x0B/0x0C), and unpartitioned direct volume access paths.
+  - Relates to github issues: [pulchart/cfd#37](https://github.com/pulchart/cfd/issues/37), [salass00/ntfs-3g#3](https://github.com/salass00/ntfs-3g/issues/3)
+
 ### 3.19 (01.02.2026)
 
 * **Fork of 3.18**
@@ -447,6 +454,7 @@ GNU LGPL v2.1
 
 | Version | Date | Changes |
 |---------|------|---------|
+| v3.20 | 03/2026 | NTFS volume rejection |
 | v3.19 | 02/2026 | GPT partition table support, improved disk change handling, Fixed trailing slashes in path names |
 | v3.18 | 03/2013 | Open source release LGPL (Torsten Jager) |
 | v3.17 | - | No info |

@@ -5292,6 +5292,9 @@ IsBootBlock:
 	cmp.b	#36,d1			;..at least behind parameter block
 	blt.s	ibb_error
 ibb_bscheck:
+	cmp.l	#"NTFS",3(a0)		;NTFS volume (OEM ID at offset 3)..
+	beq.s	ibb_error		;..not a FAT filesystem
+
 	moveq.l	#0,d1
 	move.b	13(a0),d1		;Blocks/Cluster..
 	beq.s	ibb_error		;..is null..

@@ -4,6 +4,7 @@ Author:       jaroslav.pulchart@gmail.com (Jaroslav Pulchart), based on work by 
 Type:         disk/misc
 Version:      @VERSION@
 Architecture: m68k-amigaos
+Replaces:     disk/misc/fat95.v3.19.lha
 Kurz:         Win95/98-kompatibles Dateisystem
 
 fat95 - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
@@ -11,26 +12,15 @@ fat95 - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/mis
 CHANGES IN @VERSION@ (@DATE@)
 ============================
 
-* Fork of 3.18
-  - Set English as default localization for fat95 handler
-  - Rebuild by vasm 2.0d
-  - Consolidated documentation into fat95.guide
-
-* Detect SFS/PFS/FFS/RDB as foreign disk formats
-
-* GPT partition table support
-  - Automatic detection of GPT disks via protective MBR (type 0xEE)
-  - Scans GPT partition entries for Microsoft Basic Data partitions (FAT)
-  - Supports partition selection via DosType (same as MBR: FAT\1, FAT\2, etc.)
-
-* Improved disk change handling
-  - Non-existent partitions now show "No Disk" instead of "Uninitialized"
-  - Foreign formats (RDB, PFS, SFS) show "Uninitialized" only for partition 1
-  - Fixes stale partition data when switching to cards with fewer partitions
-
-* Bug fixes
-  - Fixed trailing slashes in path names (e.g., "makedir cf0:temp/" now correctly creates "temp")
-    WARNING: Using trailing slashes with 3.18 corrupted the filesystem
+* NTFS volume rejection
+  - NTFS volumes are now explicitly rejected and reported as unrecognised
+    instead of being incorrectly mounted as an unnamed FAT volume with its
+    serial number as the volume name (e.g. "0000-0100")
+  - Affects GPT disks where FAT and NTFS share the same partition GUID,
+    MBR disks where an NTFS partition was placed in a FAT partition slot
+    (e.g. type 0x0B/0x0C), and unpartitioned/direct volume access paths
+  - Relates to: https://github.com/pulchart/cfd/issues/37
+                https://github.com/salass00/ntfs-3g/issues/3
 
 Purpose
 =======
