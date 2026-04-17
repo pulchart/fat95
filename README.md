@@ -49,6 +49,23 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 ## What's New in
 
+### 3.21-dev (18.04.2026)
+
+This release focuses on stability and compatibility improvements across both CPU tiers (`68000`/`68010` and `68020+`)
+
+* **Improvements**
+  - Fixing an unaligned long-word compare in the NTFS boot-sector check that could raise an Address Error on 68000/010.
+  - GPT partition detection (3.19+) now follows the AmigaOS register-preservation rules; a violation could have corrupted caller state after a mount.
+  - Partition state is reset before every mount attempt, so a failed or rejected probe can no longer influence the next one.
+  - GPT FAT allowed partition types GUIDs are now both Microsoft Basic Data (`EBD0A0A2-B9E5-4433-87C0-68B6B72699C7`) and EFI System Partition (`C12A7328-F81F-11D2-BA4B-00A0C93EC93B`).
+
+* **CPU-tier builds**
+  - fat95 now ships in two CPU tiers. Copy the one matching your CPU to `L:fat95`:
+    - `l/68020/fat95` -- A1200 stock + 68020+ accelerators (030/040/060)
+    - `l/68000/fat95` -- stock A500 / A600 / A1000 / A2000 / CDTV
+  - 68020+ build is slightly smaller thanks to native 32-bit math (see [CPU tiers](#cpu-tiers)).
+  - The $VER: string is tagged [68020] or [68000] so `version l:fat95 full` show which tier is loaded.
+
 ### 3.20 (16.03.2026)
 
 * **NTFS volume rejection**
@@ -67,7 +84,7 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 * **GPT partition table support**
   - Automatic detection of GPT disks via protective MBR (type 0xEE)
-  - Scans GPT partition entries for Microsoft Basic Data partitions (FAT)
+  - Scans GPT partition entries whose type GUID is Microsoft Basic Data or EFI System Partition (FAT candidates)
   - Supports partition selection via DosType (same as MBR: FAT\1, FAT\2, etc.)
 
 * **Improved disk change handling**
@@ -92,15 +109,41 @@ These two components are connected via a **mountlist** - a configuration file th
 
 **Installation**
 
-1. Edit the `install_fat95` text file for your language.
-2. Double-click the `install_fat95` icon to activate the changes.
-3. Optionally double-click example mountlist icons in `DOSDrivers/`:
+1. Pick the CPU tier that matches your machine (see [CPU tiers](#cpu-tiers)) and copy the matching `l/<tier>/fat95` to `L:fat95`:
+   ```
+   # A1200 stock or any 68020+/030/040/060 accelerator
+   Copy fat95/l/68020/fat95 L:fat95
+
+   # Stock A500 / A600 / A1000 / A2000 / CDTV (68000)
+   Copy fat95/l/68000/fat95 L:fat95
+   ```
+2. Edit the `install_fat95` text file for your language.
+3. Double-click the `install_fat95` icon to activate the changes.
+4. Optionally double-click example mountlist icons in `DOSDrivers/`:
    - `MS0`/`MS1` - FAT-formatted PC DD 720k floppy (mfm.device)
    - `CF0` - FAT partition on CompactFlash in PCMCIA slot (compactflash.device), supports MBR and GPT
    For custom configurations, see the [Mountlist Configuration](#mountlist-configuration) section.
-4. Copy mountlists to:
+5. Copy mountlists to:
    - `DEVS:DOSDrivers/` for automatic mounting at boot, or
    - `SYS:Storage/DOSDrives/` for manual mounting via shell command (Method A: Shell Command)
+
+### CPU tiers
+
+fat95 3.21+ ships as two CPU tiers. Copy the one that matches your CPU to `L:fat95`:
+
+| Tier | File | Target |
+|------|------|--------|
+| 68020+ | `l/68020/fat95` | A1200 stock + any 68020 / 030 / 040 / 060 accelerator |
+| 68000  | `l/68000/fat95` | stock A500 / A600 / A1000 / A2000 / CDTV |
+
+The two tiers are functionally identical. The 68020+ tier is slightly smaller and uses native 32-bit `mulu.l` / `divul.l` / `bfffo`; the 68000 tier falls back to library routines and is the only version that is safe to run on a plain 68000.
+
+You can confirm which tier you have loaded by reading the `$VER:` string:
+
+```
+version fat95
+-> fat95 3.21 (17.04.2026) [68020]
+```
 
 ## Mountlist Configuration
 
@@ -237,8 +280,14 @@ For MBR disks, fat95 recognizes these partition types:
 | 0x0E | FAT16, LBA |
 | 0x05, 0x0F | Extended partition (for logical partitions) |
 
-For GPT disks, fat95 counts only FAT partitions (Microsoft Basic Data GUID: `EBD0A0A2-B9E5-4433-87C0-68B6B72699C7`).
-Non-FAT partitions (EFI System, Windows Recovery, etc.) are automatically skipped.
+For GPT disks, fat95 considers only partition entries whose **type GUID** is one of the following:
+
+| Type GUID | Description |
+|-----------|-------------|
+| `EBD0A0A2-B9E5-4433-87C0-68B6B72699C7` | Microsoft Basic Data |
+| `C12A7328-F81F-11D2-BA4B-00A0C93EC93B` | EFI System Partition |
+
+Other GPT entries (Windows Recovery, Linux filesystems, unused slots, etc.) are skipped when assigning FAT\1, FAT\2, …
 
 **GPT vs MBR Detection**
 
@@ -454,6 +503,7 @@ GNU LGPL v2.1
 
 | Version | Date | Changes |
 |---------|------|---------|
+| v3.21 | 04/2026 | 68000 NTFS-detect crash fix, GetDiskParams register/state safety, CPU-tier builds (68020+ / 68000) |
 | v3.20 | 03/2026 | NTFS volume rejection |
 | v3.19 | 02/2026 | GPT partition table support, improved disk change handling, Fixed trailing slashes in path names |
 | v3.18 | 03/2013 | Open source release LGPL (Torsten Jager) |

@@ -4,7 +4,7 @@ Author:       jaroslav.pulchart@gmail.com (Jaroslav Pulchart), based on work by 
 Type:         disk/misc
 Version:      @VERSION@
 Architecture: m68k-amigaos
-Replaces:     disk/misc/fat95.v3.19.lha
+Replaces:     disk/misc/fat95.v3.20.lha
 Kurz:         Win95/98-kompatibles Dateisystem
 
 fat95 - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
@@ -12,15 +12,29 @@ fat95 - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/mis
 CHANGES IN @VERSION@ (@DATE@)
 ============================
 
-* NTFS volume rejection
-  - NTFS volumes are now explicitly rejected and reported as unrecognised
-    instead of being incorrectly mounted as an unnamed FAT volume with its
-    serial number as the volume name (e.g. "0000-0100")
-  - Affects GPT disks where FAT and NTFS share the same partition GUID,
-    MBR disks where an NTFS partition was placed in a FAT partition slot
-    (e.g. type 0x0B/0x0C), and unpartitioned/direct volume access paths
-  - Relates to: https://github.com/pulchart/cfd/issues/37
-                https://github.com/salass00/ntfs-3g/issues/3
+This release focuses on stability and compatibility improvements across
+both CPU tiers (68000/68010 and 68020+)
+
+* Improvements
+  - Fixing an unaligned long-word compare in the NTFS boot-sector
+    check that could raise an Address Error on 68000/010.
+  - GPT partition detection (3.19+) now follows the AmigaOS
+    register-preservation rules; a violation could have corrupted
+    caller state after a mount.
+  - Partition state is reset before every mount attempt, so a failed
+    or rejected probe can no longer influence the next one.
+  - GPT FAT allowed partition types GUIDs are now both Microsoft Basic Data
+    (EBD0A0A2-B9E5-4433-87C0-68B6B72699C7) and EFI System Partition
+    (C12A7328-F81F-11D2-BA4B-00A0C93EC93B).
+
+* CPU-tier builds
+  - fat95 now ships in two CPU tiers; copy the one matching your
+    CPU to L:fat95:
+      l/68020/fat95 - A1200 stock + 68020+ accelerators (030/040/060)
+      l/68000/fat95 - stock A500 / A600 / A1000 / A2000 / CDTV
+  - 68020+ build is slightly smaller thanks to native 32-bit math.
+  - The $VER: string is tagged [68020] or [68000] so `version l:fat95 full`
+    show which tier is loaded.
 
 Purpose
 =======
@@ -84,7 +98,8 @@ CONTENTS
 ========
 fat95/fat95.guide - FAT95 filesystem handler documentation
 
-fat95/l/fat95 - FAT95 filesystem handler
+fat95/l/68020/fat95 - FAT95 filesystem handler, 68020+ tier (A1200 + accelerators)
+fat95/l/68000/fat95 - FAT95 filesystem handler, 68000 tier (stock A500/A600/A2000)
 fat95/l/install95 - Locale installer tool (read/write locale files)
 fat95/c/dd - Raw block transfer tool
 fat95/c/debug95 - Debug information tool

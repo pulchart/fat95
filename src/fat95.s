@@ -30,6 +30,35 @@ CALLSAME macro
 	jsr	\1(a6)			;same library as last CALLxxx
 	endm
 
+; --- 32-bit math: inline on 68020+, bsr to helper on 68000 ---
+; The helper bodies (UMul32 / UDivMod32 / Log2) are compiled out of
+; the 020+ binary via `ifnd __68020__` below.
+
+UMUL32	macro				;d0 = d0 * d1 (u32)
+	ifd	__68020__
+	mulu.l	d1,d0
+	else
+	bsr.w	UMul32
+	endif
+	endm
+
+UDIVMOD32 macro				;d0 = d0/d1, d1 = d0 mod d1 (u32)
+	ifd	__68020__
+	divul.l	d1,d1:d0
+	else
+	bsr.w	UDivMod32
+	endif
+	endm
+
+LOG2	macro				;d0 = log2(d0), d0 != 0
+	ifd	__68020__
+	bfffo	d0{0:32},d0
+	eori.w	#31,d0
+	else
+	bsr.w	Log2
+	endif
+	endm
+
 _AbsExecBase	= 4
 
 Forbid		= -132
@@ -3875,14 +3904,14 @@ FormatDisk:
 fd_t1:
 	move.l	FirstBlock(a4),d0
 	move.l	d2,d1
-	bsr.w	UDivMod32
+	UDIVMOD32
 	tst.l	d1
 	bne.s	fd_t2
 
 	move.l	FirstBlock(a4),d0
 	add.l	TotalBlocks(a4),d0
 	move.l	d2,d1
-	bsr.w	UDivMod32
+	UDIVMOD32
 	tst.l	d1
 	beq.s	fd_t3
 fd_t2:
@@ -4038,7 +4067,7 @@ fmd_xbfill:
 	bsr.w	_WBlock			;dupl
 	moveq.l	#0,d0
 	move.b	BlocksPerCluster(a4),d0
-	bsr.w	Log2
+	LOG2
 	move.l	TotalBlocks(a4),d1
 	sub.l	RootDirEnd(a4),d1	;# free data blocks
 	lsr.l	d0,d1
@@ -5168,11 +5197,11 @@ SetIntParams:
 	subq.l	#1,d0
 	move.l	d0,BlockMask(a4)
 	addq.l	#1,d0
-	bsr.w	Log2
+	LOG2
 	move.w	d0,BlockShift(a4)
 	move.w	d0,d1
 	move.l	PhysSize(a4),d0
-	bsr.w	Log2
+	LOG2
 	sub.w	d1,d0
 	move.w	d0,PhysShift(a4)	;normal 0
 	movem.l	(sp)+,d0-d1
@@ -5306,7 +5335,7 @@ ibb_not_ntfs:
 	beq.s	ibb_error		;..is null..
 
 	move.l	d1,d0
-	bsr.w	Log2
+	LOG2
 	bclr	d0,d1
 	tst.l	d1
 	bne.s	ibb_error		;..or no power of 2
@@ -5315,7 +5344,7 @@ ibb_not_ntfs:
 	lsl.w	#8,d1
 	move.b	11(a0),d1		;logical Block size..
 	move.l	d1,d0
-	bsr.w	Log2
+	LOG2
 	cmp.w	#9,d0
 	bcs.s	ibb_error		;..is < 512,..
 
@@ -5754,7 +5783,7 @@ gdp_5:
 	subq.l	#1,d0
 	move.l	d0,ClusterBlockMask(a4)
 	addq.l	#1,d0
-	bsr.w	Log2
+	LOG2
 	move.w	d0,ClusterShift(a4)
 	moveq.l	#0,d1
 	move.w	BlockSize(a4),d1
@@ -5766,7 +5795,7 @@ gdp_5:
 	moveq.l	#0,d0
 	move.b	NumFATCopies(a4),d0
 	move.l	BlocksPerFAT(a4),d1
-	bsr.w	UMul32
+	UMUL32
 	moveq.l	#0,d1
 	move.w	FATStartBlock(a4),d1
 	add.l	d0,d1			;first Block # after FATs
@@ -5836,7 +5865,7 @@ gdp_end:
 	bsr.w	DoTimer
 	move.w	d3,d0
 	ext.l	d0
-	movem.l	(sp)+,d2-d4/a2
+	movem.l	(sp)+,d2-d7/a2
 	unlk	a5
 	rts
 
@@ -5980,7 +6009,7 @@ alo_fatsize:
 	lsl.l	#1,d1			;Nibbles per block
 	add.l	d1,d0
 	subq.l	#1,d0			;round up
-	bsr.w	UDivMod32
+	UDIVMOD32
 	move.l	d0,BlocksPerFAT(a4)
 	moveq.l	#1,d1			;1 (FAT12, FAT16) or..
 	tst.w	FATType(a4)
@@ -6018,7 +6047,7 @@ rge_again:
 	move.l	FirstBlock(a4),d0
 	lsr.l	d3,d0
 	move.l	d2,d1
-	bsr.w	UDivMod32
+	UDIVMOD32
 	tst.l	d1
 	bne.s	rge_pseudo		;no whole cylinder
 
@@ -6027,7 +6056,7 @@ rge_again:
 	add.l	TotalBlocks(a4),d0
 	lsr.l	d3,d0
 	move.l	d2,d1
-	bsr.w	UDivMod32
+	UDIVMOD32
 	tst.l	d1
 	bne.s	rge_pseudo		;dito
 
@@ -6484,16 +6513,16 @@ dge_1:
 	lsl.l	d4,d0
 	move.w	d0,BlocksPerTrack(a4)
 	lsr.l	d4,d0
-	bsr.w	UMul32
+	UMUL32
 	move.l	d0,CylSectors(a4)
 	move.l	d0,d3
 	move.l	EnvecBuf+DE_LowCyl(a4),d1
-	bsr.w	UMul32
+	UMUL32
 	lsl.l	d4,d0
 	move.l	d0,FirstBlock(a4)
 	move.l	d3,d0
 	move.l	d2,d1
-	bsr.w	UMul32
+	UMUL32
 	move.l	d0,TotalSectors(a4)
 	lsl.l	d4,d0			;LastBlock + 1, see below
 	move.l	d0,d1
@@ -8775,7 +8804,7 @@ rf_fat:
 	add.l	d0,d3			;..try next FAT copy..
 	moveq.l	#0,d1
 	move.b	NumFATCopies(a4),d1
-	bsr.w	UMul32
+	UMUL32
 	cmp.l	d0,d3
 	bcs.s	rf_fat
 
@@ -10813,12 +10842,12 @@ SetFileDate:
 	move.l	a5,a1
 	move.l	(a0),d0			;DS_Ticks
 	move.l	#60*50,d1
-	bsr.w	UDivMod32
+	UDIVMOD32
 	move.l	d1,-(a1)
 	add.l	-(a0),d0		;DS_Mins
 	moveq.l	#(24*60)>>5,d1
 	lsl.l	#5,d1
-	bsr.w	UDivMod32
+	UDIVMOD32
 	move.l	d1,-(a1)
 	add.l	-(a0),d0		;DS_Days
 	move.l	d0,-(a1)
@@ -11094,7 +11123,7 @@ SecurityErase:
 ;- - open progresss window - - - - - - - - - - - - - - - - -
 
 	move.l	d3,d0
-	bsr.w	Log2
+	LOG2
 	subq.w	#6,d0			;update progress display in 64..
 	bpl.s	se_1
 
@@ -11277,7 +11306,7 @@ ScanDisk:
 ;- - open progresss window - - - - - - - - - - - - - - - - -
 
 	move.l	d3,d0
-	bsr.w	Log2
+	LOG2
 	subq.w	#6,d0			;update progress bar in 64..
 	moveq.l	#0,d1
 	bset	d0,d1
@@ -12002,9 +12031,9 @@ sd_bar:
 	moveq.l	#0,d0
 	move.w	SD_BARWIDTH(a5),d0
 	move.l	SD_DONE(a5),d1
-	bsr.w	UMul32
+	UMUL32
 	move.l	SD_CLUSTERS(a5),d1
-	bsr.w	UDivMod32
+	UDIVMOD32
 	move.w	d0,d2
 	move.w	SD_BARPOS(a5),d0
 	cmp.w	d0,d2
@@ -12470,7 +12499,7 @@ Date2MS:
 	move.l	d2,d0
 	addq.l	#1,d0
 	move.l	#400*365+100-4+1,d1	;remove leap days:
-	bsr.w	UDivMod32
+	UDIVMOD32
 	move.l	d2,d1
 	sub.l	d0,d1			;-1 every 400 years
 	move.l	d1,d0
@@ -12710,7 +12739,7 @@ Num2Str:
 	move.l	a1,a0		;remember buffer start
 n2s_loop1:
 	moveq.l	#10,d1
-	bsr.s	UDivMod32
+	UDIVMOD32
 	or.b	#'0',d1
 	move.b	d1,(a1)+	;append digit
 	tst.l	d0
@@ -12733,7 +12762,8 @@ n2s_end:
 	movem.l	(sp)+,d0-d2/a0
 	rts
 
-;*** longword math *****************************************
+;*** longword math (68000 fallbacks; 020+ inlines via macros) ***
+	ifnd	__68020__
 ; d0 *= d1
 
 UMul32:
@@ -12815,6 +12845,8 @@ lg2_loop:
 	move.l	d1,d0
 	move.l	(sp)+,d1
 	rts
+
+	endif	;__68020__
 
 ;*** from dos.library **************************************
 
