@@ -5349,6 +5349,15 @@ GetDiskParams:
 
 	clr.b	SearchCount(a4)
 	bsr.w	FreeFATBuf
+	;Clear partition-state before probing, so a failed or partial
+	;detection cannot leak stale FirstBlock/TotalBlocks/PartitionNum
+	;/FATType values from a previous successful mount into gdp_ndos
+	;(which reads them) or into the next probe cycle.
+	clr.l	FirstBlock(a4)
+	clr.l	TotalBlocks(a4)
+	clr.l	HiddenBlocks(a4)
+	clr.w	PartitionNum(a4)
+	clr.w	FATType(a4)
 	bsr.w	DiskStatus
 	move.w	d0,d3
 	beq.w	gdp_none		;no disk
@@ -5537,20 +5546,23 @@ gdp_gpt_found:
 	tst.l	d3
 	bne.s	gdp_gpt_cleanup		;beyond 32-bit addressing
 
-	;Calculate size and set partition info
+	;Verify partition end is within 32-bit range BEFORE touching
+	;any global state - a failed Test64 must not leave half-written
+	;FirstBlock/TotalBlocks/HiddenBlocks visible to the caller.
 	sub.l	d0,d1
 	addq.l	#1,d1			;size = last - first + 1
-	move.w	#2,FATType(a4)		;auto-detect FAT type
-	move.l	d0,FirstBlock(a4)
-	move.l	d1,TotalBlocks(a4)
-	clr.l	HiddenBlocks(a4)
-
-	;Verify partition end is within 32-bit range
+	move.l	d0,d2			;save first LBA across Test64
 	add.l	d1,d0
 	subq.l	#1,d0
 	bsr.w	Test64
 	tst.l	d0
 	beq.s	gdp_gpt_cleanup		;partition exceeds 4 Gbyte
+
+	;Range OK - commit partition info to globals
+	move.w	#2,FATType(a4)		;auto-detect FAT type
+	move.l	d2,FirstBlock(a4)
+	move.l	d1,TotalBlocks(a4)
+	clr.l	HiddenBlocks(a4)
 
 	;Restore d3 and use shared boot block validation
 	move.w	(sp)+,d3		;restore disk status
