@@ -5292,8 +5292,14 @@ IsBootBlock:
 	cmp.b	#36,d1			;..at least behind parameter block
 	blt.s	ibb_error
 ibb_bscheck:
-	cmp.l	#"NTFS",3(a0)		;NTFS volume (OEM ID at offset 3)..
-	beq.s	ibb_error		;..not a FAT filesystem
+	;Reject NTFS (OEM ID "NTFS    " at offset 3).  3(a0) is an odd
+	;address, so a `cmp.l #"NTFS",3(a0)` would Address-Error on 68000.
+	;Check byte at offset 3 first, then the remaining aligned long.
+	cmp.b	#'N',3(a0)		;NTFS OEM ID byte 0..
+	bne.s	ibb_not_ntfs
+	cmp.l	#"TFS ",4(a0)		;..bytes 1..4 (aligned long)
+	beq.w	ibb_error		;NTFS volume - not a FAT filesystem
+ibb_not_ntfs:
 
 	moveq.l	#0,d1
 	move.b	13(a0),d1		;Blocks/Cluster..
