@@ -5487,50 +5487,65 @@ gdp_gpt_p1:
 
 	;Scan GPT entries for FAT partition
 	moveq.l	#0,d7			;FAT partition counter
-	moveq.l	#0,d0			;current entry index
+	moveq.l	#0,d0			;current entry index (32-bit)
 gdp_gpt_loop:
-	cmp.w	d5,d0			;scanned all entries?
+	cmp.l	d5,d0			;scanned all entries? (32-bit index vs count)
 	bcc.w	gdp_gpt_cleanup		;not found
 
-	;Calculate LBA and offset for this entry
-	move.l	d0,d1
-	mulu.w	d6,d1			;byte offset = index * entry_size
-	move.w	BlockSize(a4),d3
-	divu.w	d3,d1			;d1.w = block offset, remainder in high word
-	swap	d1
-	move.w	d1,d3			;d3 = byte offset within block
-	clr.w	d1			;clear remainder from low word
-	swap	d1			;d1 = block offset (quotient only)
-	add.l	d4,d1			;d1 = absolute LBA
-
-	;Read block containing this entry
+	;Calculate LBA and byte-offset for this entry
 	move.l	d0,-(sp)		;save entry index
-	move.l	d1,d0
+	move.l	d6,d1			;d1 = entry size
+	UMUL32				;d0 = entry_idx * entry_size (byte offset)
+	moveq.l	#0,d1
+	move.w	BlockSize(a4),d1	;BlockSize fits in 16 bits (512..4096)
+	UDIVMOD32			;d0 = block offset (quot), d1 = byte offset in block (rem)
+	move.l	d1,d3			;d3 = byte offset within block
+	add.l	d4,d0			;d0 = absolute LBA
+
+	;Read block containing this entry (SingleBuf cache absorbs repeats)
 	bsr.w	ReadSingle
 	move.l	(sp)+,d1		;restore entry index to d1 temporarily
 	tst.l	d0			;check if read succeeded
-	beq.s	gdp_gpt_cleanup		;read failed
+	beq.w	gdp_gpt_cleanup		;read failed
 	move.l	d0,a1			;block data
 	move.l	d1,d0			;restore entry index to d0
 
-	add.w	d3,a1			;a1 = &partition entry
+	add.w	d3,a1			;a1 = &partition entry (d3 < BlockSize, fits pos. word)
 
 	;Check if entry is used (GUID not all zeros)
 	tst.l	(a1)
 	beq.s	gdp_gpt_next		;unused entry
 
-	;Check partition type GUID for Microsoft Basic Data
-	;GUID: EBD0A0A2-B9E5-4433-87C0-68B6B72699C7 (little-endian)
-	cmp.l	#$A2A0D0EB,(a1)		;first 4 bytes (already little-endian in memory)
-	bne.s	gdp_gpt_next		;not FAT partition
+	;Check partition type GUID (full 16 bytes) against FAT-carrying GUIDs:
+	;  EBD0A0A2-B9E5-4433-87C0-68B6B72699C7  Microsoft Basic Data
+	;  C12A7328-F81F-11D2-BA4B-00A0C93EC93B  EFI System Partition
+	cmp.l	#$A2A0D0EB,(a1)		;MS Basic Data
+	bne.s	gdp_gpt_try_esp
+	cmp.l	#$E5B93344,4(a1)
+	bne.s	gdp_gpt_try_esp
+	cmp.l	#$87C068B6,8(a1)
+	bne.s	gdp_gpt_try_esp
+	cmp.l	#$B72699C7,12(a1)
+	beq.s	gdp_gpt_match
 
+gdp_gpt_try_esp:
+	cmp.l	#$28732AC1,(a1)		;EFI System Partition
+	bne.s	gdp_gpt_next
+	cmp.l	#$1FF8D211,4(a1)
+	bne.s	gdp_gpt_next
+	cmp.l	#$BA4B00A0,8(a1)
+	bne.s	gdp_gpt_next
+	cmp.l	#$C93EC93B,12(a1)
+	bne.s	gdp_gpt_next
+
+gdp_gpt_match:
 	;Found FAT partition - is it the one we want?
 	cmp.w	d2,d7			;d7 = FAT partition counter, d2 = requested index
 	beq.s	gdp_gpt_found
 	addq.w	#1,d7			;next FAT partition
 gdp_gpt_next:
-	addq.w	#1,d0			;next entry
-	bra.s	gdp_gpt_loop
+	addq.l	#1,d0			;next entry (32-bit)
+	bra.w	gdp_gpt_loop
 
 gdp_gpt_found:
 	;Get partition start and end LBA (little-endian, 64-bit)
