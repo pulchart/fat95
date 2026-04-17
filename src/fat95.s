@@ -5343,7 +5343,7 @@ ibb_error:
 
 GetDiskParams:
 	link.w	a5,#-GPA_TABSIZE
-	movem.l	d2-d4/a2,-(sp)
+	movem.l	d2-d7/a2,-(sp)		;GPT path uses d5/d6/d7 too
 
 ;- - general check - - - - - - - - - - - - - - - - - - - - -
 
