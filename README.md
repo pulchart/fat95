@@ -49,7 +49,7 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 ## What's New in
 
-### 3.21-dev (18.04.2026)
+### 3.21 (18.04.2026)
 
 This release focuses on stability and compatibility improvements across both CPU tiers (`68000`/`68010` and `68020+`)
 
