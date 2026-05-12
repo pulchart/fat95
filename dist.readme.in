@@ -12,7 +12,23 @@ fat95 - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/mis
 CHANGES IN @VERSION@ (@DATE@)
 ============================
 
-This release contains internal microoptimizations and minor size reductions.
+This release improves ROM resident handling:
+
+- ROM resident installation now register FAT\0 through FAT\8 in
+  FileSystem.resource at boot, so any partition with one of those
+  DosTypes, whether RDB auto-mounted or mounted later via a
+  mountlist / mount command, uses the ROM handler directly and
+  skips loading L:fat95 from disk. Previously the ROM resident
+  registration didn't actually run at boot, so even with fat95
+  baked into a Kickstart ROM every FAT mount fell back to loading
+  L:fat95 from disk.
+
+- New c/lsfsres tool lists every entry in FileSystem.resource with
+  DosType, version, SegList address, handler name, and a [ROM]/[RAM]
+  tag. Useful for confirming which filesystem handlers are active
+  and whether they come from ROM or disk.
+
+and contains internal microoptimisations and minor size reductions:
 
 - Several dozen inner loops optimised for both CPU tiers.
 - Directory block clearing and file delete are faster on 68000.
@@ -89,6 +105,7 @@ fat95/c/dd - Raw block transfer tool
 fat95/c/debug95 - Debug information tool
 fat95/c/SetFileSize - File size modification utility
 fat95/c/boot95 - Boot partition creation tool
+fat95/c/lsfsres - FileSystem.resource entry lister
 
 fat95/DOSDrivers/ - Mount list examples
 

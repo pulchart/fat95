@@ -106,6 +106,13 @@ ZCLRB	macro				;clear byte at \1; \2 = zero reg (ignored on 020+)
 	endif
 	endm
 
+; --- ROM-resident InitCode tunables ----------------------------
+; When fat95 is baked into a Kickstart ROM, InitCode registers one
+; FileSysEntry per FAT\<n> partition selector in FileSystem.resource so
+; MountList entries with any of those DOS types match the ROM handler.
+; 0 = floppy, 1..4 = MBR primaries, 5..8 = logical/extended drives.
+FAT_MAX_REG_VARIANT	equ	8
+
 _AbsExecBase	= 4
 
 Forbid		= -132
@@ -972,9 +979,11 @@ s_resident:
 	dc.w	RTC_MATCHWORD
 	dc.l	s_resident
 	dc.l	CodeEnd
-	dc.b	0, FILE_VERSION, 0, 0
+	; RT_FLAGS=RTF_COLDSTART so exec's InitResidentLists invokes
+	; InitCode when fat95 is baked into a Kickstart ROM.
+	dc.b	1, FILE_VERSION, 0, 0
 	dc.l	NodeName
-	dc.l	IDStr
+	dc.l	IDStr+6			;skip "$VER: " prefix so RT_IdString
 	dc.l	InitCode
 	dc.l	UIModule-Start		;extra info for Install95
 s_start:
@@ -994,7 +1003,7 @@ s_start:
 	move.l	d2,(a4)			;DebugSize
 	move.w	#FILE_VERSION<<8+FILE_REVISION,DebugVersion(a4)
 	move.l	(_AbsExecBase).w,ExecBase(a4)
-	lea	IDStr(pc),a1
+	lea	IDStr+6(pc),a1		;skip "$VER: " prefix for clean LN_Name
 	move.l	a1,ChangeInt+LN_Name(a4)
 	move.l	a4,ChangeInt+IS_Data(a4)
 	lea	IntCode(pc),a0
@@ -3345,16 +3354,32 @@ NodeName:
 	dc.b	"fat95",0
 IDStr:
 	VERSION_STRING
-	dc.b	" (c) Torsten Jager, modified 2026 by Jaroslav Pulchart", LF, 0
+	dc.b	0
 	even
 
 ;--- ROM-Code init -----------------------------------------
 ; d0 <- 0
 ; a0 <- SegList
 ; a6 <- &ExecBase
+;
+; Register FAT\0..FAT\FAT_MAX_REG_VARIANT in FileSystem.resource so
+; entries with any partition-selector DOS type match the ROM handler.
+; d4 survives bsr to RegisterFS (not in its save list).
 
 InitCode:
-	move.l	#"FAT"<<8+1,d0		;continued below
+	moveq.l	#0,d4			;variant counter (FAT\<d4>)
+ic_loop:
+	; "FAT" is read as three packed ASCII bytes (big-endian):
+	;   'F'=$46, 'A'=$41, 'T'=$54  ->  $00464154
+	; Shifting left 8 bits parks them in the top three bytes:
+	;   "FAT"<<8  ->  $46415400  (DOS type FAT\0, low byte = selector)
+	move.l	#"FAT"<<8,d0
+	or.b	d4,d0			;d0 = FAT\<d4> ($46415400 | d4)
+	bsr.s	RegisterFS		;d0 -> SegList or 0
+	addq.b	#1,d4
+	cmp.b	#FAT_MAX_REG_VARIANT,d4
+	bls.s	ic_loop
+	rts				;last call's SegList/0 is the Resident return
 
 ;--- register with filesystem.resource ---------------------
 ; d0 <- DosType
@@ -3384,7 +3409,8 @@ rfs_search:
 	tst.l	LN_Name(a3)
 	bne.s	rfs_ok
 rfs_name:
-	lea	IDStr(pc),a1
+	; Skip the "$VER: " prefix (6 bytes) so the FileSysEntry's
+	lea	IDStr+6(pc),a1
 	move.l	a1,LN_Name(a3)
 rfs_ok:
 	move.l	FSE_SegList(a3),d0

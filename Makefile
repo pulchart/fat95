@@ -7,7 +7,7 @@
 VERSION_MAJOR = 3
 VERSION_MINOR = 22
 VERSION_SUFFIX = -dev
-DATE = 03.05.2026
+DATE = 13.05.2026
 
 # Tools versions
 INSTALL95_VERSION_MAJOR = 3
@@ -35,6 +35,11 @@ BOOT95_VERSION_MINOR = 19
 BOOT95_VERSION_SUFFIX =
 BOOT95_DATE = 25.01.2026
 
+LSFSRES_VERSION_MAJOR = 1
+LSFSRES_VERSION_MINOR = 0
+LSFSRES_VERSION_SUFFIX = -dev
+LSFSRES_DATE = 13.05.2026
+
 # Compact date for any suffix-based filename stamping (DD.MM.YYYY -> YYYYMMDD)
 DATE_COMPACT = $(shell echo "$(DATE)" | awk -F'.' '{printf "%04d%02d%02d", $$3, $$2, $$1}')
 
@@ -52,6 +57,7 @@ DD_VERSION = $(DD_VERSION_MAJOR).$(DD_VERSION_MINOR)$(DD_VERSION_SUFFIX)
 DEBUG95_VERSION = $(DEBUG95_VERSION_MAJOR).$(DEBUG95_VERSION_MINOR)$(DEBUG95_VERSION_SUFFIX)
 SETFILESIZE_VERSION = $(SETFILESIZE_VERSION_MAJOR).$(SETFILESIZE_VERSION_MINOR)$(SETFILESIZE_VERSION_SUFFIX)
 BOOT95_VERSION = $(BOOT95_VERSION_MAJOR).$(BOOT95_VERSION_MINOR)$(BOOT95_VERSION_SUFFIX)
+LSFSRES_VERSION = $(LSFSRES_VERSION_MAJOR).$(LSFSRES_VERSION_MINOR)$(LSFSRES_VERSION_SUFFIX)
 
 # Generate version include files for assembler
 VERSION_FAT95_INC = src/fat95_version.i
@@ -60,6 +66,7 @@ VERSION_DD_INC = src/dd_version.i
 VERSION_DEBUG95_INC = src/debug95_version.i
 VERSION_SETFILESIZE_INC = src/setfilesize_version.i
 VERSION_BOOT95_INC = src/boot95_version.i
+VERSION_LSFSRES_INC = src/lsfsres_version.i
 
 # Verbose mode (V=1 for verbose output)
 ifeq ($(V),1)
@@ -123,6 +130,9 @@ TARGET_SETFILESIZE = dist/c/SetFileSize
 SOURCE_BOOT95 = $(SRCDIR)/boot95.s
 TARGET_BOOT95 = dist/c/boot95
 
+SOURCE_LSFSRES = $(SRCDIR)/lsfsres.s
+TARGET_LSFSRES = dist/c/lsfsres
+
 # Files: Release
 RELEASE_NAME = fat95.v$(VERSION_FILENAME)
 ARCHIVE_NAME = $(RELEASE_NAME).lha
@@ -136,7 +146,7 @@ LHA = lha
 # ============================================================
 
 # Default target: build both CPU tiers + all tools
-all: check-vasm version-readme $(DRIVER_TARGETS) $(TARGET_INSTALL95) $(TARGET_DD) $(TARGET_DEBUG95) $(TARGET_SETFILESIZE) $(TARGET_BOOT95)
+all: check-vasm version-readme $(DRIVER_TARGETS) $(TARGET_INSTALL95) $(TARGET_DD) $(TARGET_DEBUG95) $(TARGET_SETFILESIZE) $(TARGET_BOOT95) $(TARGET_LSFSRES)
 
 # Generate version include file (always check, only update if changed)
 # Uses a stamp file to track the current version string
@@ -202,6 +212,9 @@ $(VERSION_SETFILESIZE_INC): $(VERSION_STAMP)
 $(VERSION_BOOT95_INC): $(VERSION_STAMP)
 	$(call gen_version_inc,$@,boot95,$(BOOT95_VERSION_MAJOR),$(BOOT95_VERSION_MINOR),$(BOOT95_VERSION),VER_STRING,$(BOOT95_DATE),1)
 
+$(VERSION_LSFSRES_INC): $(VERSION_STAMP)
+	$(call gen_version_inc,$@,lsfsres,,,$(LSFSRES_VERSION),VER_STRING,$(LSFSRES_DATE),1)
+
 # Build fat95 handler, 68020+ tier
 $(TARGET_020): $(SOURCE) $(VERSION_FAT95_INC)
 	$(Q)mkdir -p $(OUTDIR_020)
@@ -247,6 +260,12 @@ $(TARGET_BOOT95): $(SOURCE_BOOT95) $(VERSION_BOOT95_INC)
 	$(Q)$(VASM) $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
+$(TARGET_LSFSRES): $(SOURCE_LSFSRES) $(VERSION_LSFSRES_INC)
+	$(Q)mkdir -p c
+	$(Q)echo "  VASM    $@"
+	$(Q)$(VASM) $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
+	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
+
 # Convenience phonies per tier
 fat95: check-vasm $(DRIVER_TARGETS)
 fat95-020: check-vasm $(TARGET_020)
@@ -256,6 +275,7 @@ dd: check-vasm $(TARGET_DD)
 debug95: check-vasm $(TARGET_DEBUG95)
 setfilesize: check-vasm $(TARGET_SETFILESIZE)
 boot95: check-vasm $(TARGET_BOOT95)
+lsfsres: check-vasm $(TARGET_LSFSRES)
 
 # ============================================================
 # Release targets
@@ -269,8 +289,9 @@ TOOLS = fat95_68020:$(TARGET_020):$(VERSION):$(DATE) \
 	dd:$(TARGET_DD):$(DD_VERSION):$(DD_DATE) \
 	debug95:$(TARGET_DEBUG95):$(DEBUG95_VERSION):$(DEBUG95_DATE) \
 	SetFileSize:$(TARGET_SETFILESIZE):$(SETFILESIZE_VERSION):$(SETFILESIZE_DATE) \
-	boot95:$(TARGET_BOOT95):$(BOOT95_VERSION):$(BOOT95_DATE)
-TOOLS_TARGETS = $(DRIVER_TARGETS) $(TARGET_INSTALL95) $(TARGET_DD) $(TARGET_DEBUG95) $(TARGET_SETFILESIZE) $(TARGET_BOOT95)
+	boot95:$(TARGET_BOOT95):$(BOOT95_VERSION):$(BOOT95_DATE) \
+	lsfsres:$(TARGET_LSFSRES):$(LSFSRES_VERSION):$(LSFSRES_DATE)
+TOOLS_TARGETS = $(DRIVER_TARGETS) $(TARGET_INSTALL95) $(TARGET_DD) $(TARGET_DEBUG95) $(TARGET_SETFILESIZE) $(TARGET_BOOT95) $(TARGET_LSFSRES)
 
 # Generate readme from template
 $(README_NAME): $(README_TEMPLATE) $(TOOLS_TARGETS)
@@ -349,8 +370,8 @@ release: check-vasm version-readme all $(README_NAME) $(GUIDE_OUTPUT) check-lha
 
 # Clean build artifacts
 clean:
-	rm -f $(DRIVER_TARGETS) $(TARGET_INSTALL95) $(TARGET_DD) $(TARGET_DEBUG95) $(TARGET_SETFILESIZE) $(TARGET_BOOT95)
-	rm -f $(VERSION_FAT95_INC) $(VERSION_INSTALL95_INC) $(VERSION_DD_INC) $(VERSION_DEBUG95_INC) $(VERSION_SETFILESIZE_INC) $(VERSION_BOOT95_INC) $(VERSION_STAMP)
+	rm -f $(DRIVER_TARGETS) $(TARGET_INSTALL95) $(TARGET_DD) $(TARGET_DEBUG95) $(TARGET_SETFILESIZE) $(TARGET_BOOT95) $(TARGET_LSFSRES)
+	rm -f $(VERSION_FAT95_INC) $(VERSION_INSTALL95_INC) $(VERSION_DD_INC) $(VERSION_DEBUG95_INC) $(VERSION_SETFILESIZE_INC) $(VERSION_BOOT95_INC) $(VERSION_LSFSRES_INC) $(VERSION_STAMP)
 	$(Q)[ ! -d $(OUTDIR_020) ] || rmdir --ignore-fail-on-non-empty $(OUTDIR_020)
 	$(Q)[ ! -d $(OUTDIR_000) ] || rmdir --ignore-fail-on-non-empty $(OUTDIR_000)
 
@@ -372,6 +393,7 @@ help:
 	@echo "  debug95     - Build debug95 tool only"
 	@echo "  setfilesize - Build SetFileSize tool only"
 	@echo "  boot95      - Build boot95 tool only"
+	@echo "  lsfsres     - Build lsfsres FileSystem.resource dumper only"
 	@echo ""
 	@echo "Options:"
 	@echo "  V=1                 - Verbose output (show full assembler messages)"
@@ -398,6 +420,7 @@ help:
 	@echo "  $(TARGET_DEBUG95) - debug95 tool (v$(DEBUG95_VERSION))"
 	@echo "  $(TARGET_SETFILESIZE) - SetFileSize tool (v$(SETFILESIZE_VERSION))"
 	@echo "  $(TARGET_BOOT95) - boot95 tool (v$(BOOT95_VERSION))"
+	@echo "  $(TARGET_LSFSRES) - lsfsres tool (v$(LSFSRES_VERSION))"
 	@echo "  $(README_NAME) - Aminet readme"
 	@echo "  $(ARCHIVE_NAME) - Aminet release archive"
 	@echo ""
@@ -417,4 +440,4 @@ $(GUIDE_OUTPUT): README.md $(MD2GUIDE)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) README.md $@ --version $(VERSION) --date $(DATE) --title "fat95" --ver-title "fat95 guide"
 
-.PHONY: all fat95 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 clean distclean readme release check-vasm check-lha guide help version-readme FORCE
+.PHONY: all fat95 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide help version-readme FORCE

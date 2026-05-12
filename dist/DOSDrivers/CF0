@@ -1,3 +1,11 @@
+/* CF0: first FAT partition on a CompactFlash card.        */
+/*                                                         */
+/* The FileSystem = l:fat95 line is required by AmigaOS    */
+/* Mount even when fat95 is ROM-resident: it satisfies the */
+/* parser, and FileSystem.resource dedup ensures the ROM   */
+/* SegList is the one DOS actually uses (see README        */
+/* "Partition Selection" for the FAT\<n> DosType table).   */
+
 FileSystem = l:fat95
 Control = "-d-D"
 Device = compactflash.device
