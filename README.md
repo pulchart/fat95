@@ -49,7 +49,7 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 ## What's New in
 
-### 3.22-dev (13.05.2026)
+### 3.22 (16.05.2026)
 
 This release improves ROM resident handling:
 

@@ -6,8 +6,8 @@
 # Driver Version (update these for new releases)
 VERSION_MAJOR = 3
 VERSION_MINOR = 22
-VERSION_SUFFIX = -dev
-DATE = 13.05.2026
+VERSION_SUFFIX =
+DATE = 16.05.2026
 
 # Tools versions
 INSTALL95_VERSION_MAJOR = 3
@@ -37,8 +37,8 @@ BOOT95_DATE = 25.01.2026
 
 LSFSRES_VERSION_MAJOR = 1
 LSFSRES_VERSION_MINOR = 0
-LSFSRES_VERSION_SUFFIX = -dev
-LSFSRES_DATE = 13.05.2026
+LSFSRES_VERSION_SUFFIX =
+LSFSRES_DATE = 16.05.2026
 
 # Compact date for any suffix-based filename stamping (DD.MM.YYYY -> YYYYMMDD)
 DATE_COMPACT = $(shell echo "$(DATE)" | awk -F'.' '{printf "%04d%02d%02d", $$3, $$2, $$1}')
