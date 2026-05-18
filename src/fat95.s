@@ -9007,6 +9007,29 @@ rf_scan:
 	move.l	LastCluster(a4),d2
 	moveq.l	#0,d3
 	moveq.l	#0,d4
+	tst.w	FATType(a4)
+	beq.s	rf_count		;FAT12: keep the GetFATEntry-based scan
+
+;	FAT16 fast path -- the on-disk entry is a little-endian word; 0
+;	means free regardless of byte order, so we can skip the per-cluster
+;	GetFATEntry call (saves a bsr + ReverseW + cmp for every cluster).
+	move.l	FATBuffer(a4),a0
+	move.l	d2,d0
+	add.l	d0,d0
+	add.l	d0,a0			;a0 -> entry for LastCluster
+rf_c16:
+	tst.w	(a0)
+	bne.s	rf_c16next
+	addq.l	#1,d3
+	move.l	d2,d4
+rf_c16next:
+	subq.l	#2,a0
+	subq.l	#1,d2
+	moveq.l	#2,d0
+	cmp.l	d0,d2
+	bcc.s	rf_c16
+	bra.s	rf_cdone
+
 rf_count:
 	move.l	d2,d0
 	bsr	GetFATEntry		;scan FAT..
@@ -9020,7 +9043,7 @@ rf_cnext:
 	moveq.l	#2,d0
 	cmp.l	d0,d2
 	bcc.s	rf_count
-
+rf_cdone:
 	move.l	d3,FreeClusters(a4)
 	move.l	d4,NextFreeCluster(a4)
 	bra.w	rf_end
