@@ -4711,8 +4711,11 @@ _r_error:
 	bsr	DoRequest
 	add.w	#12,sp
 	tst.w	d0
-	bne.w	_r_group		;"repeat"
-
+	beq.s	_r_giveup
+	tst.w	DiskChanged(a4)		;media swapped during the requester?
+	bne.s	_r_giveup		;abort: layout we cached is stale
+	bra.w	_r_group		;"repeat"
+_r_giveup:
 	move.w	#225,ErrorNum(a4)
 	bra.s	_r_end
 
@@ -4805,8 +4808,11 @@ _w_error:
 	bsr	DoRequest
 	add.w	#12,sp
 	tst.w	d0
-	bne.w	_w_group		;"repeat"
-
+	beq.s	_w_giveup
+	tst.w	DiskChanged(a4)		;media swapped during the requester?
+	bne.s	_w_giveup		;abort: layout we cached is stale
+	bra.w	_w_group		;"repeat"
+_w_giveup:
 	move.w	#225,ErrorNum(a4)
 	bra.s	_w_end
 
