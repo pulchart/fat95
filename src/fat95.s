@@ -9598,7 +9598,7 @@ pfe_end:
 ; d0 -> ULONG new Cluster # or -1;
 
 ExtendChain:
-	movem.l	d2-d4,-(sp)
+	movem.l	d2-d5,-(sp)
 	move.l	d0,d2
 	beq.s	xch_add			;start new chain
 xch_search:
@@ -9615,12 +9615,21 @@ xch_add:
 
 	move.l	LastCluster(a4),d3
 	addq.l	#1,d3
+;	Watchdog: at most (LastCluster - 1) data clusters exist, so the
+;	wrap-around scan visits each one at most once.  If FreeClusters
+;	is stale (e.g. FAT read errors filled the buffer with the "end
+;	of chain" placeholder) we'd otherwise spin forever -- catch it
+;	here and report disk full instead.
+	move.l	d3,d5
+	subq.l	#2,d5
 	move.l	d2,d4			;# predictor
 	bgt.s	xch_loop
 
 	move.l	NextFreeCluster(a4),d2
 	subq.l	#1,d2
 xch_loop:
+	subq.l	#1,d5
+	bmi.s	xch_error
 	addq.l	#1,d2			;scan pred+1 ~ n-1..
 	cmp.l	d3,d2
 	bcs.s	xch_2
@@ -9644,7 +9653,7 @@ xch_2:
 	bsr	PutFATEntry		;..append there
 xch_end:
 	move.l	d2,d0
-	movem.l	(sp)+,d2-d4
+	movem.l	(sp)+,d2-d5
 	rts
 
 xch_error:
