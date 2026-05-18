@@ -4674,6 +4674,13 @@ _r_1:
 	bsr	SafeDoIO
 	bra.s	_r_check
 _r_scsi:
+	cmp.l	#$ffff,d3		;READ10 takes a 16-bit block count
+	bls.s	_r_scsi_go
+	move.l	#$ffff,d3
+	move.w	BlockShift(a4),d1
+	move.l	d3,d6
+	lsl.l	d1,d6
+_r_scsi_go:
 	moveq.l	#READ10,d0
 	moveq.l	#SCSIF_READ,d1
 	bsr	Do10byteScsi
@@ -4761,6 +4768,13 @@ _w_1:
 	bsr	SafeDoIO
 	bra.s	_w_check
 _w_scsi:
+	cmp.l	#$ffff,d3		;WRITE10 takes a 16-bit block count
+	bls.s	_w_scsi_go
+	move.l	#$ffff,d3
+	move.w	BlockShift(a4),d1
+	move.l	d3,d6
+	lsl.l	d1,d6
+_w_scsi_go:
 	moveq.l	#WRITE10,d0
 	moveq.l	#SCSIF_WRITE,d1
 	bsr	Do10byteScsi
