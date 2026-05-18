@@ -8114,9 +8114,20 @@ xtd_i1:
 
 	move.l	d0,a0			;of &XLock of parent dir..
 xtd_i2:
+	move.l	a0,d0			;remember parent XLock; MakeIntRef clobbers a0
 	lea	MSDE_Sizeof(a2),a1
 	bsr	MakeIntRef		;..copy dir descriptor..
 	move.w	#"..",MSDE_Sizeof(a2)	;..as parent link
+	move.l	d0,a0
+	tst.l	XL_Parent(a0)
+	bne.s	xtd_idone
+;	Microsoft FAT spec: when the parent is the root, ".." must hold
+;	cluster 0, not the actual root cluster.  Linux and Windows
+;	tolerate either form, but fsck.vfat flags the non-zero variant
+;	on FAT32 volumes.
+	clr.w	MSDE_Sizeof+MSDE_1L(a2)
+	clr.w	MSDE_Sizeof+MSDE_1H(a2)
+xtd_idone:
 	moveq.l	#-1,d0
 	move.l	d0,EXD_CLUSTER(a5)	;"initialized"
 	bra.s	xtd_write
