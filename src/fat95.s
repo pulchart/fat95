@@ -10470,11 +10470,37 @@ wtf_ready:				;all done!!!
 	move.l	XL_Parent(a0),a1
 	or.w	#$8000,XL_Flags(a1)
 wtf_r1:
-	tst.l	d4			;on success..
-	bne.s	wtf_r2
-
-	move.l	d1,XFH_CurrentPos(a2)	;..set new Position
+	move.l	d1,XFH_CurrentPos(a2)	;always advance position by bytes written
+	tst.l	d4
+	bne.s	wtf_rwalk		;partial write: recompute current cluster
 	move.l	WTF_CLUSTER(a5),XFH_Cluster(a2)
+	bra.s	wtf_r2
+
+;	on a short write WTF_CLUSTER may be the "next swath" pointer or even
+;	-1 (disk full), so it can't be used as the current-position cluster.
+;	Walk the FAT from MSDE_1L to find the cluster that holds WTF_POS.
+wtf_rwalk:
+	moveq.l	#0,d0
+	tst.w	FATType(a4)
+	bpl.s	wtf_rw_lo
+	move.w	XL_MSDE+MSDE_1H(a0),d0
+	swap	d0
+wtf_rw_lo:
+	move.w	XL_MSDE+MSDE_1L(a0),d0
+	move.w	BlockShift(a4),d3
+	add.w	ClusterShift(a4),d3
+	lsr.l	d3,d1			;d1 = cluster index of WTF_POS
+	bra.s	wtf_rw_test
+wtf_rw_walk:
+	tst.l	d0
+	ble.s	wtf_rw_done		;chain exhausted; leave sentinel in d0
+	bsr	NextCluster
+	subq.l	#1,d1
+wtf_rw_test:
+	tst.l	d1
+	bgt.s	wtf_rw_walk
+wtf_rw_done:
+	move.l	d0,XFH_Cluster(a2)
 wtf_r2:
 	move.l	d7,d0
 	move.l	a2,a0
