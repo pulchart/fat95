@@ -5,9 +5,9 @@
 
 # Driver Version (update these for new releases)
 VERSION_MAJOR = 3
-VERSION_MINOR = 22
+VERSION_MINOR = 23
 VERSION_SUFFIX =
-DATE = 16.05.2026
+DATE = 19.05.2026
 
 # Tools versions
 INSTALL95_VERSION_MAJOR = 3

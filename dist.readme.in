@@ -4,7 +4,7 @@ Author:       jaroslav.pulchart@gmail.com (Jaroslav Pulchart), based on work by 
 Type:         disk/misc
 Version:      @VERSION@
 Architecture: m68k-amigaos
-Replaces:     disk/misc/fat95.v3.21.lha
+Replaces:     disk/misc/fat95.v3.22.lha
 Kurz:         Win95/98-kompatibles Dateisystem
 
 fat95 - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
@@ -12,29 +12,24 @@ fat95 - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/mis
 CHANGES IN @VERSION@ (@DATE@)
 ============================
 
-This release improves ROM resident handling:
+This release brings several reliability fixes, contributed by Stefan Reinauer. Thanks!
 
-- ROM resident installation now register FAT\0 through FAT\8 in
-  FileSystem.resource at boot, so any partition with one of those
-  DosTypes, whether RDB auto-mounted or mounted later via a
-  mountlist / mount command, uses the ROM handler directly and
-  skips loading L:fat95 from disk. Previously the ROM resident
-  registration didn't actually run at boot, so even with fat95
-  baked into a Kickstart ROM every FAT mount fell back to loading
-  L:fat95 from disk.
-
-- New c/lsfsres tool lists every entry in FileSystem.resource with
-  DosType, version, SegList address, handler name, and a [ROM]/[RAM]
-  tag. Useful for confirming which filesystem handlers are active
-  and whether they come from ROM or disk.
-
-and contains internal microoptimisations and minor size reductions:
-
-- Several dozen inner loops optimised for both CPU tiers.
-- Directory block clearing and file delete are faster on 68000.
-- FAT entry reads on 68020+ use fewer instructions.
-- SCSI READ10/WRITE10 command setup now uses a shared helper.
-- GPT partition GUID matching is now table-driven.
+- File position is now correctly advanced after a short (partial)
+  write, preventing data corruption on subsequent writes to the same
+  file handle.
+- SCSI READ10/WRITE10 commands now correctly clamp the block count to
+  16 bits; previously, large I/O requests could silently transfer fewer
+  blocks than requested.
+- I/O retries are now aborted if the disk was swapped during a retried
+  read or write, preventing silent data corruption when media changes
+  mid-operation.
+- The ".." (parent) directory entry for subdirectories created under
+  the FAT32 root now correctly stores cluster 0, fixing fsck.vfat
+  complaints on FAT32 volumes.
+- The free-cluster scan in ExtendChain is now bounded to avoid an
+  infinite loop on a corrupted or full FAT.
+- FAT16 free-cluster counting during mount is now ~50% faster on 68000,
+  by scanning the raw FAT buffer directly.
 
 Purpose
 =======
