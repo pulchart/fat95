@@ -49,6 +49,20 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 ## What's New in
 
+### 3.23 (19.05.2026)
+
+This release brings several reliability fixes, contributed by Stefan Reinauer (@reinauer). Thanks!
+
+* **Bug fixes**
+  - File position is now correctly advanced after a short (partial) write, preventing data corruption on subsequent writes to the same file handle.
+  - SCSI READ10/WRITE10 commands now correctly clamp the block count to 16 bits; previously, large I/O requests could silently transfer fewer blocks than requested.
+  - I/O retries are now aborted if the disk was swapped during a retried read or write, preventing silent data corruption when media changes mid-operation.
+  - The `..` (parent) directory entry for subdirectories created under the FAT32 root now correctly stores cluster 0, fixing `fsck.vfat` complaints on FAT32 volumes.
+  - The free-cluster scan in `ExtendChain` is now bounded to avoid an infinite loop on a corrupted or full FAT.
+
+* **Performance**
+  - FAT16 free-cluster counting during mount is now ~50% faster on 68000, by scanning the raw FAT buffer directly instead of calling the generic `GetFATEntry` path per entry.
+
 ### 3.22 (16.05.2026)
 
 This release improves ROM resident handling:
@@ -590,6 +604,7 @@ GNU LGPL v2.1
 
 | Version | Date | Changes |
 |---------|------|---------|
+| v3.23 | 05/2026 | Reliability fixes contributed by Stefan Reinauer (@reinauer) |
 | v3.22 | 05/2026 | Improved ROM resident handling and microoptimizations for both 68000+ and 68020+ cpu tiers |
 | v3.21 | 04/2026 | 68000 NTFS-detect crash fix, GetDiskParams register/state safety, CPU-tier builds (68020+ / 68000) |
 | v3.20 | 03/2026 | NTFS volume rejection |
