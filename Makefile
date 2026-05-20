@@ -3,61 +3,97 @@
 # Usage: make [options] [target]
 #   help - show detailed usage output
 
-# Driver Version (update these for new releases)
-VERSION_MAJOR = 3
-VERSION_MINOR = 23
-VERSION_SUFFIX =
-DATE = 19.05.2026
+# Release version: YYYYMMDD package date + optional in-progress suffix
+# (-dev, -rc1, ...). Empty suffix for a final release.
+RELEASE_DATE = 20260520
+VERSION_SUFFIX = -dev
+
+# fat95 filesystem handler version
+FAT95_MAJOR = 3
+FAT95_MINOR = 23
+FAT95_VERSION_SUFFIX =
+FAT95_DATE = 19.05.2026
 
 # Tools versions
-INSTALL95_VERSION_MAJOR = 3
-INSTALL95_VERSION_MINOR = 19
+INSTALL95_MAJOR = 3
+INSTALL95_MINOR = 19
 INSTALL95_VERSION_SUFFIX =
 INSTALL95_DATE = 25.01.2026
 
-DD_VERSION_MAJOR = 1
-DD_VERSION_MINOR = 05
+DD_MAJOR = 1
+DD_MINOR = 05
 DD_VERSION_SUFFIX =
 DD_DATE = 25.01.2026
 
-DEBUG95_VERSION_MAJOR = 3
-DEBUG95_VERSION_MINOR = 19
+DEBUG95_MAJOR = 3
+DEBUG95_MINOR = 19
 DEBUG95_VERSION_SUFFIX =
 DEBUG95_DATE = 25.01.2026
 
-SETFILESIZE_VERSION_MAJOR = 1
-SETFILESIZE_VERSION_MINOR = 1
+SETFILESIZE_MAJOR = 1
+SETFILESIZE_MINOR = 1
 SETFILESIZE_VERSION_SUFFIX =
 SETFILESIZE_DATE = 25.01.2026
 
-BOOT95_VERSION_MAJOR = 3
-BOOT95_VERSION_MINOR = 19
+BOOT95_MAJOR = 3
+BOOT95_MINOR = 19
 BOOT95_VERSION_SUFFIX =
 BOOT95_DATE = 25.01.2026
 
-LSFSRES_VERSION_MAJOR = 1
-LSFSRES_VERSION_MINOR = 0
+LSFSRES_MAJOR = 1
+LSFSRES_MINOR = 0
 LSFSRES_VERSION_SUFFIX =
 LSFSRES_DATE = 16.05.2026
 
-# Compact date for any suffix-based filename stamping (DD.MM.YYYY -> YYYYMMDD)
-DATE_COMPACT = $(shell echo "$(DATE)" | awk -F'.' '{printf "%04d%02d%02d", $$3, $$2, $$1}')
+# Derived versions
+VERSION = $(RELEASE_DATE)$(VERSION_SUFFIX)
+# Human-readable date derived from RELEASE_DATE (YYYYMMDD -> DD.MM.YYYY)
+DATE = $(shell echo "$(RELEASE_DATE)" | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\3.\2.\1/')
 
-# Derived version
-VERSION = $(VERSION_MAJOR).$(VERSION_MINOR)$(VERSION_SUFFIX)
-VERSION_NODOT = $(VERSION_MAJOR)$(VERSION_MINOR)
-ifneq ($(VERSION_SUFFIX),)
-VERSION_FILENAME = $(VERSION_MAJOR).$(VERSION_MINOR)$(VERSION_SUFFIX)$(DATE_COMPACT)
-else
-VERSION_FILENAME = $(VERSION_MAJOR).$(VERSION_MINOR)
-endif
+FAT95_VERSION       = $(FAT95_MAJOR).$(FAT95_MINOR)$(FAT95_VERSION_SUFFIX)
+INSTALL95_VERSION   = $(INSTALL95_MAJOR).$(INSTALL95_MINOR)$(INSTALL95_VERSION_SUFFIX)
+DD_VERSION          = $(DD_MAJOR).$(DD_MINOR)$(DD_VERSION_SUFFIX)
+DEBUG95_VERSION     = $(DEBUG95_MAJOR).$(DEBUG95_MINOR)$(DEBUG95_VERSION_SUFFIX)
+SETFILESIZE_VERSION = $(SETFILESIZE_MAJOR).$(SETFILESIZE_MINOR)$(SETFILESIZE_VERSION_SUFFIX)
+BOOT95_VERSION      = $(BOOT95_MAJOR).$(BOOT95_MINOR)$(BOOT95_VERSION_SUFFIX)
+LSFSRES_VERSION     = $(LSFSRES_MAJOR).$(LSFSRES_MINOR)$(LSFSRES_VERSION_SUFFIX)
 
-INSTALL95_VERSION = $(INSTALL95_VERSION_MAJOR).$(INSTALL95_VERSION_MINOR)$(INSTALL95_VERSION_SUFFIX)
-DD_VERSION = $(DD_VERSION_MAJOR).$(DD_VERSION_MINOR)$(DD_VERSION_SUFFIX)
-DEBUG95_VERSION = $(DEBUG95_VERSION_MAJOR).$(DEBUG95_VERSION_MINOR)$(DEBUG95_VERSION_SUFFIX)
-SETFILESIZE_VERSION = $(SETFILESIZE_VERSION_MAJOR).$(SETFILESIZE_VERSION_MINOR)$(SETFILESIZE_VERSION_SUFFIX)
-BOOT95_VERSION = $(BOOT95_VERSION_MAJOR).$(BOOT95_VERSION_MINOR)$(BOOT95_VERSION_SUFFIX)
-LSFSRES_VERSION = $(LSFSRES_VERSION_MAJOR).$(LSFSRES_VERSION_MINOR)$(LSFSRES_VERSION_SUFFIX)
+# Component table driving TOOLS and the README/dist auto-gen blocks.
+COMPONENTS = FAT95 INSTALL95 DD DEBUG95 SETFILESIZE BOOT95 LSFSRES
+
+FAT95_NAME         = fat95
+FAT95_KIND         = handler
+INSTALL95_NAME     = install95
+INSTALL95_KIND     = tool
+INSTALL95_TARGET   = $(TARGET_INSTALL95)
+DD_NAME            = dd
+DD_KIND            = tool
+DD_TARGET          = $(TARGET_DD)
+DEBUG95_NAME       = debug95
+DEBUG95_KIND       = tool
+DEBUG95_TARGET     = $(TARGET_DEBUG95)
+SETFILESIZE_NAME   = SetFileSize
+SETFILESIZE_KIND   = tool
+SETFILESIZE_TARGET = $(TARGET_SETFILESIZE)
+BOOT95_NAME        = boot95
+BOOT95_KIND        = tool
+BOOT95_TARGET      = $(TARGET_BOOT95)
+LSFSRES_NAME       = lsfsres
+LSFSRES_KIND       = tool
+LSFSRES_TARGET     = $(TARGET_LSFSRES)
+
+# CPU tiers for the handler fan-out (tools stay single-tier).
+CPUS = 68020 68000
+
+# Per-component "name:target:version:date" entries; handler fans out over $(CPUS).
+define _artifact_entries
+$(if $(filter tool,$($(1)_KIND)),\
+$($(1)_NAME):$($(1)_TARGET):$($(1)_VERSION):$($(1)_DATE),\
+$(foreach c,$(CPUS),$($(1)_NAME)_$(c):$(OUTDIR)/$(c)/$($(1)_NAME):$($(1)_VERSION):$($(1)_DATE)))
+endef
+
+# Component summary with literal `\n` for GNU sed substitution.
+COMPONENT_VERSIONS_NL = $(shell printf -- '- %s %s (%s)\\n' $(foreach c,$(COMPONENTS),$($(c)_NAME) $($(c)_VERSION) $($(c)_DATE)))
 
 # Generate version include files for assembler
 VERSION_FAT95_INC = src/fat95_version.i
@@ -134,7 +170,7 @@ SOURCE_LSFSRES = $(SRCDIR)/lsfsres.s
 TARGET_LSFSRES = dist/c/lsfsres
 
 # Files: Release
-RELEASE_NAME = fat95.v$(VERSION_FILENAME)
+RELEASE_NAME = fat95.v$(VERSION)
 ARCHIVE_NAME = $(RELEASE_NAME).lha
 README_NAME = $(RELEASE_NAME).readme
 README_TEMPLATE = dist.readme.in
@@ -155,18 +191,27 @@ VERSION_STAMP = .version-stamp
 FORCE:
 
 $(VERSION_STAMP): FORCE
-	$(Q)echo "$(VERSION) $(DATE)" > $(VERSION_STAMP).tmp
+	$(Q)echo "$(VERSION) $(DATE) $(foreach c,$(COMPONENTS),$($(c)_VERSION) $($(c)_DATE))" > $(VERSION_STAMP).tmp
 	$(Q)if ! cmp -s $(VERSION_STAMP).tmp $(VERSION_STAMP) 2>/dev/null; then \
 		mv $(VERSION_STAMP).tmp $(VERSION_STAMP); \
 	else \
 		rm -f $(VERSION_STAMP).tmp; \
 	fi
 
-# Update version and date in README.md (in-place)
-# Updates the "What's New" section header: ### 3.19 (DD.MM.YYYY)
+# Rewrite the topmost "What's New" header and the COMPONENTS block in
+# README.md from current Makefile vars. Add new release headers by hand.
 version-readme:
-	$(Q)sed -i 's/^### $(VERSION_MAJOR)\.$(VERSION_MINOR)[^ ]* ([0-9]\{2\}\.[0-9]\{2\}\.[0-9]\{4\})/### $(VERSION) ($(DATE))/' README.md
-	$(Q)echo "  README  version updated to $(VERSION) ($(DATE))"
+	$(Q)sed -i '0,/^### [0-9]\{8\}[^[:space:]]*/s/^### [0-9]\{8\}[^[:space:]]*/### $(VERSION)/' README.md
+	$(Q)block=$$(printf '%s\n' \
+	    '#### Components in this release' \
+	    '' \
+	    $(foreach c,$(COMPONENTS),'- $($(c)_NAME) $($(c)_VERSION) ($($(c)_DATE))') \
+	    ); \
+	awk -v block="$$block" ' \
+	    /<!-- COMPONENTS:BEGIN -->/{print; print block; in_block=1; next} \
+	    /<!-- COMPONENTS:END -->/{in_block=0} \
+	    !in_block' README.md > README.md.tmp && mv README.md.tmp README.md
+	$(Q)echo "  README  topmost header + components updated to $(VERSION) ($(DATE))"
 
 # Version include file generation
 # Parameters: 1=file, 2=name, 3=major, 4=minor, 5=version, 6=macro_name, 7=date, 8=add_lf_null
@@ -185,20 +230,20 @@ endef
 # fat95 uses a custom rule to emit a CPU-tier tag ([68020] / [68000]) in
 # the VERSION_STRING, selected at assembly time via `ifd __68020__`.
 $(VERSION_FAT95_INC): $(VERSION_STAMP)
-	$(Q)echo "  VERSION fat95 $(VERSION)" >&2
+	$(Q)echo "  VERSION fat95 $(FAT95_VERSION)" >&2
 	$(Q)echo "; Auto-generated by Makefile." > $@
-	$(Q)echo "FILE_VERSION	= $(VERSION_MAJOR)" >> $@
-	$(Q)echo "FILE_REVISION	= $(VERSION_MINOR)" >> $@
+	$(Q)echo "FILE_VERSION	= $(FAT95_MAJOR)" >> $@
+	$(Q)echo "FILE_REVISION	= $(FAT95_MINOR)" >> $@
 	$(Q)echo "VERSION_STRING	macro" >> $@
 	$(Q)echo "	ifd	__68020__" >> $@
-	$(Q)echo "	dc.b	\"\$$VER: fat95 $(VERSION) ($(DATE)) [68020]\"" >> $@
+	$(Q)echo "	dc.b	\"\$$VER: fat95 $(FAT95_VERSION) ($(FAT95_DATE)) [68020]\"" >> $@
 	$(Q)echo "	else" >> $@
-	$(Q)echo "	dc.b	\"\$$VER: fat95 $(VERSION) ($(DATE)) [68000]\"" >> $@
+	$(Q)echo "	dc.b	\"\$$VER: fat95 $(FAT95_VERSION) ($(FAT95_DATE)) [68000]\"" >> $@
 	$(Q)echo "	endc" >> $@
 	$(Q)echo "	endm" >> $@
 
 $(VERSION_INSTALL95_INC): $(VERSION_STAMP)
-	$(call gen_version_inc,$@,install95,$(INSTALL95_VERSION_MAJOR),$(INSTALL95_VERSION_MINOR),$(INSTALL95_VERSION),VER_STRING,$(INSTALL95_DATE),1)
+	$(call gen_version_inc,$@,install95,$(INSTALL95_MAJOR),$(INSTALL95_MINOR),$(INSTALL95_VERSION),VER_STRING,$(INSTALL95_DATE),1)
 
 $(VERSION_DD_INC): $(VERSION_STAMP)
 	$(call gen_version_inc,$@,dd,,,$(DD_VERSION),VER_STRING,$(DD_DATE),1)
@@ -210,7 +255,7 @@ $(VERSION_SETFILESIZE_INC): $(VERSION_STAMP)
 	$(call gen_version_inc,$@,SetFileSize,,,$(SETFILESIZE_VERSION),VER_STRING,$(SETFILESIZE_DATE),1)
 
 $(VERSION_BOOT95_INC): $(VERSION_STAMP)
-	$(call gen_version_inc,$@,boot95,$(BOOT95_VERSION_MAJOR),$(BOOT95_VERSION_MINOR),$(BOOT95_VERSION),VER_STRING,$(BOOT95_DATE),1)
+	$(call gen_version_inc,$@,boot95,$(BOOT95_MAJOR),$(BOOT95_MINOR),$(BOOT95_VERSION),VER_STRING,$(BOOT95_DATE),1)
 
 $(VERSION_LSFSRES_INC): $(VERSION_STAMP)
 	$(call gen_version_inc,$@,lsfsres,,,$(LSFSRES_VERSION),VER_STRING,$(LSFSRES_DATE),1)
@@ -283,14 +328,7 @@ lsfsres: check-vasm $(TARGET_LSFSRES)
 
 # List of all tools for checksum generation (tool_name:target_file:version:date pairs)
 # fat95 is listed twice, once per CPU tier, so both appear in the readme.
-TOOLS = fat95_68020:$(TARGET_020):$(VERSION):$(DATE) \
-	fat95_68000:$(TARGET_000):$(VERSION):$(DATE) \
-	install95:$(TARGET_INSTALL95):$(INSTALL95_VERSION):$(INSTALL95_DATE) \
-	dd:$(TARGET_DD):$(DD_VERSION):$(DD_DATE) \
-	debug95:$(TARGET_DEBUG95):$(DEBUG95_VERSION):$(DEBUG95_DATE) \
-	SetFileSize:$(TARGET_SETFILESIZE):$(SETFILESIZE_VERSION):$(SETFILESIZE_DATE) \
-	boot95:$(TARGET_BOOT95):$(BOOT95_VERSION):$(BOOT95_DATE) \
-	lsfsres:$(TARGET_LSFSRES):$(LSFSRES_VERSION):$(LSFSRES_DATE)
+TOOLS = $(foreach c,$(COMPONENTS),$(call _artifact_entries,$(c)))
 TOOLS_TARGETS = $(DRIVER_TARGETS) $(TARGET_INSTALL95) $(TARGET_DD) $(TARGET_DEBUG95) $(TARGET_SETFILESIZE) $(TARGET_BOOT95) $(TARGET_LSFSRES)
 
 # Generate readme from template
@@ -312,6 +350,7 @@ $(README_NAME): $(README_TEMPLATE) $(TOOLS_TARGETS)
 	done; \
 	sed -e "s|@VERSION@|$(VERSION)|g" \
 		-e "s|@DATE@|$(DATE)|g" \
+		-e "s|@COMPONENT_VERSIONS@|$(COMPONENT_VERSIONS_NL)|" \
 		-e "s|@TOOL_CHECKSUMS@|$$tool_checksums|" \
 		$(README_TEMPLATE) > $@
 	@echo "Generated: $@"
@@ -400,7 +439,7 @@ help:
 	@echo "  VASM_HOME=/opt/vbcc - vasm installation path"
 	@echo ""
 	@echo "Documentation targets:"
-	@echo "  guide   - Generate AmigaGuide from README.md"
+	@echo "  guide / guides - Generate AmigaGuide from README.md"
 	@echo ""
 	@echo "Release targets:"
 	@echo "  version-readme - Update version suffix in README.md (in-place)"
@@ -413,8 +452,8 @@ help:
 	@echo "  help      - Show this help"
 	@echo ""
 	@echo "Output files:"
-	@echo "  $(TARGET_020) - fat95 handler, 68020+ tier (v$(VERSION))"
-	@echo "  $(TARGET_000) - fat95 handler, 68000 tier (v$(VERSION))"
+	@echo "  $(TARGET_020) - fat95 handler, 68020+ tier (v$(FAT95_VERSION))"
+	@echo "  $(TARGET_000) - fat95 handler, 68000 tier (v$(FAT95_VERSION))"
 	@echo "  $(TARGET_INSTALL95) - install95 tool (v$(INSTALL95_VERSION))"
 	@echo "  $(TARGET_DD) - dd tool (v$(DD_VERSION))"
 	@echo "  $(TARGET_DEBUG95) - debug95 tool (v$(DEBUG95_VERSION))"
@@ -424,7 +463,7 @@ help:
 	@echo "  $(README_NAME) - Aminet readme"
 	@echo "  $(ARCHIVE_NAME) - Aminet release archive"
 	@echo ""
-	@echo "Version: $(VERSION) ($(DATE))"
+	@echo "Release: $(VERSION) ($(DATE)); fat95: $(FAT95_VERSION) ($(FAT95_DATE))"
 
 # ============================================================
 # Documentation targets
@@ -434,10 +473,10 @@ help:
 GUIDE_OUTPUT = dist/fat95.guide
 MD2GUIDE = ../cfd/tools/md2guide.py
 
-guide: $(GUIDE_OUTPUT)
+guide guides: $(GUIDE_OUTPUT)
 
 $(GUIDE_OUTPUT): README.md $(MD2GUIDE)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) README.md $@ --version $(VERSION) --date $(DATE) --title "fat95" --ver-title "fat95 guide"
 
-.PHONY: all fat95 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide help version-readme FORCE
+.PHONY: all fat95 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide guides help version-readme FORCE

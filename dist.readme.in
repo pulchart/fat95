@@ -4,32 +4,27 @@ Author:       jaroslav.pulchart@gmail.com (Jaroslav Pulchart), based on work by 
 Type:         disk/misc
 Version:      @VERSION@
 Architecture: m68k-amigaos
-Replaces:     disk/misc/fat95.v3.22.lha
+Replaces:     disk/misc/fat95.v3.23.lha
 Kurz:         Win95/98-kompatibles Dateisystem
 
 fat95 - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
 
-CHANGES IN @VERSION@ (@DATE@)
-============================
+WHAT'S NEW (@DATE@)
+=======================
 
-This release brings several reliability fixes, contributed by Stefan Reinauer. Thanks!
+packaging:
 
-- File position is now correctly advanced after a short (partial)
-  write, preventing data corruption on subsequent writes to the same
-  file handle.
-- SCSI READ10/WRITE10 commands now correctly clamp the block count to
-  16 bits; previously, large I/O requests could silently transfer fewer
-  blocks than requested.
-- I/O retries are now aborted if the disk was swapped during a retried
-  read or write, preventing silent data corruption when media changes
-  mid-operation.
-- The ".." (parent) directory entry for subdirectories created under
-  the FAT32 root now correctly stores cluster 0, fixing fsck.vfat
-  complaints on FAT32 volumes.
-- The free-cluster scan in ExtendChain is now bounded to avoid an
-  infinite loop on a corrupted or full FAT.
-- FAT16 free-cluster counting during mount is now ~50% faster on 68000,
-  by scanning the raw FAT buffer directly.
+* Archive version is now a date (YYYYMMDD). The release bundle ships
+  several independently-versioned pieces (fat95, install95, dd, debug95,
+  SetFileSize, boot95, lsfsres), each on its own cadence, so a single
+  v3.x number for the whole archive never matched what was actually
+  inside. The archive (fat95.vYYYYMMDD.lha) is now named after its
+  release date, while each component keeps its own version, visible via
+  `version <name>`. No installation steps change.
+
+COMPONENTS IN THIS RELEASE
+==========================
+@COMPONENT_VERSIONS@
 
 Purpose
 =======
