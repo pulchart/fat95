@@ -49,6 +49,26 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 ## What's New in
 
+### 20260520-dev
+
+#### Packaging
+
+* **Archive version is now a date (YYYYMMDD).** The release bundle ships several independently-versioned pieces (`fat95`, `install95`, `dd`, `debug95`, `SetFileSize`, `boot95`, `lsfsres`), each on its own cadence, so a single `v3.x` number for the whole archive never matched what was actually inside. The archive (`fat95.vYYYYMMDD.lha`) is now named after its release date, while each component keeps its own version, visible via `version <name>`. No installation steps change.
+
+<!-- COMPONENTS:BEGIN -->
+#### Components in this release
+
+- fat95 3.23 (19.05.2026)
+- install95 3.19 (25.01.2026)
+- dd 1.05 (25.01.2026)
+- debug95 3.19 (25.01.2026)
+- SetFileSize 1.1 (25.01.2026)
+- boot95 3.19 (25.01.2026)
+- lsfsres 1.0 (16.05.2026)
+<!-- COMPONENTS:END -->
+<details>
+<summary>Older releases</summary>
+
 ### 3.23 (19.05.2026)
 
 This release brings several reliability fixes, contributed by Stefan Reinauer (@reinauer). Thanks!
@@ -125,6 +145,8 @@ This release focuses on stability and compatibility improvements across both CPU
 * **Bug fixes**
   - Fixed trailing slashes in path names (e.g., "makedir cf0:temp/" now correctly creates "temp")
     WARNING: Using trailing slashes with 3.18 corrupted the filesystem
+
+</details>
 
 ## Installation
 
