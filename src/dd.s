@@ -96,6 +96,8 @@ Read		= -42
 Write		= -48
 IoErr		= -132
 ExamineFH	= -390
+ReadArgs	= -798
+FreeArgs	= -858
 
 MODE_READWRITE	= 1004
 MODE_OLDFILE	= 1005
@@ -262,39 +264,45 @@ DV_File		= 16
 DV_BufMemType	= 20
 DV_BlockSize	= 24
 DV_NumBlocks	= 28
-DV_Sizeof	= 32
+DV_ReadCmd	= 32		;word: CMD_READ / NSCMD_TD_READ64 / HD_SCSICMD
+DV_WriteCmd	= 34		;word: CMD_WRITE / NSCMD_TD_WRITE64 / HD_SCSICMD
+DV_CmdFlags	= 36		;byte: bit2=NSCMD-TD64 avail, bit7=forced SCSI
+DV_pad		= 37
+DV_Sizeof	= 40
 
 ;--- global vars -------------------------------------------
 
-ArgC		= -4
-ArgV		= -8
+RDArgs		= -4			;struct RDArgs* for FreeArgs at exit
+CmdLine		= -8			;raw CLI command-line pointer (a0 at Start)
 Result		= -12
 ExecBase	= -16
 DosBase		= -20
-SourceVec	= -52
-DestVec		= -84
-NumBlocks	= -88
-StartBlock	= -92
-BlockBuffer	= -96
-BBufSize	= -100
-DriveGeometry	= -132
-FileSize	= -136
-BlockShift	= -138
-SCSIFlag	= -140
-FillByte	= -141
-FillFlag	= -142
-unused1		= -144
-DoneBlocks	= -148
-BlockSize	= -152
-BufBlocks	= -156
-CustomSize	= -160
-ConsoleI	= -164
-ConsoleO	= -168
-TimerDevice	= -172
-RTime		= -180
-WTime		= -188
-StringBuf	= -512
-Vars_Sizeof	= -512
+SourceVec	= -60
+DestVec		= -100
+NumBlocks	= -104
+StartBlock	= -108
+BlockBuffer	= -112
+BBufSize	= -116
+DriveGeometry	= -148
+FileSize	= -152
+BlockShift	= -154
+;SCSIFlag deleted, replaced by per-DV DV_CmdFlags bit 7
+FillByte	= -157
+FillFlag	= -158
+InspectFlag	= -160			;non-zero -> INSPECT mode (probe + print, no transfer)
+DoneBlocks	= -164
+BlockSize	= -168
+BufBlocks	= -172
+CustomSize	= -176
+ConsoleI	= -180
+ConsoleO	= -184
+TimerDevice	= -188
+RTime		= -196
+WTime		= -204
+QueryResult	= -220			;16-byte NSDeviceQueryResult buffer
+StringBuf	= -732
+ArgArray	= -776			;10 longs for ReadArgs (zeroed before call)
+Vars_Sizeof	= -776
 
 ;--- +++ TEST +++ TEST +++ ---------------------------------
 
@@ -312,10 +320,7 @@ Vars_Sizeof	= -512
 Start:
 	link.w	a4,#Vars_Sizeof
 	movem.l	d1-d7/a0-a6,-(sp)
-	move.l	a0,ArgV(a4)
-	lea	StringBuf(a4),a1
-	bsr.w	GetDosParams
-	move.l	d0,ArgC(a4)
+	move.l	a0,CmdLine(a4)		;raw CLI command line for `?` detection
 
 ;- - get resources  - - - - - - - - - - - - - - - - - - - -
 
@@ -346,79 +351,172 @@ s_nullvars:
 	CALLEXEC FindName
 	move.l	d0,TimerDevice(a4)
 
-;- - evaluate parameters  - - - - - - - - - - - - - - - - -
+;- - early `?` check: bypass ReadArgs's interactive prompt - -
 
-	moveq.l	#2,d2
-	move.l	ArgC(a4),d3
-	lea	StringBuf(a4),a2
+	move.l	CmdLine(a4),a0
+	beq.s	s_help_done
+s_help_skip:
+	move.b	(a0)+,d0
+	cmp.b	#' ',d0
+	beq.s	s_help_skip
+	cmp.b	#'?',d0
+	bne.s	s_help_done
+	move.b	(a0),d0			;byte after '?'
+	cmp.b	#' ',d0
+	bhi.s	s_help_done		;'?' part of longer token; ignore
+	bsr.w	PrintHelp
+	bra.w	s_closedos
+s_help_done:
+
+;- - evaluate parameters via ReadArgs - - - - - - - - - - -
+
+	clr.l	RDArgs(a4)
+	lea	ArgArray(a4),a0
+	moveq.l	#9,d0			;ArgArray has 10 slots
+s_argclr:
+	clr.l	(a0)+
+	dbra	d0,s_argclr
+
+	lea	ArgTemplate(pc),a0
+	move.l	a0,d1
+	lea	ArgArray(a4),a0
+	move.l	a0,d2
+	moveq.l	#0,d3			;rdargs = NULL -> auto-alloc
+	CALLDOS	ReadArgs
+	move.l	d0,RDArgs(a4)
+	beq.w	s_argerr		;parse failed, DOS already printed why
+
+	;INSPECT mode: probe a device, print capabilities, exit.
+	;No SRC/DST needed; INSPECT carries the device name.
+	move.l	ArgArray+36(a4),d0	;INSPECT (slot 9)
+	beq.s	s_args_check_help
+	;set SourceVec for s_open: name + unit, mark as device
 	lea	SourceVec(a4),a3
-	clr.l	CustomSize(a4)
-s_pvec:
-	subq.l	#1,d3
-	bmi.s	s_perror
+	move.l	d0,DV_Name(a3)
+	moveq.l	#0,d1			;default unit 0
+	move.l	ArgArray+8(a4),d0	;UNIT slot (optional)
+	beq.s	s_inspect_set
+	move.l	d0,a2
+	move.l	(a2),d1
+s_inspect_set:
+	move.l	d1,DV_Unit(a3)
+	moveq.l	#-1,d0
+	move.l	d0,DV_File(a3)		;mark as device for s_open
+	clr.l	DestVec+DV_File(a4)	;DestVec inactive
+	st.b	InspectFlag(a4)		;non-zero: INSPECT mode
+	bra.w	s_args_done
 
-	move.l	(a2)+,a0
-	move.l	a0,DV_Name(a3)
+s_args_check_help:
+	;HELP set, or required SRC/DST missing: print help and bail
+	move.l	ArgArray+32(a4),d0	;HELP (slot 8): switch sets ptr non-NULL
+	bne.s	s_arghelp
+	move.l	ArgArray+0(a4),d0	;SRC
+	beq.s	s_arghelp
+	move.l	ArgArray+4(a4),d0	;DST
+	bne.s	s_args_ok
+s_arghelp:
+	bsr.w	PrintHelp
+	bra.w	s_closedos
+s_args_ok:
+
+	;SRC and DST present: populate DV slots
+	lea	SourceVec(a4),a3
+	move.l	ArgArray+0(a4),DV_Name(a3)
+	lea	DestVec(a4),a3
+	move.l	ArgArray+4(a4),DV_Name(a3)
+
+	;classify SRC (device vs file vs FILL:) and assign unit
+	lea	SourceVec(a4),a3
+	move.l	DV_Name(a3),a0
 	bsr.w	CheckDevName
 	tst.w	d0
-	beq.s	s_pfile
-
-	subq.l	#1,d3
-	bmi.s	s_perror
-
-	move.l	(a2)+,a0
-	bsr.w	Str2Num
-	move.l	d0,DV_Unit(a3)
+	beq.s	s_src_file
+	move.l	ArgArray+24(a4),d0	;US (slot 6)
+	bne.s	s_src_unit
+	move.l	ArgArray+8(a4),d0	;UNIT (slot 2)
+	beq.w	s_argmissunit
+s_src_unit:
+	move.l	d0,a0
+	move.l	(a0),DV_Unit(a3)
 	moveq.l	#-1,d0
-	bra.s	s_pnext
-s_pfile:
+	bra.s	s_src_done
+s_src_file:
 	moveq.l	#0,d0
-s_pnext:
+s_src_done:
 	move.l	d0,DV_File(a3)
-	lea	DestVec(a4),a3
-	subq.w	#1,d2
-	bgt.s	s_pvec
 
+	;same for DST
+	lea	DestVec(a4),a3
+	move.l	DV_Name(a3),a0
+	bsr.w	CheckDevName
+	tst.w	d0
+	beq.s	s_dst_file
+	move.l	ArgArray+28(a4),d0	;UD (slot 7)
+	bne.s	s_dst_unit
+	move.l	ArgArray+8(a4),d0	;UNIT (slot 2)
+	beq.w	s_argmissunit
+s_dst_unit:
+	move.l	d0,a0
+	move.l	(a0),DV_Unit(a3)
+	moveq.l	#-1,d0
+	bra.s	s_dst_done
+s_dst_file:
+	moveq.l	#0,d0
+s_dst_done:
+	move.l	d0,DV_File(a3)
+
+	;default numerics
 	moveq.l	#0,d0
 	move.l	d0,StartBlock(a4)
 	moveq.l	#-2,d0
 	ror.l	#1,d0
 	move.l	d0,NumBlocks(a4)
-s_pnums:
-	subq.l	#1,d3
-	bmi.s	s_pdone
+	clr.l	CustomSize(a4)
 
-	move.l	(a2)+,a0
-	bsr.w	Str2Num
-	move.l	d0,StartBlock(a4)
-	subq.l	#1,d3
-	bmi.s	s_pdone
-
-	move.l	(a2)+,a0
-	bsr.w	Str2Num
-	move.l	d0,NumBlocks(a4)
-	subq.l	#1,d3
-	bmi.s	s_pdone
-
-	move.l	(a2)+,a0
-	bsr.w	Str2Num
-	move.l	d0,CustomSize(a4)
+	;deref optional positional numerics if given
+	move.l	ArgArray+12(a4),d0	;START (slot 3)
+	beq.s	s_arg_ns
+	move.l	d0,a0
+	move.l	(a0),StartBlock(a4)
+s_arg_ns:
+	move.l	ArgArray+16(a4),d0	;COUNT (slot 4)
+	beq.s	s_arg_nc
+	move.l	d0,a0
+	move.l	(a0),NumBlocks(a4)
+s_arg_nc:
+	move.l	ArgArray+20(a4),d0	;BS (slot 5)
+	beq.s	s_pdone
+	move.l	d0,a0
+	move.l	(a0),CustomSize(a4)
 	bra.s	s_pdone
-s_perror:
-	move.l	ConsoleO(a4),d4
-	beq.w	s_closedos
 
+s_argmissunit:
+	move.l	ConsoleO(a4),d4
+	beq.s	s_argclose
 	move.l	d4,d1
-	lea	HelpText(pc),a0
+	lea	NoUnitStr(pc),a0
 	move.l	a0,d2
-	move.l	#TextEnd-HelpText,d3
-	CALLDOS Write
+	moveq.l	#NoUnitEnd-NoUnitStr,d3
+	CALLDOS	Write
+s_argclose:
 	bra.w	s_closedos
+s_argerr:
+	bra.w	s_closedos		;ReadArgs already printed an error
+
+NoUnitStr:
+	dc.b	'dd: device named but no UNIT/US/UD given',10
+NoUnitEnd:
+	even
 s_pdone:
+s_args_done:
 
 ;- - open devices - - - - - - - - - - - - - - - - - - - - -
 
 	moveq.l	#2,d4
+	tst.b	InspectFlag(a4)
+	beq.s	s_open_init		;normal: process SourceVec then DestVec
+	moveq.l	#1,d4			;INSPECT: SourceVec only
+s_open_init:
 	lea	SourceVec(a4),a3
 s_open:
 	tst.l	DV_File(a3)
@@ -563,14 +661,14 @@ s_omodesense:
 	clr.b	(a0)
 	bsr.w	SafeDoIO
 	tst.b	d0
-	bne.s	s_onext
+	bne.w	s_onext
 
 	lea	MSName(pc),a0
 	move.l	a0,d1
 	move.l	#MODE_NEWFILE,d2
 	CALLDOS	Open
 	move.l	d0,d5
-	ble.s	s_onext
+	ble.w	s_onext
 
 	move.l	d5,d1
 	move.l	BlockBuffer(a4),a0
@@ -580,6 +678,47 @@ s_omodesense:
 	CALLDOS	Write
 	move.l	d5,d1
 	CALLDOS	Close
+
+;- - probe NSD - - - - - - - - - - - - - - - - - - - - - - -
+;leaves DV_CmdFlags zero if device has no NSD support
+
+	move.l	DV_IORequest(a3),a1
+	move.w	#NSCMD_DEVICEQUERY,IO_Command(a1)
+	lea	QueryResult(a4),a0
+	move.l	a0,IO_Data(a1)
+	moveq.l	#QR_Sizeof,d0
+	move.l	d0,IO_Length(a1)
+	clr.l	IO_Actual(a1)
+	bsr.w	SafeDoIO
+	tst.b	d0
+	bne.s	s_onsd_end		;no NSD
+
+	move.l	DV_IORequest(a3),a1
+	moveq.l	#QR_Sizeof,d0
+	cmp.l	IO_Actual(a1),d0
+	bne.s	s_onsd_end		;short reply..
+	cmp.l	QueryResult+QR_SizeAvailable(a4),d0
+	bne.s	s_onsd_end		;..bogus size
+	cmp.w	#NSDEVTYPE_TRACKDISK,QueryResult+QR_DeviceType(a4)
+	bne.s	s_onsd_end		;not a trackdisk-style device
+
+	move.l	QueryResult+QR_SupportedCmds(a4),d0
+	beq.s	s_onsd_end		;no command list
+
+	move.l	d0,a0
+	moveq.l	#0,d1
+s_onsd_scan:
+	move.w	(a0)+,d0
+	beq.s	s_onsd_done
+	cmp.w	#NSCMD_TD_READ64,d0
+	bne.s	s_onsd_scan
+	or.b	#4,d1			;"NSCMD-TD64 available"
+	bra.s	s_onsd_scan
+s_onsd_done:
+	or.b	#1,d1			;bit 0: NSCMD_DEVICEQUERY succeeded
+	move.b	d1,DV_CmdFlags(a3)
+s_onsd_end:
+
 s_onext:
 	lea	DestVec(a4),a3
 	subq.w	#1,d4
@@ -626,8 +765,16 @@ s_oerror:
 	bra.w	s_closedev
 s_odone:
 
+;- - INSPECT mode: print device info and exit - - - - - - -
+
+	tst.b	InspectFlag(a4)
+	beq.s	s_buffers
+	bsr.w	PrintInspect
+	bra.w	s_closedev
+
 ;- - get buffers  - - - - - - - - - - - - - - - - - - - - -
 
+s_buffers:
 	moveq.l	#2,d0
 	cmp.b	#2,FillFlag(a4)
 	bcs.s	s_b1
@@ -684,7 +831,8 @@ s_w4:
 	beq.s	s_w5
 
 	move.l	d2,d1
-	move.w	#-1,SCSIFlag(a4)	;..always use SCSI mode
+	or.b	#$80,SourceVec+DV_CmdFlags(a4)	;..always use SCSI mode
+	or.b	#$80,DestVec+DV_CmdFlags(a4)
 s_w5:
 	move.l	d1,BlockSize(a4)
 	move.w	d0,BlockShift(a4)
@@ -727,7 +875,8 @@ s_w5:
 	cmp.b	#'Y',d1
 	bne.w	s_closedev
 
-	move.w	#-1,SCSIFlag(a4)
+	or.b	#$80,SourceVec+DV_CmdFlags(a4)
+	or.b	#$80,DestVec+DV_CmdFlags(a4)
 	move.l	CustomSize(a4),d2	;user Block size
 	bra.w	s_w3
 s_w6:
@@ -768,10 +917,48 @@ s_w8:
 	add.l	NumBlocks(a4),d1
 	subq.l	#1,d1			;# last Block..
 	lsr.l	d0,d1
-	beq.s	s_wdone			;..still within first 4 Gbyte
+	sne	d2			;d2 = $ff if range > 4 Gbyte, else 0
 
-	moveq.l	#-1,d0
-	move.w	d0,SCSIFlag(a4)
+;- - pick I/O command set per device - - - - - - - - - - - -
+;Ladder per DV: CMD_READ -> NSCMD_TD_READ64 -> HD_SCSICMD.
+;CMD when range <=4G and not forced SCSI; HD_SCSICMD only as last resort.
+
+	move.l	SourceVec+DV_IORequest(a4),d0
+	beq.s	s_w8_dst		;source not a real device
+	move.w	#CMD_READ,SourceVec+DV_ReadCmd(a4)
+	move.w	#CMD_WRITE,SourceVec+DV_WriteCmd(a4)
+	move.b	SourceVec+DV_CmdFlags(a4),d0
+	btst	#7,d0			;forced SCSI?
+	bne.s	s_w8_src_scsi
+	tst.b	d2
+	beq.s	s_w8_dst		;<=4G: keep CMD_READ/WRITE
+	btst	#2,d0			;NSCMD-TD64 available?
+	beq.s	s_w8_src_scsi
+	move.w	#NSCMD_TD_READ64,SourceVec+DV_ReadCmd(a4)
+	move.w	#NSCMD_TD_WRITE64,SourceVec+DV_WriteCmd(a4)
+	bra.s	s_w8_dst
+s_w8_src_scsi:
+	move.w	#HD_SCSICMD,SourceVec+DV_ReadCmd(a4)
+	move.w	#HD_SCSICMD,SourceVec+DV_WriteCmd(a4)
+
+s_w8_dst:
+	move.l	DestVec+DV_IORequest(a4),d0
+	beq.s	s_wdone			;dest not a real device
+	move.w	#CMD_READ,DestVec+DV_ReadCmd(a4)
+	move.w	#CMD_WRITE,DestVec+DV_WriteCmd(a4)
+	move.b	DestVec+DV_CmdFlags(a4),d0
+	btst	#7,d0
+	bne.s	s_w8_dst_scsi
+	tst.b	d2
+	beq.s	s_wdone
+	btst	#2,d0
+	beq.s	s_w8_dst_scsi
+	move.w	#NSCMD_TD_READ64,DestVec+DV_ReadCmd(a4)
+	move.w	#NSCMD_TD_WRITE64,DestVec+DV_WriteCmd(a4)
+	bra.s	s_wdone
+s_w8_dst_scsi:
+	move.w	#HD_SCSICMD,DestVec+DV_ReadCmd(a4)
+	move.w	#HD_SCSICMD,DestVec+DV_WriteCmd(a4)
 s_wdone:
 
 ;- - prepare fill mode  - - - - - - - - - - - - - - - - - -
@@ -805,6 +992,15 @@ s_f3:
 	subq.l	#4,d0
 	bgt.s	s_f3
 s_fdone:
+
+;- - announce picked command set per side - - - - - - - - -
+
+	lea	SourceVec(a4),a3
+	lea	cn_label_read(pc),a1
+	bsr.w	PrintCmdUsed
+	lea	DestVec(a4),a3
+	lea	cn_label_write(pc),a1
+	bsr.w	PrintCmdUsed
 
 ;- - transfer data  - - - - - - - - - - - - - - - - - - - -
 
@@ -863,16 +1059,22 @@ s_t1:
 	bra.w	s_treaderr
 s_t2:
 	move.l	SourceVec+DV_IORequest(a4),a1
-	tst.w	SCSIFlag(a4)
-	bmi.s	s_ts2
+	move.w	SourceVec+DV_ReadCmd(a4),d0
+	cmp.w	#HD_SCSICMD,d0
+	beq.s	s_ts2
 
-	move.w	#CMD_READ,IO_Command(a1)
+	move.w	d0,IO_Command(a1)	;CMD_READ or NSCMD_TD_READ64
 	move.l	d2,IO_Data(a1)
 	move.l	d3,IO_Length(a1)
-	move.l	d4,d0
-	lsl.l	d7,d0
+	move.l	d4,d0			;block #
+	rol.l	d7,d0			;rotate byte-offset high bits into low
+	moveq.l	#0,d1
+	bset	d7,d1
+	subq.l	#1,d1			;d1 = BlockMask = (1<<BlockShift)-1
+	and.l	d0,d1			;d1 = high 32 bits of byte offset
+	move.l	d1,IO_Actual(a1)	;TD64 HighOffset (0 for CMD_READ)
+	eor.l	d1,d0			;d0 = low 32 bits
 	move.l	d0,IO_Offset(a1)
-	clr.l	IO_Actual(a1)
 	bsr.w	SafeDoIO
 	tst.b	d0
 	beq.s	s_t3
@@ -932,16 +1134,22 @@ s_t3:
 	bra.w	s_twriteerr
 s_t4:
 	move.l	DestVec+DV_IORequest(a4),a1
-	tst.w	SCSIFlag(a4)
-	bmi.s	s_ts4
+	move.w	DestVec+DV_WriteCmd(a4),d0
+	cmp.w	#HD_SCSICMD,d0
+	beq.s	s_ts4
 
-	move.w	#CMD_WRITE,IO_Command(a1)
+	move.w	d0,IO_Command(a1)	;CMD_WRITE or NSCMD_TD_WRITE64
 	move.l	d2,IO_Data(a1)
 	move.l	d3,IO_Length(a1)
-	move.l	d4,d0
-	lsl.l	d7,d0
+	move.l	d4,d0			;block #
+	rol.l	d7,d0
+	moveq.l	#0,d1
+	bset	d7,d1
+	subq.l	#1,d1			;d1 = BlockMask = (1<<BlockShift)-1
+	and.l	d0,d1			;d1 = high 32 bits of byte offset
+	move.l	d1,IO_Actual(a1)	;TD64 HighOffset (0 for CMD_WRITE)
+	eor.l	d1,d0			;d0 = low 32 bits
 	move.l	d0,IO_Offset(a1)
-	clr.l	IO_Actual(a1)
 	bsr.w	SafeDoIO
 	tst.b	d0
 	beq.s	s_t5
@@ -1084,6 +1292,8 @@ s_freebuf:
 ;- - report result  - - - - - - - - - - - - - - - - - - - -
 
 s_report:
+	tst.b	InspectFlag(a4)
+	bne.w	s_closedos		;INSPECT: skip transfer summary
 	lea	StringBuf(a4),a1
 	move.l	DoneBlocks(a4),d0
 	bsr.w	Num2Str
@@ -1136,6 +1346,11 @@ s_rep2:
 ;- - free resources - - - - - - - - - - - - - - - - - - - -
 
 s_closedos:
+	move.l	RDArgs(a4),d1
+	beq.s	s_end_norda
+	CALLDOS	FreeArgs
+	clr.l	RDArgs(a4)
+s_end_norda:
 	move.l	DosBase(a4),a1
 	CALLEXEC CloseLibrary
 s_end:
@@ -1221,6 +1436,389 @@ fch_name:
 	dc.b	'FILL',':'&$df,0,0,0,0,0
 	dc.b	'RSPEED',':'&$df,0,0,0
 	dc.b	'RWSPEED',':'&$df,0,0
+	even
+
+ArgTemplate:
+	dc.b	'SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K',0
+	even
+
+;--- command-word → name lookup ----------------------------
+; Used by INSPECT printer and the per-transfer "via <cmd>" line.
+; Terminated with a 0-word entry.
+
+CmdNames:
+	dc.w	CMD_READ
+	dc.l	cn_cmd_read
+	dc.w	CMD_WRITE
+	dc.l	cn_cmd_write
+	dc.w	CMD_UPDATE
+	dc.l	cn_cmd_update
+	dc.w	CMD_CLEAR
+	dc.l	cn_cmd_clear
+	dc.w	TD_GETGEOMETRY
+	dc.l	cn_td_getgeo
+	dc.w	ETD_READ
+	dc.l	cn_etd_read
+	dc.w	ETD_WRITE
+	dc.l	cn_etd_write
+	dc.w	ETD_UPDATE
+	dc.l	cn_etd_update
+	dc.w	NSCMD_DEVICEQUERY
+	dc.l	cn_nsq
+	dc.w	NSCMD_TD_READ64
+	dc.l	cn_ns_r64
+	dc.w	NSCMD_TD_WRITE64
+	dc.l	cn_ns_w64
+	dc.w	HD_SCSICMD
+	dc.l	cn_scsi
+	dc.w	0			;terminator
+cn_cmd_read:	dc.b	'CMD_READ',0
+cn_cmd_write:	dc.b	'CMD_WRITE',0
+cn_cmd_update:	dc.b	'CMD_UPDATE',0
+cn_cmd_clear:	dc.b	'CMD_CLEAR',0
+cn_td_getgeo:	dc.b	'TD_GETGEOMETRY',0
+cn_etd_read:	dc.b	'ETD_READ',0
+cn_etd_write:	dc.b	'ETD_WRITE',0
+cn_etd_update:	dc.b	'ETD_UPDATE',0
+cn_nsq:		dc.b	'NSCMD_DEVICEQUERY',0
+cn_ns_r64:	dc.b	'NSCMD_TD_READ64',0
+cn_ns_w64:	dc.b	'NSCMD_TD_WRITE64',0
+cn_scsi:	dc.b	'HD_SCSICMD',0
+cn_unknown:	dc.b	'???',0
+	even
+
+;--- lookup command word -> name string --------------------
+; d0 <- command word
+; a0 -> string pointer
+
+CmdToStr:
+	movem.l	d1/a1,-(sp)
+	lea	CmdNames(pc),a1
+cts_loop:
+	move.w	(a1)+,d1
+	beq.s	cts_unknown
+	move.l	(a1)+,a0
+	cmp.w	d0,d1
+	bne.s	cts_loop
+	bra.s	cts_end
+cts_unknown:
+	lea	cn_unknown(pc),a0
+cts_end:
+	movem.l	(sp)+,d1/a1
+	rts
+
+;--- print help banner -------------------------------------
+; (no input/output)
+
+PrintHelp:
+	move.l	ConsoleO(a4),d1
+	beq.s	ph_end
+	lea	HelpBanner(pc),a0
+	move.l	a0,d2
+	move.l	#HelpEnd-HelpBanner,d3
+	CALLDOS	Write
+ph_end:
+	rts
+
+;--- print "read:/write: <name> unit <n> via <cmd>" line ---
+; a3 <- DV pointer (SourceVec or DestVec)
+; a1 <- label string ("read: " or "write: ")
+; uses StringBuf; preserved regs are saved by the caller as needed
+
+PrintCmdUsed:
+	movem.l	d0-d4/a0-a3,-(sp)
+	move.l	ConsoleO(a4),d1
+	beq.w	pcu_end
+	;require a real device (DV_File == -1)
+	move.l	DV_File(a3),d0
+	bpl.w	pcu_end			;file or FILL: skip
+	lea	StringBuf(a4),a2
+	move.l	a2,d2			;d2 = start of message
+	;label
+	move.l	a1,a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	;device name
+	move.l	DV_Name(a3),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	;" unit "
+	lea	cn_unit(pc),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	;unit number
+	move.l	a2,a1
+	move.l	DV_Unit(a3),d0
+	bsr.w	Num2Str
+	move.l	a1,a2
+	;" via "
+	lea	cn_via(pc),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	;command name: pick ReadCmd if label was "read:", WriteCmd otherwise.
+	;The label string ptr was passed in a1; movem.l d0-d4/a0-a3,-(sp) saved
+	;it at sp+24 (5 dn longs first, then a0; a1 is the 7th saved long).
+	move.l	24(sp),a0		;saved a1 = label string ptr
+	move.b	(a0),d0
+	cmp.b	#'r',d0
+	beq.s	pcu_read
+	move.w	DV_WriteCmd(a3),d0
+	bra.s	pcu_cmd
+pcu_read:
+	move.w	DV_ReadCmd(a3),d0
+pcu_cmd:
+	bsr.w	CmdToStr
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	;CR + LF
+	move.b	#13,(a2)+
+	move.b	#10,(a2)+
+	move.l	a2,d3
+	sub.l	d2,d3			;d3 = length
+	move.l	ConsoleO(a4),d1
+	CALLDOS	Write
+pcu_end:
+	movem.l	(sp)+,d0-d4/a0-a3
+	rts
+
+;--- print INSPECT result ----------------------------------
+; SourceVec must be populated by s_open (DV_BlockSize, DV_NumBlocks,
+; DV_CmdFlags, QueryResult).
+
+PrintInspect:
+	movem.l	d0-d4/a0-a3,-(sp)
+	move.l	ConsoleO(a4),d1
+	beq.w	pi_end
+	lea	SourceVec(a4),a3
+	lea	StringBuf(a4),a2
+	move.l	a2,d2
+	;line 1: "<name> unit <n>:"
+	move.l	DV_Name(a3),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	lea	cn_unit(pc),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.l	a2,a1
+	move.l	DV_Unit(a3),d0
+	bsr.w	Num2Str
+	move.l	a1,a2
+	move.b	#':',(a2)+
+	move.b	#13,(a2)+
+	move.b	#10,(a2)+
+	;line 2: "  sector size: <n> bytes"
+	lea	pi_sect(pc),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.l	a2,a1
+	move.l	DV_BlockSize(a3),d0
+	bsr.w	Num2Str
+	move.l	a1,a2
+	move.b	#13,(a2)+
+	move.b	#10,(a2)+
+	;line 3: "  total sectors: <n>"
+	lea	pi_total(pc),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.l	a2,a1
+	move.l	DV_NumBlocks(a3),d0
+	bsr.w	Num2Str
+	move.l	a1,a2
+	move.b	#13,(a2)+
+	move.b	#10,(a2)+
+	;line 4: cylinders
+	lea	pi_cyl(pc),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.l	a2,a1
+	move.l	DriveGeometry+DG_Cylinders(a4),d0
+	bsr.w	Num2Str
+	move.l	a1,a2
+	move.b	#13,(a2)+
+	move.b	#10,(a2)+
+	;line 5: heads
+	lea	pi_heads(pc),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.l	a2,a1
+	move.l	DriveGeometry+DG_Heads(a4),d0
+	bsr.w	Num2Str
+	move.l	a1,a2
+	move.b	#13,(a2)+
+	move.b	#10,(a2)+
+	;line 6: sectors per track
+	lea	pi_spt(pc),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.l	a2,a1
+	move.l	DriveGeometry+DG_TrackSectors(a4),d0
+	bsr.w	Num2Str
+	move.l	a1,a2
+	move.b	#13,(a2)+
+	move.b	#10,(a2)+
+	;line 7: NSD probe status (from CmdFlags bit 0)
+	lea	pi_nsd(pc),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.b	DV_CmdFlags(a3),d0
+	btst	#0,d0
+	bne.s	pi_nsd_ok
+	lea	pi_nsd_no(pc),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.b	#13,(a2)+
+	move.b	#10,(a2)+
+	bra.s	pi_after_nsd
+pi_nsd_ok:
+	lea	pi_nsd_y(pc),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.b	#13,(a2)+
+	move.b	#10,(a2)+
+	;walk SupportedCommands list, print each name as its own line
+	move.l	QueryResult+QR_SupportedCmds(a4),a0
+	move.l	a0,d0
+	beq.s	pi_after_nsd
+pi_walk:
+	move.w	(a0)+,d0
+	beq.s	pi_after_nsd
+	move.l	a0,-(sp)		;save list iterator
+	lea	pi_indent(pc),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	bsr.w	CmdToStr		;d0 still has cmd word
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.b	#13,(a2)+
+	move.b	#10,(a2)+
+	move.l	(sp)+,a0		;restore iterator
+	bra.s	pi_walk
+pi_after_nsd:
+	;line 5a: "  for <=4 GiB:   CMD_READ / CMD_WRITE"
+	lea	pi_picks_lo(pc),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.w	#CMD_READ,d0
+	bsr.w	CmdToStr
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.b	#' ',(a2)+
+	move.b	#'/',(a2)+
+	move.b	#' ',(a2)+
+	move.w	#CMD_WRITE,d0
+	bsr.w	CmdToStr
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.b	#13,(a2)+
+	move.b	#10,(a2)+
+	;line 5b: "  for  >4 GiB:   <NSCMD64 or HD_SCSICMD pair>"
+	lea	pi_picks_hi(pc),a0
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.b	DV_CmdFlags(a3),d0
+	btst	#2,d0
+	beq.s	pi_hi_scsi
+	move.w	#NSCMD_TD_READ64,d0
+	bsr.w	CmdToStr
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.b	#' ',(a2)+
+	move.b	#'/',(a2)+
+	move.b	#' ',(a2)+
+	move.w	#NSCMD_TD_WRITE64,d0
+	bra.s	pi_hi_emit
+pi_hi_scsi:
+	move.w	#HD_SCSICMD,d0
+	bsr.w	CmdToStr
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.b	#' ',(a2)+
+	move.b	#'/',(a2)+
+	move.b	#' ',(a2)+
+	move.w	#HD_SCSICMD,d0
+pi_hi_emit:
+	bsr.w	CmdToStr
+	move.l	a2,a1
+	bsr.w	StrCopy
+	move.l	a1,a2
+	move.b	#13,(a2)+
+	move.b	#10,(a2)+
+	;flush buffer
+	move.l	a2,d3
+	sub.l	d2,d3
+	move.l	ConsoleO(a4),d1
+	CALLDOS	Write
+pi_end:
+	movem.l	(sp)+,d0-d4/a0-a3
+	rts
+
+cn_unit:	dc.b	' unit ',0
+cn_via:		dc.b	' via ',0
+cn_label_read:	dc.b	'read:  ',0
+cn_label_write:	dc.b	'write: ',0
+pi_sect:	dc.b	'  sector size:    ',0
+pi_total:	dc.b	'  total sectors:  ',0
+pi_cyl:		dc.b	'  cylinders:      ',0
+pi_heads:	dc.b	'  heads:          ',0
+pi_spt:		dc.b	'  sec/track:      ',0
+pi_nsd:		dc.b	'  NSD:            ',0
+pi_indent:	dc.b	'                  ',0
+pi_nsd_y:	dc.b	'supported, commands:',0
+pi_nsd_no:	dc.b	'not supported',0
+pi_picks_lo:	dc.b	'  for <=4 GiB:    ',0
+pi_picks_hi:	dc.b	'  for  >4 GiB:    ',0
+	even
+
+HelpBanner:
+	dc.b	'dd 2.0 - raw block transfer tool',13,10,13,10
+	dc.b	'Usage: dd SRC DST [UNIT] [START] [COUNT] [BS] [US n] [UD n]',13,10
+	dc.b	'       dd INSPECT device.name [UNIT n]    (probe device, print capabilities)',13,10
+	dc.b	'       dd ?       (this help, then ReadArgs prompt)',13,10
+	dc.b	'       dd HELP    (same as `dd ?`, no interactive prompt)',13,10,13,10
+	dc.b	'Template: SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K',13,10,13,10
+	dc.b	'Args:',13,10
+	dc.b	'  SRC, DST  Source and destination. Either:',13,10
+	dc.b	'            - a device name (e.g. compactflash.device) plus UNIT or US/UD',13,10
+	dc.b	'            - a file path (e.g. RAM:dump, DH0:foo)',13,10
+	dc.b	'            - FILL:      infinite zero bytes (FILL:NN for value NN)',13,10
+	dc.b	'            - RSPEED:    DST only (read-only throughput benchmark)',13,10
+	dc.b	'            - RWSPEED:   DST only (read+write throughput benchmark)',13,10
+	dc.b	'  UNIT      Device unit. Applies to whichever of SRC/DST is a device.',13,10
+	dc.b	'  US, UD    Per-side unit. Use when both SRC and DST are devices.',13,10
+	dc.b	'  START     First block to transfer (default 0).',13,10
+	dc.b	'  COUNT     Number of blocks (default: entire disk or file).',13,10
+	dc.b	'  BS        Block size in bytes (default: detected from device).',13,10,13,10
+	dc.b	'Examples:',13,10
+	dc.b	'  dd FILL: scsi.device 0                      ; wipe whole device',13,10
+	dc.b	'  dd FILL: scsi.device 0 0 1048576 512        ; wipe 512 MiB at LBA 0',13,10
+	dc.b	'  dd compactflash.device RAM:dump 0 1000 200  ; read 200 blocks @ LBA 1000',13,10
+	dc.b	'  dd RAM:dump scsi.device 1 0 200             ; write file back to scsi:1',13,10
+	dc.b	'  dd compactflash.device scsi.device US 0 UD 1 START 0 COUNT 1000',13,10
+	dc.b	'  dd compactflash.device RAM:dump UNIT 0 START 1000 COUNT 200',13,10
+HelpEnd:
 	even
 
 ;--- copy string -------------------------------------------
@@ -1462,65 +2060,6 @@ TimeMsecs:
 	move.l	(sp)+,d2
 	rts
 
-;--- get parameters ----------------------------------------
-; a0 <- &command line
-; a1 <- &target buffer
-; d0 -> # Parameters
-
-GetDosParams:
-	movem.l	a1-a2,-(sp)
-	lea	40(a1),a2		;&strings
-gdp_par:
-	move.l	a2,(a1)+		;Vectors..
-	moveq.l	#0,d2
-gdp_char:
-	move.b	(a0)+,d0
-	cmp.b	#' ',d0
-	beq.s	gdp_spc
-	bcs.s	gdp_pend
-
-	cmp.b	#'"',d0
-	beq.s	gdp_cite
-gdp_write:
-	or.w	#1,d2
-	move.b	d0,(a2)+		;..and strings
-	bra.s	gdp_char
-
-gdp_spc:
-	btst	#0,d2
-	beq.s	gdp_char
-
-	btst	#1,d2
-	beq.s	gdp_pend
-	bra.s	gdp_write
-
-gdp_cite:
-	btst	#0,d2
-	bne.s	gdp_c1
-
-	or.w	#3,d2
-	bra.s	gdp_char
-gdp_c1:
-	cmp.b	#' '+1,(a0)
-	bcc.s	gdp_write
-
-	move.b	(a0)+,d0
-gdp_pend:
-	clr.b	(a2)+
-	cmp.b	#' ',d0
-	beq.s	gdp_par
-
-	btst	#0,d2
-	bne.s	gdp_p1
-
-	subq.l	#4,a1
-gdp_p1:
-	clr.l	(a1)
-	move.l	a1,d0
-	sub.l	(sp),d0
-	lsr.l	#2,d0
-	movem.l	(sp)+,a1-a2
-	rts
 
 ;*** exec supplements **************************************
 ;--- use device --------------------------------------------
@@ -1678,31 +2217,6 @@ WriteSpeedStr:
 	dc.b	'Write speed: ',0
 KbpsStr:
 	dc.b	' kbyte/sec',LF,0
-HelpText:
- dc.b 'usage: dd <source> <destination> [<start> [<length> [<block size>]]]',LF
- dc.b LF
- dc.b '  <source>      - Where to read blocks from. Either',LF
- dc.b '                  <name>.device <unit number>, or <filename>.',LF
- dc.b '                  FILL: acts as an infinite file of all zeroes.',LF
- dc.b '                  FILL:255 supplies 0xff bytes etc.',LF
- dc.b LF
- dc.b '  <destination> - Where to write blocks to.',LF
- dc.b '                  RSPEED: performs a read speed test,',LF
- dc.b '                  RWSPEED: checks both read and write speed.',LF
- dc.b "                  FILL: doesn't make much sense here ;^)",LF
- dc.b LF
- dc.b '  <start>       - Number of first block to transfer.',LF
- dc.b '                  Defaults to 0 (start of disk).',LF
- dc.b LF
- dc.b '  <length>      - Count of blocks to transfer.',LF
- dc.b '                  Defaults to disk or file size.',LF
- dc.b LF
- dc.b '  <block size>  - Custom block size in bytes.',LF
- dc.b '                  Use with extreme care.',LF
- dc.b LF
-TextEnd:
-	dc.b	0
-	even
 
 ;*** that's it!!!! *****************************************
 	end

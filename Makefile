@@ -5,7 +5,7 @@
 
 # Release version: YYYYMMDD package date + optional in-progress suffix
 # (-dev, -rc1, ...). Empty suffix for a final release.
-RELEASE_DATE = 20260520
+RELEASE_DATE = 20260601
 VERSION_SUFFIX = -dev
 
 # fat95 filesystem handler version
@@ -20,10 +20,10 @@ INSTALL95_MINOR = 19
 INSTALL95_VERSION_SUFFIX =
 INSTALL95_DATE = 25.01.2026
 
-DD_MAJOR = 1
-DD_MINOR = 05
+DD_MAJOR = 2
+DD_MINOR = 0
 DD_VERSION_SUFFIX =
-DD_DATE = 25.01.2026
+DD_DATE = 01.06.2026
 
 DEBUG95_MAJOR = 3
 DEBUG95_MINOR = 19
@@ -382,7 +382,7 @@ check-lha:
 	@command -v $(LHA) >/dev/null 2>&1 || { echo "ERROR: lha not found (sudo dnf install lha)"; exit 1; }
 
 # Create Aminet-compatible LHA release
-release: check-vasm version-readme all $(README_NAME) $(GUIDE_OUTPUT) check-lha
+release: check-vasm version-readme all $(README_NAME) guide check-lha
 	@echo "Creating $(ARCHIVE_NAME)..."
 	@S=$$(mktemp -d); \
 	mkdir -p "$$S/fat95/l/68020" "$$S/fat95/l/68000" "$$S/fat95/c" "$$S/fat95/src"; \
@@ -392,7 +392,11 @@ release: check-vasm version-readme all $(README_NAME) $(GUIDE_OUTPUT) check-lha
 	cp dist/c/* "$$S/fat95/c/"; \
 	cp src/*.s src/*.i "$$S/fat95/src/"; \
 	cp $(README_NAME) "$$S/fat95/fat95.readme"; \
-	cp $(README_INFO) LICENSE $(GUIDE_OUTPUT) $(GUIDE_OUTPUT).info "$$S/fat95/"; \
+	cp $(README_INFO) LICENSE "$$S/fat95/"; \
+	mkdir -p "$$S/fat95/docs"; \
+	cp $(GUIDE_FAT95)   "$$S/fat95/docs/"; \
+	cp $(GUIDE_DD)      "$$S/fat95/docs/"; \
+	cp $(GUIDE_LSFSRES) "$$S/fat95/docs/"; \
 	cp dist.info "$$S/fat95.info"; \
 	for d in dist/DOSDrivers dist/english dist/deutsch dist/magyar dist/polska dist/russian dist/espa* dist/fran*; do \
 		[ -d "$$d" ] && cp -r "$$d" "$$S/fat95/"; \
@@ -469,14 +473,30 @@ help:
 # Documentation targets
 # ============================================================
 
-# Generate AmigaGuide documentation from README.md
-GUIDE_OUTPUT = dist/fat95.guide
+# Generate AmigaGuide documentation from Markdown
+GUIDE_OUTPUT_DIR = dist/docs
+GUIDE_FAT95      = $(GUIDE_OUTPUT_DIR)/fat95.guide
+GUIDE_DD         = $(GUIDE_OUTPUT_DIR)/dd.guide
+GUIDE_LSFSRES    = $(GUIDE_OUTPUT_DIR)/lsfsres.guide
+# Backwards-compat alias for anything still referencing $(GUIDE_OUTPUT).
+GUIDE_OUTPUT     = $(GUIDE_FAT95)
 MD2GUIDE = ../cfd/tools/md2guide.py
 
-guide guides: $(GUIDE_OUTPUT)
+guide guides: $(GUIDE_FAT95) $(GUIDE_DD) $(GUIDE_LSFSRES)
 
-$(GUIDE_OUTPUT): README.md $(MD2GUIDE)
+$(GUIDE_FAT95): README.md $(MD2GUIDE)
+	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) README.md $@ --version $(VERSION) --date $(DATE) --title "fat95" --ver-title "fat95 guide"
+
+$(GUIDE_DD): docs/dd.md $(MD2GUIDE)
+	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
+	$(Q)echo "  GUIDE   $@"
+	$(Q)python3 $(MD2GUIDE) docs/dd.md $@ --version $(DD_VERSION) --date $(DD_DATE) --title "dd" --ver-title "dd guide"
+
+$(GUIDE_LSFSRES): docs/lsfsres.md $(MD2GUIDE)
+	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
+	$(Q)echo "  GUIDE   $@"
+	$(Q)python3 $(MD2GUIDE) docs/lsfsres.md $@ --version $(LSFSRES_VERSION) --date $(LSFSRES_DATE) --title "lsfsres" --ver-title "lsfsres guide"
 
 .PHONY: all fat95 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide guides help version-readme FORCE
