@@ -12,6 +12,27 @@ fat95 - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/mis
 WHAT'S NEW (@DATE@)
 =======================
 
+tools:
+
+* **dd 2.0** (major update: breaking change in argument positioning and parsing)
+
+  Reliable CLI parsing (breaking change): dd now uses the standard
+  AmigaOS argument parser, so bad arguments are caught up front
+  instead of silently mis-parsed. Type `dd ?` for  the new usage
+  banner. The unit number moved from between SRC and DST to a single
+  positional slot after DST; for device-to-device copies use the
+  keyword form `US <n>` / `UD <n>`. `FILL:`, `RSPEED:`, `RWSPEED:`
+  are unchanged. See fat95.guide for more details.
+
+  NSD 64-bit I/O support: dd now probes NSD at device open and uses
+  NSCMD_TD_READ64/WRITE64 when the driver advertises them. This is
+  an additional dispatch path next to the existing HD_SCSICMD (SCSI
+  READ10/WRITE10) fallback that already handles >4 GiB I/O on
+  drivers without NSD.
+
+  INSPECT mode: `dd INSPECT device.name [UNIT n]` prints device
+  geometry, NSD support, and which command set dd would use.
+
 packaging:
 
 * Archive version is now a date (YYYYMMDD). The release bundle ships
@@ -86,7 +107,9 @@ CHECKSUMS
 
 CONTENTS
 ========
-fat95/fat95.guide - FAT95 filesystem handler documentation
+fat95/docs/fat95.guide   - FAT95 filesystem handler documentation
+fat95/docs/dd.guide      - dd raw block transfer tool documentation
+fat95/docs/lsfsres.guide - lsfsres FileSystem.resource lister documentation
 
 fat95/l/68020/fat95 - FAT95 filesystem handler, 68020+ cpu tier
 fat95/l/68000/fat95 - FAT95 filesystem handler, 68000+ cpu tier
