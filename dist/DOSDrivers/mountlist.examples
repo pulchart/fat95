@@ -150,3 +150,57 @@ DosType		= 0x46415401
 Control		= "+s"		/* testing: SCSI direct commands */
 #
 
+
+/* === Device-name partition scheme (fat95 3.24+) ============= */
+/*                                                              */
+/* All the examples above use the DosType-byte scheme, where    */
+/* the partition is the last byte of DosType (0x46415401 =      */
+/* FAT\1 = first partition).                                    */
+/*                                                              */
+/* The two entries below use the newer device-name scheme       */
+/* instead: DosType is 0x464154FF for every FAT mount, and the  */
+/* number at the end of the device name picks the partition,    */
+/* 0-based (CF0 = first, CF1 = second, ...). To mount another   */
+/* partition, copy an entry and change only the name; the       */
+/* DosType stays the same. Because every mount shares one       */
+/* DosType, fat95 needs only a single FileSystem.resource entry */
+/* for all of them (check with the lsfsres tool).               */
+
+CF0:
+FileSystem	= l:fat95
+Device		= compactflash.device
+Unit		= 0
+Flags		= 0
+LowCyl		= 0			/* auto partition search */
+HighCyl		= 0
+Surfaces	= 1
+BlocksPerTrack	= 1
+BlockSize	= 512
+Buffers		= 200
+BufMemType	= 1
+Stacksize	= 4096
+Priority	= 5
+GlobVec		= -1
+DosType		= 0x464154FF		/* CF0 -> first FAT partition */
+Activate	= 1
+#
+
+CF1:
+FileSystem	= l:fat95
+Device		= compactflash.device
+Unit		= 0
+Flags		= 0
+LowCyl		= 0			/* auto partition search */
+HighCyl		= 0
+Surfaces	= 1
+BlocksPerTrack	= 1
+BlockSize	= 512
+Buffers		= 200
+BufMemType	= 1
+Stacksize	= 4096
+Priority	= 5
+GlobVec		= -1
+DosType		= 0x464154FF		/* CF1 -> second FAT partition */
+Activate	= 1
+#
+

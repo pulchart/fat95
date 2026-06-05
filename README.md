@@ -49,7 +49,11 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 ## What's New in
 
-### 20260601-dev
+### 20260607-dev
+
+#### fat95 handler
+
+**fat95 3.24** Adds a second way to choose which FAT partition a mountlist mounts via *Device name suffix.* Set `DosType` to `0x464154FF` for every FAT mount, and the number at the end of the device name picks the partition. The number is 0-based, like `DF0:` and `HD0:`: `CF0:` is the first FAT partition, `CF1:` the second, and so on. The old way *DosType byte (`FAT\<n>`)* is unchanged, and you can mix them on one system. Use whichever you like for each mountlist. See [Partition Selection](#partition-selection) for full details.
 
 #### Tools
 
@@ -69,7 +73,7 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 <!-- COMPONENTS:BEGIN -->
 #### Components in this release
 
-- fat95 3.23 (19.05.2026)
+- fat95 3.24-dev (07.06.2026)
 - install95 3.19 (25.01.2026)
 - dd 2.0 (01.06.2026)
 - debug95 3.19 (25.01.2026)
@@ -219,24 +223,19 @@ First, the name of the driver:
 Device = scsi.device
 ```
 
-That's the one responsible for the Amiga's internal IDE or SCSI
-port. Usually, multiple drives can be connected to such a port.
-Therefore, we need to state which one we want:
+That's the one responsible for the Amiga's internal IDE or SCSI port. Usually, multiple drives can be connected to such a port. Therefore, we need to state which one we want:
 
 ```
 Unit = 1
 ```
 
-This is the "slave" IDE drive (e.g., a ZIP drive).
-The "master" harddisk has number 0.
-For drivers with a single drive only, it is also 0.
+This is the "slave" IDE drive (e.g., a ZIP drive). The "master" harddisk has number 0. For drivers with a single drive only, it is also 0.
 
 ```
 Flags = 0
 ```
 
-Some drivers allow special settings to be made via this one.
-Most cases, that 0 is enough.
+Some drivers allow special settings to be made via this one. Most cases, that 0 is enough.
 
 ```
 BufMemType = 1
@@ -244,8 +243,7 @@ MaxTransfer = 0x20000
 Mask = 0xfffffffe
 ```
 
-For the (unpatched) A1200 ROM scsi.device. Or if driver
-doesn't need them, simply discard.
+For the (unpatched) A1200 ROM scsi.device. Or if driver doesn't need them, simply discard.
 
 ### File System Settings
 
@@ -259,8 +257,7 @@ AmigaOS wants the full path here.
 StackSize = 4096
 ```
 
-Reserve that many bytes for temporary data. State too few,
-and "mysterious" crashes will happen.
+Reserve that many bytes for temporary data. State too few, and "mysterious" crashes will happen.
 
 ```
 GlobVec = -1
@@ -272,8 +269,7 @@ fat95 is assembly language written, so -1.
 Buffers = 200
 ```
 
-Hold that many blocks of 512 bytes each in memory.
-More = Faster = Less memory available.
+Hold that many blocks of 512 bytes each in memory. More = Faster = Less memory available.
 
 ### Control Options
 
@@ -316,19 +312,40 @@ BlocksPerTrack = 1
 Surfaces = 1
 ```
 
-**DosType Values**
+**Choosing which partition to mount**
 
-The **DosType** controls which partition to mount:
+There are two ways to tell fat95 which FAT partition a mount should use. Both work, and you can use them at the same time on one system. Each mountlist picks its way by its **DosType** value, so use whichever you like.
+
+*Option A: DosType byte (`FAT\<n>`)*
+
+The partition selector is the last byte of the DosType. The device name can be anything you like.
 
 | DosType | Hex Value | Description |
 |---------|-----------|-------------|
 | FAT\0 | 0x46415400 | Floppies only |
-| FAT\1 | 0x46415401 | First FAT partition (recommended) |
+| FAT\1 | 0x46415401 | First FAT partition |
 | FAT\2 | 0x46415402 | Second FAT partition |
 | FAT\3 | 0x46415403 | Third FAT partition |
 | FAT\4 | 0x46415404 | Fourth FAT partition |
 | FAT\5 | 0x46415405 | First logical drive (extended partition) |
 | FAT\6 | 0x46415406 | Second logical drive, etc. |
+
+*Option B: device name suffix*
+
+Use DosType `0x464154FF` for **every** FAT mount, and the number at the end of the device name picks the partition. The number is 0-based, like `DF0:` and `HD0:`:
+
+| Device name | DosType | Mounts |
+|-------------|---------|--------|
+| `CF0:` | 0x464154FF | First FAT partition |
+| `CF1:` | 0x464154FF | Second FAT partition |
+| `CF9:` | 0x464154FF | Tenth FAT partition |
+| `CF:` (no number) | 0x464154FF | First FAT partition (default) |
+
+The whole trailing digit run is read as one decimal number from 0 to 254 (`CF255:` and above fail the mount). To mount several partitions from one card, copy the mountlist to `CF0`, `CF1`, `CF2`. The DosType stays the same; only the leading device name differs. For RDB auto-mount, set the partition's drive name to a numbered name (e.g. `FAT0`, `FAT1`) and put `0x464154FF` in the Environment's DosType.
+
+Because every FAT mount uses the same DosType (`0x464154FF`), fat95 needs only one entry in `FileSystem.resource`, no matter how many partitions you mount. With the DosType-byte way each distinct `FAT\<n>` you use needs its own `FileSystem.resource` entry (and when fat95 is ROM-resident it registers `FAT\0`..`FAT\8` as nine separate entries at boot). One entry instead of many means a little less memory and a shorter resource list. You can see the entries with the [`lsfsres`](docs/lsfsres.md) tool.
+
+*Floppies and other unpartitioned media* behave identically under both schemes: the whole disk is mounted as one FAT volume and the partition selector is ignored (the physical drive is chosen by `Unit=`). A floppy mountlist using either DosType mounts the same way.
 
 **Recognized partition types:**
 
@@ -379,6 +396,8 @@ HighCyl = <LastBlock>
 
 ### Complete Mountlist Example
 
+Two options based on DosType, both mount the first FAT partition (see [Partition Selection](#partition-selection)).
+
 ```
 CF0:
     FileSystem     = L:fat95
@@ -397,11 +416,22 @@ CF0:
     StackSize      = 4096
     Priority       = 5
     GlobVec        = -1
-    DosType        = 0x46415401 /* FAT\1 = first FAT partition */
+
+    /* Option A: DosType byte (`FAT\<n>`): FAT\1 = first FAT partition */
+    DosType        = 0x46415401
+
+    /* Option B: DosType byte (`FAT\255`): partition by device name e.g. cf0 = first FAT partition */
+    DosType        = 0x464154FF
+
     Activate       = 1
 ```
 
-For devices with more than one FAT partition, copy the `CF0` mountlist to `CF1`, `CF2`, ... and bump the low byte of `DosType` to `0x46415402`, `0x46415403`, ... matching the table in [Partition Selection](#partition-selection). The `FileSystem = l:fat95` line stays in every copy, AmigaOS `Mount` needs it even when fat95 is already in ROM, because the `FileSystem.resource` auto-lookup only fires on the auto-mount path, not on text-file DOSDrivers.
+For devices with more than one FAT partition:
+
+- Option A: copy the mountlist and change `DosType` to `0x46415402` (FAT\2), `0x46415403` (FAT\3), and so on, matching the table in [Partition Selection](#partition-selection).
+- Option B: copy the mountlist to `CF1`, `CF2`, ... and keep `DosType = 0x464154FF`. The number on the device name picks the partition.
+
+The `FileSystem = l:fat95` line stays in every copy. AmigaOS `Mount` needs it even when fat95 is already in ROM, because the `FileSystem.resource` auto-lookup only fires on the auto-mount path, not on text-file DOSDrivers.
 
 ### Method A: Shell Command
 
@@ -563,7 +593,7 @@ GNU LGPL v2.1
 
 | Version | Date | Changes |
 |---------|------|---------|
-| - | 20260601 | dd 2.0 adds NSD I/O dispatch + INSPECT mode + refactored CLI parsing (breaking change) |
+| v3.24 | 07/06/2026 | New second way to pick a FAT partition via DosType 0x464154FF plus a 0-based number on the device name (CF0: first, CF1: second, ...). *dd 2.0* adds NSD I/O dispatch + INSPECT mode + refactored CLI parsing (breaking change) |
 | v3.23 | 05/2026 | Reliability fixes contributed by Stefan Reinauer (@reinauer) |
 | v3.22 | 05/2026 | Improved ROM resident handling and microoptimizations for both 68000+ and 68020+ cpu tiers |
 | v3.21 | 04/2026 | 68000 NTFS-detect crash fix, GetDiskParams register/state safety, CPU-tier builds (68020+ / 68000) |

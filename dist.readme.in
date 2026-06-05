@@ -12,6 +12,20 @@ fat95 - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/mis
 WHAT'S NEW (@DATE@)
 =======================
 
+fat95 handler:
+
+* **fat95 3.24** adds a second way to pick which FAT partition a
+  mountlist mounts. Both ways work and you can mix them.
+
+  The new way uses DosType 0x464154FF for every FAT mount and
+  takes the partition from the number at the end of the device name.
+  The number is 0-based, like DF0: and HD0: (CF0: is the first, CF1:
+  the second, and so on, 0 to 254).
+  
+  This way it uses one FileSystem.resource entry instead of one
+  per partition. The old way is unchanged. See fat95.guide "Partition
+  Selection" for details.
+
 tools:
 
 * **dd 2.0** (major update: breaking change in argument positioning and parsing)
