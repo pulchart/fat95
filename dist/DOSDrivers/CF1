@@ -1,0 +1,31 @@
+/* Device-name partition selection, on a CompactFlash card.   */
+/*                                                            */
+/* DosType is 0x464154FF for every FAT mount; the number at   */
+/* the end of the device name picks the partition. The number */
+/* is 0-based, like DF0:/HD0:, so:                            */
+/*   CF0: -> first FAT partition                              */
+/*   CF1: -> second FAT partition (this file)                 */
+/*   CF2: -> third, and so on, up to 254                      */
+/* A name with no number means the first partition. Copy this */
+/* file to CF0, CF2, ... to mount other partitions; the       */
+/* DosType stays the same, only the name changes. The other   */
+/* way (DosType byte FAT\<n>) is shown in CF0 and             */
+/* mountlist.examples. See README "Partition Selection".      */
+
+FileSystem = l:fat95
+Control = "-d-D"
+Device = compactflash.device
+Unit = 0
+Flags = 0
+LowCyl = 0
+HighCyl = 0
+Surfaces = 1
+BlocksPerTrack = 1
+BlockSize = 512
+Buffers = 20
+BufMemType = 1
+BootPri = 0
+Stacksize = 4096
+Priority = 5
+GlobVec = -1
+DosType = 0x464154FF

@@ -1,10 +1,13 @@
-/* CF0: first FAT partition on a CompactFlash card.        */
+/* DosType-byte partition selection: first FAT partition   */
+/* on a CompactFlash card. The partition is the last byte  */
+/* of DosType (0x46415401 = FAT\1 = first); the device     */
+/* name does not matter. See CF1 for the other way (the    */
+/* device-name scheme) and README "Partition Selection".   */
 /*                                                         */
 /* The FileSystem = l:fat95 line is required by AmigaOS    */
 /* Mount even when fat95 is ROM-resident: it satisfies the */
 /* parser, and FileSystem.resource dedup ensures the ROM   */
-/* SegList is the one DOS actually uses (see README        */
-/* "Partition Selection" for the FAT\<n> DosType table).   */
+/* SegList is the one DOS actually uses.                   */
 
 FileSystem = l:fat95
 Control = "-d-D"

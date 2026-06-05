@@ -113,6 +113,14 @@ ZCLRB	macro				;clear byte at \1; \2 = zero reg (ignored on 020+)
 ; 0 = floppy, 1..4 = MBR primaries, 5..8 = logical/extended drives.
 FAT_MAX_REG_VARIANT	equ	8
 
+; Device-name-suffix scheme. One DosType for every FAT mount; the
+; partition selector comes from the trailing decimal digits of the
+; device name (CF0:, CF1:, ...) instead of the DosType low byte. $FF
+; (255) is reserved as the marker because no real MBR/RDB/GPT layout
+; reaches partition 255, so it never collides with a FAT\<n>
+; DosType-byte selector. See SetPartSelector.
+DEVICE_DOSTYPE_MARKER	equ	("FAT"<<8)+$ff	;= $464154FF
+
 _AbsExecBase	= 4
 
 Forbid		= -132
@@ -872,7 +880,7 @@ LastReadBlock	= 172
 LastReadError	= 176
 SearchCount	= 177
 SearchMode	= 178
-;179.b unused
+PartitionSelector = 179		;resolved partition selector (0..255)
 
 ;physikal media layout
 PhysSize	= 180		;device access pattern
@@ -1116,7 +1124,11 @@ s_2:
 	tst.l	EnvecBuf+DE_LowCyl(a4)	;partition not at media start..
 	sne	d0
 	move.b	d0,SearchMode(a4)	;..= "auto mode OFF"
+	bsr	SetPartSelector		;DosType byte or device-name suffix
+	tst.l	d0
+	bne.s	s_seldone		;bad device-name suffix -> fail mount
 	bsr	OpenAll
+s_seldone:
 	move.l	d0,DP_Res2(a2)		;error code
 	beq.s	s_openok
 
@@ -3211,9 +3223,9 @@ OpenAll:
 	tst.w	d0
 	bne.w	oa_err
 
-	tst.b	DosType+3(a4)
+	tst.b	PartitionSelector(a4)
 	seq	d0
-	and.w	#1,d0			;DosType "FAT\0" = "use ETD"
+	and.w	#1,d0			;selector 0 (whole disk) = "use ETD"
 	or.w	#$0308,d0		;enable date features and TD_UPDATE
 	move.w	d0,CmdFlags(a4)
 	move.l	EnvecBuf+DE_Control(a4),d0
@@ -3375,11 +3387,99 @@ ic_loop:
 	;   "FAT"<<8  ->  $46415400  (DOS type FAT\0, low byte = selector)
 	move.l	#"FAT"<<8,d0
 	or.b	d4,d0			;d0 = FAT\<d4> ($46415400 | d4)
-	bsr.s	RegisterFS		;d0 -> SegList or 0
+	bsr	RegisterFS		;d0 -> SegList or 0
 	addq.b	#1,d4
 	cmp.b	#FAT_MAX_REG_VARIANT,d4
 	bls.s	ic_loop
+	move.l	#DEVICE_DOSTYPE_MARKER,d0	;..plus one entry for the device-name scheme
+	bsr	RegisterFS
 	rts				;last call's SegList/0 is the Resident return
+
+;--- resolve the partition selector ------------------------
+; Decide which FAT partition this mount wants. Two equally-supported
+; schemes; each mount picks its own by its DosType value:
+;
+;   DosType byte:  the selector is the low byte of the DosType
+;                  (FAT\<n>), so a mount with DosType $4641540<n>
+;                  picks partition <n>. Device name is free-form.
+;
+;   Device name:   DosType is the canonical DEVICE_DOSTYPE_MARKER
+;                  ($464154FF) and the partition is the trailing
+;                  decimal number of the device name, 0-based:
+;                  CF0: -> first FAT partition, CF1: -> second, ...
+;                  (internally name+1, since selector 0 is whole disk).
+;                  No number defaults to the first partition; a number
+;                  above 254 fails the mount.
+;
+; On unpartitioned media (floppy/raw FAT) the selector is ignored later
+; by GetDiskParams, so both schemes mount the whole volume the same way.
+;
+; a4 <- globals base
+; d0 -> 0 = ok (PartitionSelector set), nonzero = DOS error (fail mount)
+SetPartSelector:
+	movem.l	d2-d4,-(sp)
+	move.l	DosType(a4),d0
+	cmp.l	#DEVICE_DOSTYPE_MARKER,d0
+	bne.s	sps_byte
+
+	;device-name scheme: scan trailing decimal digits of the name
+	move.l	DeviceNode(a4),a0
+	move.l	DOL_Name(a0),d0
+	lsl.l	#2,d0			;BPTR -> APTR
+	move.l	d0,a0			;&BSTR (length byte first)
+	moveq.l	#0,d1
+	move.b	(a0)+,d1		;d1 = name length
+	moveq.l	#0,d2			;accumulated trailing value
+	moveq.l	#0,d3			;1 once a digit has been seen
+sps_scan:
+	tst.b	d1
+	beq.s	sps_done
+	moveq.l	#0,d0
+	move.b	(a0)+,d0
+	sub.b	#'0',d0
+	bcs.s	sps_reset		;< '0' -> not a digit
+	cmp.b	#9,d0
+	bhi.s	sps_reset		;> '9' -> not a digit
+	move.l	d2,d4			;value*10 = value*2 + value*8
+	add.l	d2,d2
+	lsl.l	#3,d4
+	add.l	d4,d2
+	add.l	d0,d2			;value = value*10 + digit
+	cmp.l	#256,d2
+	bcs.s	sps_keep
+	move.l	#256,d2			;clamp so absurd names can't wrap
+sps_keep:
+	moveq.l	#1,d3
+	bra.s	sps_next
+sps_reset:
+	moveq.l	#0,d2			;non-digit breaks the trailing run
+	moveq.l	#0,d3
+sps_next:
+	subq.b	#1,d1
+	bra.s	sps_scan
+sps_done:
+	tst.b	d3
+	beq.s	sps_default		;no number -> first partition
+	cmp.l	#254,d2			;0-based name 0..254 -> selector 1..255
+	bhi.s	sps_range		;name >254 has no partition -> fail
+	addq.l	#1,d2			;0-based device name -> 1-based selector
+	move.b	d2,PartitionSelector(a4)
+	moveq.l	#0,d0			;ok
+	bra.s	sps_exit
+sps_default:
+	move.b	#1,PartitionSelector(a4)	;no number -> first partition
+	moveq.l	#0,d0			;ok
+	bra.s	sps_exit
+sps_range:
+	move.l	#218,d0			;ERROR_DEVICE_NOT_MOUNTED
+	bra.s	sps_exit
+sps_byte:
+	move.b	DosType+3(a4),PartitionSelector(a4)
+	moveq.l	#0,d0			;ok
+sps_exit:
+	movem.l	(sp)+,d2-d4
+	tst.l	d0			;set flags for the caller
+	rts
 
 ;--- register with filesystem.resource ---------------------
 ; d0 <- DosType
@@ -5544,7 +5644,7 @@ gdp_foreign:
 	;Foreign disk format detected (RDB, PFS, SFS, FFS, or no MBR signature)
 	;For partition 1: show NDOS (disk present but wrong format)
 	;For partition 2+: show ID_NONE (partition doesn't exist)
-	cmp.b	#2,DosType+3(a4)
+	cmp.b	#2,PartitionSelector(a4)
 	bcc.w	gdp_none		;partition 2+ -> "No Disk"
 	bra.w	gdp_ndos		;partition 0/1 -> "Uninitialized"
 
@@ -5611,7 +5711,7 @@ gdp_notforeign:
 
 	;Get requested partition number
 	moveq.l	#0,d2
-	move.b	DosType+3(a4),d2
+	move.b	PartitionSelector(a4),d2
 	bgt.s	gdp_gpt_p1
 	moveq.l	#1,d2			;autoselect first FAT partition
 gdp_gpt_p1:
@@ -5732,7 +5832,7 @@ gdp_mbr_search:
 	moveq.l	#-1,d0
 	move.l	d0,-(a2)		;..to end
 	moveq.l	#0,d2
-	move.b	DosType+3(a4),d2
+	move.b	PartitionSelector(a4),d2
 	bgt.s	gdp_p1			;invalid MountList entry..
 
 	moveq.l	#1,d2			;..autoselect first FAT-partition
@@ -6198,7 +6298,7 @@ DiskRemChInt:
 	tst.l	(a2)
 	beq.s	drci_end
 
-	tst.b	DosType+3(a4)
+	tst.b	PartitionSelector(a4)
 	bne.s	drci_cmd
 
 	bsr	_Forbid			;mfm/trackdisk v34 bug workaround
@@ -6510,7 +6610,7 @@ dge_pok:
 ;- - special case messydisk.device - - - - - - - - - - - - -
 
 dge_fallback:
-	tst.b	DosType+3(a4)
+	tst.b	PartitionSelector(a4)
 	bne.s	dge_readcapacity	;for floppies..
 
 	move.l	DiskRequest(a4),a1
