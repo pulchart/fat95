@@ -9,12 +9,16 @@ Kurz:         Win95/98-kompatibles Dateisystem
 
 fat95 - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
 
+COMPONENTS IN THIS RELEASE
+==========================
+@COMPONENT_VERSIONS@
+
 WHAT'S NEW (@DATE@)
 =======================
 
 fat95 handler:
 
-* **fat95 3.24** adds a second way to pick which FAT partition a
+* 'fat95 3.24' adds a second way to pick which FAT partition a
   mountlist mounts. Both ways work and you can mix them.
 
   The new way uses DosType 0x464154FF for every FAT mount and
@@ -28,21 +32,19 @@ fat95 handler:
 
 tools:
 
-* **dd 2.0** (major update: breaking change in argument positioning and parsing)
+* 'dd 2.0' major update with breaking change in argument positioning
+  and parsing. 'dd' now uses the standard AmigaOS argument parser, type
+  `dd ?` for  the new usage banner.
 
-  Reliable CLI parsing (breaking change): dd now uses the standard
-  AmigaOS argument parser, so bad arguments are caught up front
-  instead of silently mis-parsed. Type `dd ?` for  the new usage
-  banner. The unit number moved from between SRC and DST to a single
-  positional slot after DST; for device-to-device copies use the
-  keyword form `US <n>` / `UD <n>`. `FILL:`, `RSPEED:`, `RWSPEED:`
-  are unchanged. See fat95.guide for more details.
+  The unit number moved from between SRC and DST to a single positional
+  slot after DST; for device-to-device copies use the keyword form
+  `US <n>` / `UD <n>`. `FILL:`, `RSPEED:`, `RWSPEED:` are unchanged.
+  See fat95.guide for more details.
 
   NSD 64-bit I/O support: dd now probes NSD at device open and uses
   NSCMD_TD_READ64/WRITE64 when the driver advertises them. This is
   an additional dispatch path next to the existing HD_SCSICMD (SCSI
-  READ10/WRITE10) fallback that already handles >4 GiB I/O on
-  drivers without NSD.
+  READ10/WRITE10).
 
   INSPECT mode: `dd INSPECT device.name [UNIT n]` prints device
   geometry, NSD support, and which command set dd would use.
@@ -53,13 +55,7 @@ packaging:
   several independently-versioned pieces (fat95, install95, dd, debug95,
   SetFileSize, boot95, lsfsres), each on its own cadence, so a single
   v3.x number for the whole archive never matched what was actually
-  inside. The archive (fat95.vYYYYMMDD.lha) is now named after its
-  release date, while each component keeps its own version, visible via
-  `version <name>`. No installation steps change.
-
-COMPONENTS IN THIS RELEASE
-==========================
-@COMPONENT_VERSIONS@
+  inside.
 
 Purpose
 =======

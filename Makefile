@@ -92,8 +92,13 @@ $($(1)_NAME):$($(1)_TARGET):$($(1)_VERSION):$($(1)_DATE),\
 $(foreach c,$(CPUS),$($(1)_NAME)_$(c):$(OUTDIR)/$(c)/$($(1)_NAME):$($(1)_VERSION):$($(1)_DATE)))
 endef
 
-# Component summary with literal `\n` for GNU sed substitution.
-COMPONENT_VERSIONS_NL = $(shell printf -- '- %s %s (%s)\\n' $(foreach c,$(COMPONENTS),$($(c)_NAME) $($(c)_VERSION) $($(c)_DATE)))
+# "PREFIX|name|version|date" per component, fed to tools/components.sh
+# (the README.md block and the .readme list both render from this).
+COMPONENT_ARGS = $(foreach c,$(COMPONENTS),'$(c)|$($(c)_NAME)|$($(c)_VERSION)|$($(c)_DATE)')
+
+# Component summary with literal `\n` for GNU sed substitution; plain
+# text (no markdown), changed-since-previous-tag components flagged "(new)".
+COMPONENT_VERSIONS_NL = $(shell sh tools/components.sh plain $(COMPONENT_ARGS))
 
 # Generate version include files for assembler
 VERSION_FAT95_INC = src/fat95_version.i
@@ -202,11 +207,7 @@ $(VERSION_STAMP): FORCE
 # README.md from current Makefile vars. Add new release headers by hand.
 version-readme:
 	$(Q)sed -i '0,/^### [0-9]\{8\}[^[:space:]]*/s/^### [0-9]\{8\}[^[:space:]]*/### $(VERSION)/' README.md
-	$(Q)block=$$(printf '%s\n' \
-	    '#### Components in this release' \
-	    '' \
-	    $(foreach c,$(COMPONENTS),'- $($(c)_NAME) $($(c)_VERSION) ($($(c)_DATE))') \
-	    ); \
+	$(Q)block="#### Components in this release\n\n$$(sh tools/components.sh md $(COMPONENT_ARGS))"; \
 	awk -v block="$$block" ' \
 	    /<!-- COMPONENTS:BEGIN -->/{print; print block; in_block=1; next} \
 	    /<!-- COMPONENTS:END -->/{in_block=0} \

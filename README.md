@@ -51,36 +51,39 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 ### 20260607-dev
 
-#### fat95 handler
+<!-- COMPONENTS:BEGIN -->
+#### Components in this release
 
-**fat95 3.24** Adds a second way to choose which FAT partition a mountlist mounts via *Device name suffix.* Set `DosType` to `0x464154FF` for every FAT mount, and the number at the end of the device name picks the partition. The number is 0-based, like `DF0:` and `HD0:`: `CF0:` is the first FAT partition, `CF1:` the second, and so on. The old way *DosType byte (`FAT\<n>`)* is unchanged, and you can mix them on one system. Use whichever you like for each mountlist. See [Partition Selection](#partition-selection) for full details.
+- `fat95 3.24-dev (07.06.2026)` _(new)_
+- `install95 3.19 (25.01.2026)`
+- `dd 2.0 (01.06.2026)` _(new)_
+- `debug95 3.19 (25.01.2026)`
+- `SetFileSize 1.1 (25.01.2026)`
+- `boot95 3.19 (25.01.2026)`
+- `lsfsres 1.0 (16.05.2026)`
+<!-- COMPONENTS:END -->
 
-#### Tools
+#### Changes
 
-**dd 2.0** (major update: **breaking change** in argument positioning and parsing)
+##### fat95 handler
 
-* *Reliable CLI parsing (breaking change).*
+* **fat95 3.24** Adds a second way to choose which FAT partition a mountlist mounts via *Device name suffix.* Set `DosType` to `0x464154FF` for every FAT mount, and the number at the end of the device name picks the partition. The number is 0-based, like `DF0:` and `HD0:`: `CF0:` is the first FAT partition, `CF1:` the second, and so on. The old way *DosType byte (`FAT\<n>`)* is unchanged, and you can mix them on one system. See [Partition Selection](#partition-selection) for full details.
+
+##### Tools
+
+**dd 2.0** major update with **breaking change** in argument positioning and parsing.
+
+* *CLI parsing (breaking change).*
 `dd` now uses the standard AmigaOS argument parser, so bad arguments are caught up front instead of silently mis-parsed. Type `dd ?` for the new usage banner. The unit number moved from between SRC and DST to a single positional slot after DST; for device-to-device copies use the keyword form `US <n>` / `UD <n>`. `FILL:`, `RSPEED:`, `RWSPEED:` are unchanged. See [dd Usage](#dd-usage) for more details.
 * *NSD 64-bit I/O support.*
 `dd` now probes NSD at device open and uses `NSCMD_TD_READ64`/`NSCMD_TD_WRITE64` when the driver advertises them. This is an additional dispatch path next to the existing `HD_SCSICMD` (SCSI READ10/WRITE10) fallback that already handles >4 GiB I/O on drivers without NSD.
 * *INSPECT mode.*
 `dd INSPECT <device.name> [UNIT n]` prints device geometry, NSD support (if any), and which command set dd would use for I/O on the device.
 
-#### Packaging
+##### Packaging
 
-* **Archive version is now a date (YYYYMMDD).** The release bundle ships several independently-versioned pieces (`fat95`, `install95`, `dd`, `debug95`, `SetFileSize`, `boot95`, `lsfsres`), each on its own cadence, so a single `v3.x` number for the whole archive never matched what was actually inside. The archive (`fat95.vYYYYMMDD.lha`) is now named after its release date, while each component keeps its own version, visible via `version <name>`. No installation steps change.
+* **Archive version is now a date (YYYYMMDD).** The release bundle ships several independently-versioned pieces (`fat95`, `install95`, `dd`, `debug95`, `SetFileSize`, `boot95`, `lsfsres`), each on its own cadence, so a single `v3.x` number for the whole archive never matched what was actually inside.
 
-<!-- COMPONENTS:BEGIN -->
-#### Components in this release
-
-- fat95 3.24-dev (07.06.2026)
-- install95 3.19 (25.01.2026)
-- dd 2.0 (01.06.2026)
-- debug95 3.19 (25.01.2026)
-- SetFileSize 1.1 (25.01.2026)
-- boot95 3.19 (25.01.2026)
-- lsfsres 1.0 (16.05.2026)
-<!-- COMPONENTS:END -->
 <details>
 <summary>Older releases</summary>
 
@@ -341,7 +344,7 @@ Use DosType `0x464154FF` for **every** FAT mount, and the number at the end of t
 | `CF9:` | 0x464154FF | Tenth FAT partition |
 | `CF:` (no number) | 0x464154FF | First FAT partition (default) |
 
-The whole trailing digit run is read as one decimal number from 0 to 254 (`CF255:` and above fail the mount). To mount several partitions from one card, copy the mountlist to `CF0`, `CF1`, `CF2`. The DosType stays the same; only the leading device name differs. For RDB auto-mount, set the partition's drive name to a numbered name (e.g. `FAT0`, `FAT1`) and put `0x464154FF` in the Environment's DosType.
+The whole trailing digit run is read as one decimal number from 0 to 254 (`CF255:` and above fail the mount). To mount several partitions from one card, copy the mountlist to `CF0`, `CF1`, `CF2`. The DosType stays the same; only the leading device name differs.
 
 Because every FAT mount uses the same DosType (`0x464154FF`), fat95 needs only one entry in `FileSystem.resource`, no matter how many partitions you mount. With the DosType-byte way each distinct `FAT\<n>` you use needs its own `FileSystem.resource` entry (and when fat95 is ROM-resident it registers `FAT\0`..`FAT\8` as nine separate entries at boot). One entry instead of many means a little less memory and a shorter resource list. You can see the entries with the [`lsfsres`](docs/lsfsres.md) tool.
 
