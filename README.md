@@ -49,12 +49,12 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 ## What's New in
 
-### 20260607-dev
+### 20260609
 
 <!-- COMPONENTS:BEGIN -->
 #### Components in this release
 
-- `fat95 3.24-dev (07.06.2026)` _(new)_
+- `fat95 3.24 (07.06.2026)` _(new)_
 - `install95 3.19 (25.01.2026)`
 - `dd 2.0 (01.06.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
