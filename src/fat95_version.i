@@ -3,8 +3,8 @@ FILE_VERSION	= 3
 FILE_REVISION	= 24
 VERSION_STRING	macro
 	ifd	__68020__
-	dc.b	"$VER: fat95 3.24-dev (07.06.2026) [68020]"
+	dc.b	"$VER: fat95 3.24 (07.06.2026) [68020]"
 	else
-	dc.b	"$VER: fat95 3.24-dev (07.06.2026) [68000]"
+	dc.b	"$VER: fat95 3.24 (07.06.2026) [68000]"
 	endc
 	endm
