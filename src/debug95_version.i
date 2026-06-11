@@ -2,3 +2,6 @@
 VER_STRING	macro
 	dc.b	"$VER: debug95 3.19 (25.01.2026)", LF, 0
 	endm
+VER_NUMBER	macro
+	dc.b	"3.19"
+	endm

@@ -2,3 +2,6 @@
 VER_STRING	macro
 	dc.b	"$VER: SetFileSize 1.1 (25.01.2026)", LF, 0
 	endm
+VER_NUMBER	macro
+	dc.b	"1.1"
+	endm

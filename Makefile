@@ -5,8 +5,8 @@
 
 # Release version: YYYYMMDD package date + optional in-progress suffix
 # (-dev, -rc1, ...). Empty suffix for a final release.
-RELEASE_DATE = 20260609
-VERSION_SUFFIX =
+RELEASE_DATE = 20260612
+VERSION_SUFFIX = -dev
 
 # fat95 filesystem handler version
 FAT95_MAJOR = 3
@@ -21,9 +21,9 @@ INSTALL95_VERSION_SUFFIX =
 INSTALL95_DATE = 25.01.2026
 
 DD_MAJOR = 2
-DD_MINOR = 0
+DD_MINOR = 1
 DD_VERSION_SUFFIX =
-DD_DATE = 01.06.2026
+DD_DATE = 12.06.2026
 
 DEBUG95_MAJOR = 3
 DEBUG95_MINOR = 19
@@ -224,6 +224,9 @@ define gen_version_inc
 	$(if $(4),$(Q)echo "FILE_REVISION	= $(4)" >> $(1))
 	$(Q)echo "$(6)	macro" >> $(1)
 	$(Q)echo "	dc.b	\"\$$VER: $(2) $(5) ($(7))\"$(if $(8),$(COMMA) LF$(COMMA) 0)" >> $(1)
+	$(Q)echo "	endm" >> $(1)
+	$(Q)echo "VER_NUMBER	macro" >> $(1)
+	$(Q)echo "	dc.b	\"$(5)\"" >> $(1)
 	$(Q)echo "	endm" >> $(1)
 endef
 

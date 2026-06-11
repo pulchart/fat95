@@ -4,7 +4,7 @@ Author:       jaroslav.pulchart@gmail.com (Jaroslav Pulchart), based on work by 
 Type:         disk/misc
 Version:      @VERSION@
 Architecture: m68k-amigaos
-Replaces:     disk/misc/fat95.v3.23.lha
+Replaces:     disk/misc/fat95.v20260609.lha
 Kurz:         Win95/98-kompatibles Dateisystem
 
 fat95 - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
@@ -16,46 +16,11 @@ COMPONENTS IN THIS RELEASE
 WHAT'S NEW (@DATE@)
 =======================
 
-fat95 handler:
-
-* 'fat95 3.24' adds a second way to pick which FAT partition a
-  mountlist mounts. Both ways work and you can mix them.
-
-  The new way uses DosType 0x464154FF for every FAT mount and
-  takes the partition from the number at the end of the device name.
-  The number is 0-based, like DF0: and HD0: (CF0: is the first, CF1:
-  the second, and so on, 0 to 254).
-  
-  This way it uses one FileSystem.resource entry instead of one
-  per partition. The old way is unchanged. See fat95.guide "Partition
-  Selection" for details.
-
 tools:
 
-* 'dd 2.0' major update with breaking change in argument positioning
-  and parsing. 'dd' now uses the standard AmigaOS argument parser, type
-  `dd ?` for  the new usage banner.
-
-  The unit number moved from between SRC and DST to a single positional
-  slot after DST; for device-to-device copies use the keyword form
-  `US <n>` / `UD <n>`. `FILL:`, `RSPEED:`, `RWSPEED:` are unchanged.
-  See fat95.guide for more details.
-
-  NSD 64-bit I/O support: dd now probes NSD at device open and uses
-  NSCMD_TD_READ64/WRITE64 when the driver advertises them. This is
-  an additional dispatch path next to the existing HD_SCSICMD (SCSI
-  READ10/WRITE10).
-
-  INSPECT mode: `dd INSPECT device.name [UNIT n]` prints device
-  geometry, NSD support, and which command set dd would use.
-
-packaging:
-
-* Archive version is now a date (YYYYMMDD). The release bundle ships
-  several independently-versioned pieces (fat95, install95, dd, debug95,
-  SetFileSize, boot95, lsfsres), each on its own cadence, so a single
-  v3.x number for the whole archive never matched what was actually
-  inside.
+* On Kickstart older than 2.0 (V36), dd now prints a short message
+  saying it needs Kickstart 2.0+ and exits, instead of failing silently.
+* Console output now uses VFPrintf.
 
 Purpose
 =======

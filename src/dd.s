@@ -96,8 +96,10 @@ Read		= -42
 Write		= -48
 IoErr		= -132
 ExamineFH	= -390
+VFPrintf	= -354
 ReadArgs	= -798
 FreeArgs	= -858
+StrToLong	= -816
 
 MODE_READWRITE	= 1004
 MODE_OLDFILE	= 1005
@@ -334,11 +336,28 @@ s_nullvars:
 	subq.w	#1,d0
 	bgt.s	s_nullvars
 
-	moveq.l	#36,d0
+	moveq.l	#0,d0			;open any version, we check lib_Version ourselves
 	lea	s_DosName(pc),a1
 	CALLEXEC OpenLibrary
 	move.l	d0,DosBase(a4)
-	beq.w	s_end
+	beq.w	s_end			;no dos.library at all, silent exit
+
+	;dd 2.x uses ReadArgs/FreeArgs/VFPrintf, all V36+
+	move.l	d0,a0
+	cmp.w	#36,20(a0)		;lib_Version
+	bcc.s	s_dos_ok
+
+	;older Kickstart: print explanation and exit cleanly
+	CALLDOS	Output
+	move.l	d0,d1
+	beq.s	s_dos_old_close
+	lea	s_old_dos_msg(pc),a0
+	move.l	a0,d2
+	moveq.l	#s_old_dos_msg_end-s_old_dos_msg,d3
+	CALLDOS	Write
+s_dos_old_close:
+	bra.w	s_closedos
+s_dos_ok:
 
 	CALLDOS	Input
 	move.l	d0,ConsoleI(a4)
@@ -532,8 +551,12 @@ s_open:
 	bne.s	s_ofile
 
 	move.l	DV_Name(a3),a0
-	addq.l	#5,a0
-	bsr.w	Str2Num
+	addq.l	#5,a0			;skip "FILL:"
+	move.l	a0,d1			;d1 = value string
+	clr.l	-(sp)			;d2 -> scratch long
+	move.l	sp,d2
+	CALLDOS	StrToLong
+	move.l	(sp)+,d0		;parsed value
 	move.b	d0,FillByte(a4)
 	move.b	#1,FillFlag(a4)
 	bra.w	s_onext
@@ -725,42 +748,31 @@ s_onext:
 	bgt.w	s_open
 	bra.w	s_odone
 s_onofile:
-	lea	StringBuf(a4),a1
-	move.l	a1,d2
-	lea	NoFileStr1(pc),a0
-	bsr.w	StrCopy
-	move.l	DV_Name(a3),a0
-	bsr.w	StrCopy
-	lea	NoFileStr2(pc),a0
-	bsr.w	StrCopy
-	bra.s	s_oreport
+	move.l	ConsoleO(a4),d1
+	beq.w	s_closedev
+	move.l	DV_Name(a3),-(sp)	;arg1: file name
+	lea	fo_nofile(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
+	bra.w	s_closedev
 s_onodevice:
-	lea	StringBuf(a4),a1
-	move.l	a1,d2
-	lea	NoDevStr1(pc),a0
-	bsr.w	StrCopy
-	move.l	DV_Unit(a3),d0
-	bsr.w	Num2Str
-	lea	NoDevStr2(pc),a0
-	bsr.w	StrCopy
-	move.l	DV_Name(a3),a0
-	bsr.w	StrCopy
-	lea	NoDevStr3(pc),a0
-	bsr.w	StrCopy
+	move.l	ConsoleO(a4),d1
+	beq.w	s_closedev
 	move.l	DV_IORequest(a3),a0
 	move.b	IO_Error(a0),d0
 	ext.w	d0
 	ext.l	d0
-	bsr.w	SNum2Str
-	lea	NoDevStr4(pc),a0
-	bsr.w	StrCopy
-s_oreport:
-	move.l	a1,d3
-	sub.l	d2,d3
-	move.l	ConsoleO(a4),d1
-	beq.s	s_oerror
-
-	CALLDOS	Write
+	move.l	d0,-(sp)		;arg3: error code (signed)
+	move.l	DV_Name(a3),-(sp)	;arg2: device name
+	move.l	DV_Unit(a3),-(sp)	;arg1: unit
+	lea	fo_nodev(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	lea	12(sp),sp
+	bra.w	s_closedev
 s_oerror:
 	bra.w	s_closedev
 s_odone:
@@ -848,20 +860,17 @@ s_w5:
 	cmp.l	BlockSize(a4),d0
 	beq.s	s_w6			;no change
 
-	lea	StringBuf(a4),a1
-	move.l	a1,d2
-	lea	SizeWarnStr1(pc),a0
-	bsr.w	StrCopy
-	move.l	BlockSize(a4),d0
-	bsr.w	Num2Str
-	lea	SizeWarnStr2(pc),a0
-	bsr.w	StrCopy
-	move.l	a1,d3
-	sub.l	d2,d3
 	move.l	ConsoleO(a4),d1
 	beq.s	s_w6
 
-	CALLDOS	Write
+	move.l	BlockSize(a4),-(sp)	;arg1: detected block size
+	lea	fw_sizewarn(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
+	lea	StringBuf(a4),a0
+	move.l	a0,d2			;read the y/n response into StringBuf
 	moveq.l	#10,d3
 	move.l	ConsoleI(a4),d1
 	beq.s	s_w6
@@ -993,14 +1002,37 @@ s_f3:
 	bgt.s	s_f3
 s_fdone:
 
-;- - announce picked command set per side - - - - - - - - -
+;- - announce picked command set per side - - - - -  - - - -
 
-	lea	SourceVec(a4),a3
-	lea	cn_label_read(pc),a1
-	bsr.w	PrintCmdUsed
-	lea	DestVec(a4),a3
-	lea	cn_label_write(pc),a1
-	bsr.w	PrintCmdUsed
+	;source: print only when it is a real device (DV_File == -1)
+	move.l	SourceVec+DV_File(a4),d0
+	bpl.s	s_fdone_dst
+	move.w	SourceVec+DV_ReadCmd(a4),d0
+	bsr.w	CmdToStr
+	move.l	a0,-(sp)			;arg3: cmd name
+	move.l	SourceVec+DV_Unit(a4),-(sp)	;arg2: unit
+	move.l	SourceVec+DV_Name(a4),-(sp)	;arg1: device name
+	move.l	ConsoleO(a4),d1
+	lea	fu_read(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	lea	12(sp),sp
+s_fdone_dst:
+	move.l	DestVec+DV_File(a4),d0
+	bpl.s	s_fdone_done
+	move.w	DestVec+DV_WriteCmd(a4),d0
+	bsr.w	CmdToStr
+	move.l	a0,-(sp)
+	move.l	DestVec+DV_Unit(a4),-(sp)
+	move.l	DestVec+DV_Name(a4),-(sp)
+	move.l	ConsoleO(a4),d1
+	lea	fu_write(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	lea	12(sp),sp
+s_fdone_done:
 
 ;- - transfer data  - - - - - - - - - - - - - - - - - - - -
 
@@ -1015,18 +1047,15 @@ s_tswath:
 	and.l	d2,d0
 	bne.w	s_tbreak		;user stop
 
-	lea	StringBuf(a4),a1
-	move.l	a1,d2
-	move.l	d4,d0
-	bsr.w	Num2Str
-	move.b	#CR,(a1)+
-	clr.b	(a1)
-	move.l	a1,d3
-	sub.l	d2,d3
 	move.l	ConsoleO(a4),d1
 	beq.s	s_t0
 
-	CALLDOS	Write			;report progress
+	move.l	d4,-(sp)		;arg1: current block #
+	lea	ft_progress(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf		;report progress
+	addq.l	#4,sp
 s_t0:
 	lea	StringBuf(a4),a0
 	move.l	TimerDevice(a4),a6
@@ -1211,27 +1240,20 @@ s_tbreak:
 	CALLDOS	Write
 	bra.s	s_closedev
 s_treaderr:
-	lea	ReadErrStr1(pc),a0
+	lea	fe_read(pc),a1
 	bra.s	s_tereport
 s_twriteerr:
-	lea	WriteErrStr(pc),a0
+	lea	fe_write(pc),a1
 s_tereport:
-	lea	StringBuf(a4),a1
-	move.l	a1,d2
-	move.l	a0,d1
-	move.l	DV_Name(a3),a0
-	bsr.w	StrCopy
-	move.l	d1,a0
-	bsr.w	StrCopy
-	bsr.w	SNum2Str
-	lea	ReadErrStr2(pc),a0
-	bsr.w	StrCopy
-	move.l	a1,d3
-	sub.l	d2,d3
 	move.l	ConsoleO(a4),d1
 	beq.s	s_closedev
 
-	CALLDOS	Write
+	move.l	d0,-(sp)		;arg2: error code (signed)
+	move.l	DV_Name(a3),-(sp)	;arg1: device name
+	move.l	a1,d2			;format (read or write)
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#8,sp
 
 ;- - close devices  - - - - - - - - - - - - - - - - - - - -
 
@@ -1294,54 +1316,50 @@ s_freebuf:
 s_report:
 	tst.b	InspectFlag(a4)
 	bne.w	s_closedos		;INSPECT: skip transfer summary
-	lea	StringBuf(a4),a1
-	move.l	DoneBlocks(a4),d0
-	bsr.w	Num2Str
-	lea	Done1Text(pc),a0
-	bsr.w	StrCopy
-	move.l	BlockSize(a4),d0
-	bsr.w	Num2Str
-	lea	Done2Text(pc),a0
-	bsr.w	StrCopy
+	move.l	ConsoleO(a4),d1
+	beq.w	s_closedos
+
+	move.l	BlockSize(a4),-(sp)	;arg2: bytes per block
+	move.l	DoneBlocks(a4),-(sp)	;arg1: blocks done
+	lea	fr_done(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#8,sp
+
 	move.l	DoneBlocks(a4),d0
 	move.l	BlockSize(a4),d1
 	bsr.w	UMul32
-	move.l	d0,d4
+	move.l	d0,d4			;total bytes transferred
 	lea	RTime(a4),a0
 	bsr.w	TimeMsecs
 	move.l	d0,d1
 	beq.s	s_rep1
 
 	move.l	d4,d0
-	bsr.w	UDivMod32
-	lea	ReadSpeedStr(pc),a0
-	bsr.w	StrCopy
-	bsr.w	Num2Str
-	lea	KbpsStr(pc),a0
-	bsr.w	StrCopy
+	bsr.w	UDivMod32		;d0 = kbyte/sec
+	move.l	d0,-(sp)		;arg1: read speed
+	move.l	ConsoleO(a4),d1
+	lea	fr_rspeed(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
 s_rep1:
 	lea	WTime(a4),a0
 	bsr.w	TimeMsecs
 	move.l	d0,d1
-	beq.s	s_rep2
-
-	move.l	d4,d0
-	bsr.w	UDivMod32
-	lea	WriteSpeedStr(pc),a0
-	bsr.w	StrCopy
-	bsr.w	Num2Str
-	lea	KbpsStr(pc),a0
-	bsr.w	StrCopy
-s_rep2:
-	move.l	a1,d3
-	move.l	ConsoleO(a4),d4
 	beq.s	s_closedos
 
-	move.l	d4,d1
-	lea	StringBuf(a4),a1
-	move.l	a1,d2
-	sub.l	d2,d3
-	CALLDOS	Write
+	move.l	d4,d0
+	bsr.w	UDivMod32		;d0 = kbyte/sec
+	move.l	d0,-(sp)		;arg1: write speed
+	move.l	ConsoleO(a4),d1
+	lea	fr_wspeed(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
 
 ;- - free resources - - - - - - - - - - - - - - - - - - - -
 
@@ -1361,6 +1379,10 @@ s_end:
 
 s_DosName:
 	dc.b	'dos.library',0
+	even
+s_old_dos_msg:
+	dc.b	'dd requires Kickstart 2.0+ (V36+)',13,10
+s_old_dos_msg_end:
 	even
 
 ;*** string ops ********************************************
@@ -1520,280 +1542,182 @@ PrintHelp:
 ph_end:
 	rts
 
-;--- print "read:/write: <name> unit <n> via <cmd>" line ---
-; a3 <- DV pointer (SourceVec or DestVec)
-; a1 <- label string ("read: " or "write: ")
-; uses StringBuf; preserved regs are saved by the caller as needed
-
-PrintCmdUsed:
-	movem.l	d0-d4/a0-a3,-(sp)
-	move.l	ConsoleO(a4),d1
-	beq.w	pcu_end
-	;require a real device (DV_File == -1)
-	move.l	DV_File(a3),d0
-	bpl.w	pcu_end			;file or FILL: skip
-	lea	StringBuf(a4),a2
-	move.l	a2,d2			;d2 = start of message
-	;label
-	move.l	a1,a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	;device name
-	move.l	DV_Name(a3),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	;" unit "
-	lea	cn_unit(pc),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	;unit number
-	move.l	a2,a1
-	move.l	DV_Unit(a3),d0
-	bsr.w	Num2Str
-	move.l	a1,a2
-	;" via "
-	lea	cn_via(pc),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	;command name: pick ReadCmd if label was "read:", WriteCmd otherwise.
-	;The label string ptr was passed in a1; movem.l d0-d4/a0-a3,-(sp) saved
-	;it at sp+24 (5 dn longs first, then a0; a1 is the 7th saved long).
-	move.l	24(sp),a0		;saved a1 = label string ptr
-	move.b	(a0),d0
-	cmp.b	#'r',d0
-	beq.s	pcu_read
-	move.w	DV_WriteCmd(a3),d0
-	bra.s	pcu_cmd
-pcu_read:
-	move.w	DV_ReadCmd(a3),d0
-pcu_cmd:
-	bsr.w	CmdToStr
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	;CR + LF
-	move.b	#13,(a2)+
-	move.b	#10,(a2)+
-	move.l	a2,d3
-	sub.l	d2,d3			;d3 = length
-	move.l	ConsoleO(a4),d1
-	CALLDOS	Write
-pcu_end:
-	movem.l	(sp)+,d0-d4/a0-a3
-	rts
+;(PrintCmdUsed removed - now inlined at s_fdone using VFPrintf)
 
 ;--- print INSPECT result ----------------------------------
 ; SourceVec must be populated by s_open (DV_BlockSize, DV_NumBlocks,
-; DV_CmdFlags, QueryResult).
+; DV_CmdFlags) and DriveGeometry/QueryResult fields by TD_GETGEOMETRY
+; + NSD probe.
 
 PrintInspect:
-	movem.l	d0-d4/a0-a3,-(sp)
-	move.l	ConsoleO(a4),d1
+	movem.l	d2-d3/a3,-(sp)
+	move.l	ConsoleO(a4),d0
 	beq.w	pi_end
 	lea	SourceVec(a4),a3
-	lea	StringBuf(a4),a2
-	move.l	a2,d2
-	;line 1: "<name> unit <n>:"
-	move.l	DV_Name(a3),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	lea	cn_unit(pc),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	move.l	a2,a1
-	move.l	DV_Unit(a3),d0
-	bsr.w	Num2Str
-	move.l	a1,a2
-	move.b	#':',(a2)+
-	move.b	#13,(a2)+
-	move.b	#10,(a2)+
-	;line 2: "  sector size: <n> bytes"
-	lea	pi_sect(pc),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	move.l	a2,a1
-	move.l	DV_BlockSize(a3),d0
-	bsr.w	Num2Str
-	move.l	a1,a2
-	move.b	#13,(a2)+
-	move.b	#10,(a2)+
-	;line 3: "  total sectors: <n>"
-	lea	pi_total(pc),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	move.l	a2,a1
-	move.l	DV_NumBlocks(a3),d0
-	bsr.w	Num2Str
-	move.l	a1,a2
-	move.b	#13,(a2)+
-	move.b	#10,(a2)+
-	;line 4: cylinders
-	lea	pi_cyl(pc),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	move.l	a2,a1
-	move.l	DriveGeometry+DG_Cylinders(a4),d0
-	bsr.w	Num2Str
-	move.l	a1,a2
-	move.b	#13,(a2)+
-	move.b	#10,(a2)+
-	;line 5: heads
-	lea	pi_heads(pc),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	move.l	a2,a1
-	move.l	DriveGeometry+DG_Heads(a4),d0
-	bsr.w	Num2Str
-	move.l	a1,a2
-	move.b	#13,(a2)+
-	move.b	#10,(a2)+
-	;line 6: sectors per track
-	lea	pi_spt(pc),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	move.l	a2,a1
-	move.l	DriveGeometry+DG_TrackSectors(a4),d0
-	bsr.w	Num2Str
-	move.l	a1,a2
-	move.b	#13,(a2)+
-	move.b	#10,(a2)+
-	;line 7: NSD probe status (from CmdFlags bit 0)
-	lea	pi_nsd(pc),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
+
+	;header: "<name> unit <n>:"
+	move.l	DV_Unit(a3),-(sp)
+	move.l	DV_Name(a3),-(sp)
+	move.l	ConsoleO(a4),d1
+	lea	fi_hdr(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#8,sp
+
+	;sector size
+	move.l	DV_BlockSize(a3),-(sp)
+	move.l	ConsoleO(a4),d1
+	lea	fi_sect(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
+
+	;total sectors
+	move.l	DV_NumBlocks(a3),-(sp)
+	move.l	ConsoleO(a4),d1
+	lea	fi_total(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
+
+	;cylinders
+	move.l	DriveGeometry+DG_Cylinders(a4),-(sp)
+	move.l	ConsoleO(a4),d1
+	lea	fi_cyl(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
+
+	;heads
+	move.l	DriveGeometry+DG_Heads(a4),-(sp)
+	move.l	ConsoleO(a4),d1
+	lea	fi_heads(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
+
+	;sec/track
+	move.l	DriveGeometry+DG_TrackSectors(a4),-(sp)
+	move.l	ConsoleO(a4),d1
+	lea	fi_spt(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
+
+	;NSD line and (if NSD ok) supported-cmds walk
 	move.b	DV_CmdFlags(a3),d0
 	btst	#0,d0
 	bne.s	pi_nsd_ok
-	lea	pi_nsd_no(pc),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	move.b	#13,(a2)+
-	move.b	#10,(a2)+
+	move.l	ConsoleO(a4),d1
+	lea	fi_nsd_no(pc),a0
+	move.l	a0,d2
+	moveq.l	#0,d3
+	CALLDOS	VFPrintf
 	bra.s	pi_after_nsd
 pi_nsd_ok:
-	lea	pi_nsd_y(pc),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	move.b	#13,(a2)+
-	move.b	#10,(a2)+
+	move.l	ConsoleO(a4),d1
+	lea	fi_nsd_y(pc),a0
+	move.l	a0,d2
+	moveq.l	#0,d3
+	CALLDOS	VFPrintf
 	;walk SupportedCommands list, print each name as its own line
-	move.l	QueryResult+QR_SupportedCmds(a4),a0
-	move.l	a0,d0
+	move.l	QueryResult+QR_SupportedCmds(a4),a3	;temporarily use a3 as iterator
+	move.l	a3,d0
 	beq.s	pi_after_nsd
 pi_walk:
-	move.w	(a0)+,d0
+	move.w	(a3)+,d0
 	beq.s	pi_after_nsd
-	move.l	a0,-(sp)		;save list iterator
-	lea	pi_indent(pc),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	bsr.w	CmdToStr		;d0 still has cmd word
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	move.b	#13,(a2)+
-	move.b	#10,(a2)+
-	move.l	(sp)+,a0		;restore iterator
+	move.l	a3,-(sp)		;save iterator
+	bsr.w	CmdToStr		;d0 in, a0 out
+	move.l	a0,-(sp)		;arg: cmd-name string
+	move.l	ConsoleO(a4),d1
+	lea	fi_indent(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
+	move.l	(sp)+,a3		;restore iterator
 	bra.s	pi_walk
 pi_after_nsd:
-	;line 5a: "  for <=4 GiB:   CMD_READ / CMD_WRITE"
-	lea	pi_picks_lo(pc),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	move.w	#CMD_READ,d0
-	bsr.w	CmdToStr
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	move.b	#' ',(a2)+
-	move.b	#'/',(a2)+
-	move.b	#' ',(a2)+
+	lea	SourceVec(a4),a3	;restore a3 (may have been used as iterator)
+
+	;for <=4 GiB: CMD_READ / CMD_WRITE
 	move.w	#CMD_WRITE,d0
 	bsr.w	CmdToStr
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	move.b	#13,(a2)+
-	move.b	#10,(a2)+
-	;line 5b: "  for  >4 GiB:   <NSCMD64 or HD_SCSICMD pair>"
-	lea	pi_picks_hi(pc),a0
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
+	move.l	a0,-(sp)		;arg2: CMD_WRITE name
+	move.w	#CMD_READ,d0
+	bsr.w	CmdToStr
+	move.l	a0,-(sp)		;arg1: CMD_READ name
+	move.l	ConsoleO(a4),d1
+	lea	fi_lo(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#8,sp
+
+	;for >4 GiB: depends on CmdFlags bit 2
 	move.b	DV_CmdFlags(a3),d0
 	btst	#2,d0
 	beq.s	pi_hi_scsi
-	move.w	#NSCMD_TD_READ64,d0
-	bsr.w	CmdToStr
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	move.b	#' ',(a2)+
-	move.b	#'/',(a2)+
-	move.b	#' ',(a2)+
 	move.w	#NSCMD_TD_WRITE64,d0
+	bsr.w	CmdToStr
+	move.l	a0,-(sp)
+	move.w	#NSCMD_TD_READ64,d0
 	bra.s	pi_hi_emit
 pi_hi_scsi:
 	move.w	#HD_SCSICMD,d0
 	bsr.w	CmdToStr
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	move.b	#' ',(a2)+
-	move.b	#'/',(a2)+
-	move.b	#' ',(a2)+
+	move.l	a0,-(sp)
 	move.w	#HD_SCSICMD,d0
 pi_hi_emit:
 	bsr.w	CmdToStr
-	move.l	a2,a1
-	bsr.w	StrCopy
-	move.l	a1,a2
-	move.b	#13,(a2)+
-	move.b	#10,(a2)+
-	;flush buffer
-	move.l	a2,d3
-	sub.l	d2,d3
+	move.l	a0,-(sp)
 	move.l	ConsoleO(a4),d1
-	CALLDOS	Write
+	lea	fi_hi(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#8,sp
 pi_end:
-	movem.l	(sp)+,d0-d4/a0-a3
+	movem.l	(sp)+,d2-d3/a3
 	rts
 
-cn_unit:	dc.b	' unit ',0
-cn_via:		dc.b	' via ',0
-cn_label_read:	dc.b	'read:  ',0
-cn_label_write:	dc.b	'write: ',0
-pi_sect:	dc.b	'  sector size:    ',0
-pi_total:	dc.b	'  total sectors:  ',0
-pi_cyl:		dc.b	'  cylinders:      ',0
-pi_heads:	dc.b	'  heads:          ',0
-pi_spt:		dc.b	'  sec/track:      ',0
-pi_nsd:		dc.b	'  NSD:            ',0
-pi_indent:	dc.b	'                  ',0
-pi_nsd_y:	dc.b	'supported, commands:',0
-pi_nsd_no:	dc.b	'not supported',0
-pi_picks_lo:	dc.b	'  for <=4 GiB:    ',0
-pi_picks_hi:	dc.b	'  for  >4 GiB:    ',0
+;--- format strings ----------------------------------------
+fi_hdr:		dc.b	'%s unit %ld:',13,10,0
+fi_sect:	dc.b	'  sector size:    %ld',13,10,0
+fi_total:	dc.b	'  total sectors:  %ld',13,10,0
+fi_cyl:		dc.b	'  cylinders:      %ld',13,10,0
+fi_heads:	dc.b	'  heads:          %ld',13,10,0
+fi_spt:		dc.b	'  sec/track:      %ld',13,10,0
+fi_nsd_no:	dc.b	'  NSD:            not supported',13,10,0
+fi_nsd_y:	dc.b	'  NSD:            supported, commands:',13,10,0
+fi_indent:	dc.b	'                  %s',13,10,0
+fi_lo:		dc.b	'  for <=4 GiB:    %s / %s',13,10,0
+fi_hi:		dc.b	'  for  >4 GiB:    %s / %s',13,10,0
+fu_read:	dc.b	'read:  %s unit %ld via %s',13,10,0
+fu_write:	dc.b	'write: %s unit %ld via %s',13,10,0
+fo_nofile:	dc.b	'could not open file "%s".',10,0
+fo_nodev:	dc.b	'opening unit %ld of %s failed (%ld).',10,0
+fw_sizewarn:	dc.b	'WARNING: device reports a different block size (%ld)',10
+		dc.b	'Continue anyway? (y/n): ',0
+ft_progress:	dc.b	'%ld',13,0
+fe_read:	dc.b	'%s read error (%ld).',10,0
+fe_write:	dc.b	'%s write error (%ld).',10,0
+fr_done:	dc.b	'%ld blocks of %ld bytes each transferred.',10,0
+fr_rspeed:	dc.b	'Read speed:  %ld kbyte/sec',10,0
+fr_wspeed:	dc.b	'Write speed: %ld kbyte/sec',10,0
 	even
 
 HelpBanner:
-	dc.b	'dd 2.0 - raw block transfer tool',13,10,13,10
+	dc.b	'dd '
+	VER_NUMBER
+	dc.b	' - raw block transfer tool',13,10,13,10
 	dc.b	'Usage: dd SRC DST [UNIT] [START] [COUNT] [BS] [US n] [UD n]',13,10
 	dc.b	'       dd INSPECT device.name [UNIT n]    (probe device, print capabilities)',13,10
 	dc.b	'       dd ?       (this help, then ReadArgs prompt)',13,10
@@ -1820,113 +1744,6 @@ HelpBanner:
 	dc.b	'  dd compactflash.device RAM:dump UNIT 0 START 1000 COUNT 200',13,10
 HelpEnd:
 	even
-
-;--- copy string -------------------------------------------
-; a0 <-  &src
-; a1 <-> &dest
-
-StrCopy:
-	move.b	(a0)+,(a1)+
-	bne.s	StrCopy
-
-	subq.l	#1,a1			;to be resumed
-	rts
-
-;--- string -> num -----------------------------------------
-; a0 <-> &string
-; d0  -> value
-
-Str2Num:
-	move.l	d2,-(sp)
-	moveq.l	#0,d0
-	moveq.l	#0,d2			;"decimal mode"
-s2n_char:
-	move.b	(a0)+,d2
-	btst	#6,d2
-	beq.s	s2n_c1
-
-	and.b	#$df,d2			;toUpper
-s2n_c1:
-	sub.b	#'0',d2
-	bcs.s	s2n_hcheck
-
-	tst.l	d2
-	bmi.s	s2n_hchar
-
-	cmp.b	#10,d2
-	bcc.s	s2n_hcheck
-
-	lsl.l	#1,d0
-	move.l	d0,d1
-	lsl.l	#2,d1
-	add.l	d1,d0
-	add.l	d2,d0
-	bra.s	s2n_char
-s2n_hchar:
-	cmp.b	#10,d2
-	bcs.s	s2n_hadd
-
-	subq.b	#'A'-'9'-1,d2
-	bcs.s	s2n_end
-
-	cmp.b	#16,d2
-	bcc.s	s2n_end
-s2n_hadd:
-	lsl.l	#4,d0
-	or.b	d2,d0
-	bra.s	s2n_char
-s2n_hcheck:
-	cmp.b	#'X'-'0',d2
-	beq.s	s2n_hswitch
-
-	cmp.b	#'$'-'0',d2
-	bne.s	s2n_end
-s2n_hswitch:
-	moveq.l	#0,d0
-	moveq.l	#-1,d2			;"hex mode"
-	bra.s	s2n_char
-s2n_end:
-	subq.l	#1,a0
-	move.l	(sp)+,d2
-	rts
-
-;--- num -> string -----------------------------------------
-; d0 <-  num
-; a1 <-> &String
-
-SNum2Str:
-	tst.l	d0
-	bpl.s	Num2Str
-
-	move.b	#'-',(a1)+
-	neg.l	d0
-Num2Str:
-	movem.l	d0-d2/a0,-(sp)
-	move.l	a1,a0		;remember buffer start
-n2s_loop1:
-	moveq.l	#10,d1
-	bsr.s	UDivMod32
-	or.b	#'0',d1
-	move.b	d1,(a1)+	;append digit
-	tst.l	d0
-	bne.s	n2s_loop1
-
-	move.l	a1,d2		;remember buffer end
-	move.l	a1,d1
-	sub.l	a0,d1		;# of digits
-	asr.w	#1,d1
-	beq.s	n2s_end		;just 1
-n2s_loop2:
-	move.b	-(a1),d0
-	move.b	(a0),(a1)
-	move.b	d0,(a0)+
-	subq.w	#1,d1
-	bne.s	n2s_loop2	;reverse order
-n2s_end:
-	move.l	d2,a1
-	clr.b	(a1)		;terminate string
-	movem.l	(sp)+,d0-d2/a0
-	rts
 
 ;*** longword math *****************************************
 ; d0 *= d1
@@ -2178,45 +1995,12 @@ fmsg_end:
 	VER_STRING
 TimerName:
 	dc.b	'timer.device',0
-SizeWarnStr1:
-	dc.b	'WARNING: device reports a different block size (',0
-SizeWarnStr2:
-	dc.b	')',LF
-	dc.b	'Continue anyway? (y/n): ',0
 BreakText:
 	dc.b	'** Break **', LF
 BTEnd:
 	dc.b	0
 MSName:
 	dc.b	'ram:ModeSenseData',0
-Done1Text:
-	dc.b	' blocks of ', 0
-Done2Text:
-	dc.b	' bytes each transferred.', LF, 0
-NoFileStr1:
-	dc.b	'could not open file "',0
-NoFileStr2:
-	dc.b	'".',LF,0
-NoDevStr1:
-	dc.b	'opening unit ',0
-NoDevStr2:
-	dc.b	' of ',0
-NoDevStr3:
-	dc.b	' failed (',0
-NoDevStr4:
-	dc.b	').',LF,0
-ReadErrStr1:
-	dc.b	' read error (',0
-ReadErrStr2:
-	dc.b	').',LF,0
-WriteErrStr:
-	dc.b	' write error (',0
-ReadSpeedStr:
-	dc.b	'Read speed:  ',0
-WriteSpeedStr:
-	dc.b	'Write speed: ',0
-KbpsStr:
-	dc.b	' kbyte/sec',LF,0
 
 ;*** that's it!!!! *****************************************
 	end
