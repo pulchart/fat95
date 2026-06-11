@@ -2,3 +2,6 @@
 VER_STRING	macro
 	dc.b	"$VER: lsfsres 1.0 (16.05.2026)", LF, 0
 	endm
+VER_NUMBER	macro
+	dc.b	"1.0"
+	endm

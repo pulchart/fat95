@@ -49,14 +49,44 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 ## What's New in
 
+### 20260612-dev
+
+<!-- COMPONENTS:BEGIN -->
+#### Components in this release
+
+- `fat95 3.24 (07.06.2026)`
+- `install95 3.19 (25.01.2026)`
+- `dd 2.1 (12.06.2026)` _(new)_
+- `debug95 3.19 (25.01.2026)`
+- `SetFileSize 1.1 (25.01.2026)`
+- `boot95 3.19 (25.01.2026)`
+- `lsfsres 1.0 (16.05.2026)`
+<!-- COMPONENTS:END -->
+
+#### Changes
+
+##### fat95 handler
+
+* TBD
+
+##### Tools
+
+**dd 2.1**
+
+* On Kickstart older than 2.0 (V36), `dd` now prints a short message saying it needs Kickstart 2.0+ and exits, instead of failing silently.
+* Console output now uses `VFPrintf`.
+
+<details>
+<summary>Older releases</summary>
+
 ### 20260609
 
 <!-- COMPONENTS:BEGIN -->
 #### Components in this release
 
-- `fat95 3.24 (07.06.2026)` _(new)_
+- `fat95 3.24 (07.06.2026)`
 - `install95 3.19 (25.01.2026)`
-- `dd 2.0 (01.06.2026)` _(new)_
+- `dd 2.1 (12.06.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
@@ -83,9 +113,6 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 ##### Packaging
 
 * **Archive version is now a date (YYYYMMDD).** The release bundle ships several independently-versioned pieces (`fat95`, `install95`, `dd`, `debug95`, `SetFileSize`, `boot95`, `lsfsres`), each on its own cadence, so a single `v3.x` number for the whole archive never matched what was actually inside.
-
-<details>
-<summary>Older releases</summary>
 
 ### 3.23 (19.05.2026)
 
@@ -596,6 +623,7 @@ GNU LGPL v2.1
 
 | Version | Date | Changes |
 |---------|------|---------|
+| - | 12/06/2026 | 'dd v2.1' |
 | v3.24 | 07/06/2026 | New second way to pick a FAT partition via DosType 0x464154FF plus a 0-based number on the device name (CF0: first, CF1: second, ...). *dd 2.0* adds NSD I/O dispatch + INSPECT mode + refactored CLI parsing (breaking change) |
 | v3.23 | 05/2026 | Reliability fixes contributed by Stefan Reinauer (@reinauer) |
 | v3.22 | 05/2026 | Improved ROM resident handling and microoptimizations for both 68000+ and 68020+ cpu tiers |
