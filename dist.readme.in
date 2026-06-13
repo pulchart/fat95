@@ -18,6 +18,16 @@ WHAT'S NEW (@DATE@)
 
 tools:
 
+dd 2.2:
+* Support TD64 and harden NSD probe (fixes #20).
+* INSPECT now shows a ">4GiB methods:" line listing which large-transfer
+  commands the device offers. Add VERBOSE to also print the device's
+  full command set.
+* New CMD= option to force which command dd uses: AUTO (default), CMD,
+  TD64, NSCMD or SCSI. A forced command is used as-is, with no automatic
+  fallback.
+
+dd 2.1:
 * On Kickstart older than 2.0 (V36), dd now prints a short message
   saying it needs Kickstart 2.0+ and exits, instead of failing silently.
 * Console output now uses VFPrintf.

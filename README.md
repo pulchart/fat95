@@ -49,14 +49,14 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 ## What's New in
 
-### 20260612-dev
+### 20260613-dev
 
 <!-- COMPONENTS:BEGIN -->
 #### Components in this release
 
 - `fat95 3.24 (07.06.2026)`
 - `install95 3.19 (25.01.2026)`
-- `dd 2.1 (12.06.2026)` _(new)_
+- `dd 2.2 (13.06.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
@@ -65,11 +65,14 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 #### Changes
 
-##### fat95 handler
-
-* TBD
-
 ##### Tools
+
+**dd 2.2**
+
+IO (transfer) command usage changes:
+- support TD64 (TD_READ64/TD_WRITE64) and a runtime fallback `NSCMD_TD64 -> TD64 -> HD_SCSICMD` and Harden the NSD probe (Fixes #20).
+- INSPECT reports all detected >4GiB IO (transfer) methods and all "Supported Commands" list via VERBOSE
+- New `CMD=AUTO|CMD|TD64|NSCMD|SCSI` argument forces the transfer command
 
 **dd 2.1**
 
@@ -86,7 +89,7 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 
 - `fat95 3.24 (07.06.2026)`
 - `install95 3.19 (25.01.2026)`
-- `dd 2.1 (12.06.2026)` _(new)_
+- `dd 2.2 (13.06.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
@@ -623,7 +626,7 @@ GNU LGPL v2.1
 
 | Version | Date | Changes |
 |---------|------|---------|
-| - | 12/06/2026 | 'dd v2.1' |
+| - | 13/06/2026 | 'dd v2.2' |
 | v3.24 | 07/06/2026 | New second way to pick a FAT partition via DosType 0x464154FF plus a 0-based number on the device name (CF0: first, CF1: second, ...). *dd 2.0* adds NSD I/O dispatch + INSPECT mode + refactored CLI parsing (breaking change) |
 | v3.23 | 05/2026 | Reliability fixes contributed by Stefan Reinauer (@reinauer) |
 | v3.22 | 05/2026 | Improved ROM resident handling and microoptimizations for both 68000+ and 68020+ cpu tiers |
