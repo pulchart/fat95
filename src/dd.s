@@ -163,18 +163,31 @@ DG_Reserved	= 30
 DG_Sizeof	= 32
 
 ;standard commands
+CMD_RESET	= 1
 CMD_READ	= 2
 CMD_WRITE	= 3
 CMD_UPDATE	= 4
 CMD_CLEAR	= 5
+CMD_STOP	= 6
+CMD_START	= 7
+CMD_FLUSH	= 8
 TD_MOTOR	= 9
+TD_SEEK		= 10
+TD_FORMAT	= 11
+TD_REMOVE	= 12
 TD_CHANGENUM	= 13
 TD_CHANGESTATE	= 14
 TD_PROTSTATUS	= 15
+TD_RAWREAD	= 16
+TD_RAWWRITE	= 17
 TD_GETDRIVETYPE	= 18
+TD_GETNUMTRACKS	= 19
 TD_ADDCHANGEINT	= 20
 TD_REMCHANGEINT	= 21
 TD_GETGEOMETRY	= 22
+TD_EJECT	= 23
+TD_SEEK64	= 26
+TD_FORMAT64	= 27
 ETD_READ	= $8002
 ETD_WRITE	= $8003
 ETD_UPDATE	= $8004
@@ -183,6 +196,10 @@ ETD_UPDATE	= $8004
 NSCMD_DEVICEQUERY  = $4000
 NSCMD_TD_READ64	   = $c000
 NSCMD_TD_WRITE64   = $c001
+NSCMD_TD_SEEK64	   = $c002
+NSCMD_TD_FORMAT64  = $c003
+TD_READ64	   = 24
+TD_WRITE64	   = 25
 
 ;struct NSDeviceQueryResult
 QR_DevQueryFormat  = 0
@@ -236,7 +253,6 @@ HD_SCSICMD	= 28
 READCAPACITY	= $25
 READ10		= $28
 WRITE10		= $2a
-MODESENSE10	= $5a
 
 ;--- from timer.device -------------------------------------
 
@@ -268,7 +284,14 @@ DV_BlockSize	= 24
 DV_NumBlocks	= 28
 DV_ReadCmd	= 32		;word: CMD_READ / NSCMD_TD_READ64 / HD_SCSICMD
 DV_WriteCmd	= 34		;word: CMD_WRITE / NSCMD_TD_WRITE64 / HD_SCSICMD
-DV_CmdFlags	= 36		;byte: bit2=NSCMD-TD64 avail, bit7=forced SCSI
+DV_CmdFlags	= 36		;byte of per-bit flags:
+				;  bit 0 - NSD query succeeded
+				;  bit 2 - NSCMD_TD_READ64 advertised
+				;  bit 3 - classic TD_READ64 advertised
+				;  bit 4 - HD_SCSICMD advertised
+				;  bit 7 - force SCSI (non-power-of-2 block size)
+				;Command selection reads bit 2 and bit 7.
+				;Bits 3 and 4 are capability flags shown by INSPECT.
 DV_pad		= 37
 DV_Sizeof	= 40
 
@@ -291,6 +314,7 @@ BlockShift	= -154
 ;SCSIFlag deleted, replaced by per-DV DV_CmdFlags bit 7
 FillByte	= -157
 FillFlag	= -158
+ForceCmd	= -159			;byte: 0=AUTO 1=CMD 2=TD64 3=NSCMD 4=SCSI (CMD= override)
 InspectFlag	= -160			;non-zero -> INSPECT mode (probe + print, no transfer)
 DoneBlocks	= -164
 BlockSize	= -168
@@ -303,8 +327,8 @@ RTime		= -196
 WTime		= -204
 QueryResult	= -220			;16-byte NSDeviceQueryResult buffer
 StringBuf	= -732
-ArgArray	= -776			;10 longs for ReadArgs (zeroed before call)
-Vars_Sizeof	= -776
+ArgArray	= -780			;12 longs for ReadArgs (zeroed before call)
+Vars_Sizeof	= -780
 
 ;--- +++ TEST +++ TEST +++ ---------------------------------
 
@@ -391,7 +415,7 @@ s_help_done:
 
 	clr.l	RDArgs(a4)
 	lea	ArgArray(a4),a0
-	moveq.l	#9,d0			;ArgArray has 10 slots
+	moveq.l	#11,d0			;ArgArray has 12 slots
 s_argclr:
 	clr.l	(a0)+
 	dbra	d0,s_argclr
@@ -404,6 +428,10 @@ s_argclr:
 	CALLDOS	ReadArgs
 	move.l	d0,RDArgs(a4)
 	beq.w	s_argerr		;parse failed, DOS already printed why
+
+	bsr.w	ParseForceCmd		;CMD= override -> ForceCmd; d0!=0 if bad value
+	tst.l	d0
+	bne.w	s_cmderr
 
 	;INSPECT mode: probe a device, print capabilities, exit.
 	;No SRC/DST needed; INSPECT carries the device name.
@@ -504,10 +532,10 @@ s_arg_ns:
 	move.l	(a0),NumBlocks(a4)
 s_arg_nc:
 	move.l	ArgArray+20(a4),d0	;BS (slot 5)
-	beq.s	s_pdone
+	beq.w	s_pdone
 	move.l	d0,a0
 	move.l	(a0),CustomSize(a4)
-	bra.s	s_pdone
+	bra.w	s_pdone
 
 s_argmissunit:
 	move.l	ConsoleO(a4),d4
@@ -521,10 +549,21 @@ s_argclose:
 	bra.w	s_closedos
 s_argerr:
 	bra.w	s_closedos		;ReadArgs already printed an error
+s_cmderr:
+	move.l	ConsoleO(a4),d1
+	beq.w	s_closedos
+	lea	CmdErrStr(pc),a0
+	move.l	a0,d2
+	moveq.l	#CmdErrEnd-CmdErrStr,d3
+	CALLDOS	Write
+	bra.w	s_closedos
 
 NoUnitStr:
 	dc.b	'dd: device named but no UNIT/US/UD given',10
 NoUnitEnd:
+CmdErrStr:
+	dc.b	'dd: unknown CMD value (AUTO|CMD|TD64|NSCMD|SCSI)',10
+CmdErrEnd:
 	even
 s_pdone:
 s_args_done:
@@ -649,62 +688,19 @@ s_oreadcapacity:
 	move.l	d0,DV_NumBlocks(a3)
 	move.l	(a0),DV_BlockSize(a3)
 s_omodesense:
-	move.l	DV_IORequest(a3),a1
-	move.w	#HD_SCSICMD,IO_Command(a1)
-	moveq.l	#SCSI_Sizeof,d0
-	move.l	d0,IO_Length(a1)
-	lea	IO_SCSI(a1),a0
-	move.l	a0,IO_Data(a1)
-	move.l	BlockBuffer(a4),(a0)+	;SCSI_Data = &target
-	move.l	BBufSize(a4),d0
-	move.l	d0,(a0)+		;SCSI_Length
-	clr.l	(a0)+			;SCSI_Actual
-	moveq.l	#IO_SCommand,d1
-	add.l	a1,d1
-	move.l	d1,(a0)+		;SCSI_Command
-	move.w	#10,(a0)+		;SCSI_CmdLength
-	clr.w	(a0)+			;SCSI_CmdActual
-	move.b	#SCSIF_READ,(a0)+	;SCSI_Flags
-	clr.b	(a0)+			;SCSI_Status
-	clr.l	(a0)+			;SCSI_SenseData
-	clr.w	(a0)+			;SCSI_SenseLength
-	clr.w	(a0)			;SCSI_SenseActual
-	move.l	d1,a0
-	move.b	#MODESENSE10,(a0)+	;command line
-	clr.b	(a0)+
-	move.b	#$3f,(a0)+		;all param pages
-	clr.b	(a0)+
-	clr.b	(a0)+
-	clr.b	(a0)+
-	clr.b	(a0)+
-	ror.w	#8,d0
-	move.b	d0,(a0)+
-	ror.w	#8,d0
-	move.b	d0,(a0)+
-	clr.b	(a0)
-	bsr.w	SafeDoIO
-	tst.b	d0
-	bne.w	s_onext
-
-	lea	MSName(pc),a0
-	move.l	a0,d1
-	move.l	#MODE_NEWFILE,d2
-	CALLDOS	Open
-	move.l	d0,d5
-	ble.w	s_onext
-
-	move.l	d5,d1
-	move.l	BlockBuffer(a4),a0
-	move.l	a0,d2
-	moveq.l	#2,d3
-	add.w	(a0),d3
-	CALLDOS	Write
-	move.l	d5,d1
-	CALLDOS	Close
+	;(geometry/readcapacity fall-through point; no MODESENSE dump)
 
 ;- - probe NSD - - - - - - - - - - - - - - - - - - - - - - -
-;leaves DV_CmdFlags zero if device has no NSD support
+;Sets DV_CmdFlags bit0 when the device has usable NSD, else leaves it 0.
+;Buffer is pre-zeroed; the reply is accepted only when io_Actual >= 16
+;(filled through the SupportedCommands field).
 
+s_onsd_probe:
+	lea	QueryResult(a4),a0	;zero the 16-byte result buffer
+	clr.l	(a0)+
+	clr.l	(a0)+
+	clr.l	(a0)+
+	clr.l	(a0)
 	move.l	DV_IORequest(a3),a1
 	move.w	#NSCMD_DEVICEQUERY,IO_Command(a1)
 	lea	QueryResult(a4),a0
@@ -714,31 +710,40 @@ s_omodesense:
 	clr.l	IO_Actual(a1)
 	bsr.w	SafeDoIO
 	tst.b	d0
-	bne.s	s_onsd_end		;no NSD
-
+	bne.w	s_onsd_end		;query failed -> no NSD
 	move.l	DV_IORequest(a3),a1
+	move.l	IO_Actual(a1),d1	;bytes the device actually filled
 	moveq.l	#QR_Sizeof,d0
-	cmp.l	IO_Actual(a1),d0
-	bne.s	s_onsd_end		;short reply..
-	cmp.l	QueryResult+QR_SizeAvailable(a4),d0
-	bne.s	s_onsd_end		;..bogus size
+	cmp.l	d1,d0			;io_Actual >= 16 ?
+	bhi.w	s_onsd_end		;< 16: struct not filled through cmd list
+	move.l	QueryResult+QR_SizeAvailable(a4),d0
+	cmp.l	d1,d0			;SizeAvailable >= io_Actual ?
+	bcs.w	s_onsd_end		;inconsistent -> reject
 	cmp.w	#NSDEVTYPE_TRACKDISK,QueryResult+QR_DeviceType(a4)
-	bne.s	s_onsd_end		;not a trackdisk-style device
-
+	bne.w	s_onsd_end		;not a trackdisk-style device
 	move.l	QueryResult+QR_SupportedCmds(a4),d0
 	beq.s	s_onsd_end		;no command list
-
 	move.l	d0,a0
 	moveq.l	#0,d1
 s_onsd_scan:
 	move.w	(a0)+,d0
 	beq.s	s_onsd_done
 	cmp.w	#NSCMD_TD_READ64,d0
+	bne.s	s_onsd_s1
+	or.b	#4,d1			;bit2: NSCMD_TD64
+	bra.s	s_onsd_scan
+s_onsd_s1:
+	cmp.w	#TD_READ64,d0
+	bne.s	s_onsd_s2
+	or.b	#8,d1			;bit3: classic TD64
+	bra.s	s_onsd_scan
+s_onsd_s2:
+	cmp.w	#HD_SCSICMD,d0
 	bne.s	s_onsd_scan
-	or.b	#4,d1			;"NSCMD-TD64 available"
+	or.b	#16,d1			;bit4: HD_SCSICMD
 	bra.s	s_onsd_scan
 s_onsd_done:
-	or.b	#1,d1			;bit 0: NSCMD_DEVICEQUERY succeeded
+	or.b	#1,d1			;bit 0: NSD usable
 	move.b	d1,DV_CmdFlags(a3)
 s_onsd_end:
 
@@ -929,9 +934,58 @@ s_w8:
 	sne	d2			;d2 = $ff if range > 4 Gbyte, else 0
 
 ;- - pick I/O command set per device - - - - - - - - - - - -
-;Ladder per DV: CMD_READ -> NSCMD_TD_READ64 -> HD_SCSICMD.
-;CMD when range <=4G and not forced SCSI; HD_SCSICMD only as last resort.
+;
+; Command selection per side (SRC = read path, DST = write path).
+; The same decision diagram is documented in docs/dd.md.
+;
+;   real .device ? --- no ---> DOS Read/Write (file, FILL:, RSPEED:)
+;         |
+;        yes
+;         |
+;   forced SCSI (bit 7) ? --- yes ---> HD_SCSICMD
+;         |                            (set when block size is not 2^n)
+;         no
+;         |
+;   range > 4 GiB ? --- no ---> CMD_READ / CMD_WRITE
+;         |
+;        yes
+;         |
+;   NSD advertises NSCMD_TD_READ64 ?
+;         |
+;         +-- yes --> NSCMD_TD_READ64 / NSCMD_TD_WRITE64
+;         |
+;         +-- no  --> TD_READ64 / TD_WRITE64
+;
+; Runtime fallback (s_t2/s_t4): on IOERR_NOCMD (-3) the swath is retried
+; with the next command down the ladder (see NextCmd) --
+;     NSCMD_TD_READ64  -> TD_READ64  -> HD_SCSICMD -> report -3
+;     NSCMD_TD_WRITE64 -> TD_WRITE64 -> HD_SCSICMD -> report -3
+; CMD_READ/CMD_WRITE and HD_SCSICMD have no successor.
+;
+; A CMD= override (ForceCmd) pins both sides to one command, skips the
+; selection below, and disables the fallback (strict; see s_t2err/s_t4err).
 
+	tst.b	ForceCmd(a4)		;CMD= override active?
+	beq.s	s_w8_auto
+	moveq.l	#0,d0
+	move.b	ForceCmd(a4),d0		;1..4
+	cmp.b	#1,d0			;CMD (32-bit byte offset) ?
+	bne.s	s_w8_force_idx
+	tst.b	d2			;..and range > 4 GiB ?
+	bne.w	s_cmd32err		;reject: CMD_READ/WRITE would wrap
+s_w8_force_idx:
+	subq.l	#1,d0
+	add.l	d0,d0
+	add.l	d0,d0			;index * 4 (two words per entry)
+	lea	ForceCmdTab(pc),a0
+	move.w	0(a0,d0.l),d1		;forced read command
+	move.w	2(a0,d0.l),d2		;forced write command
+	move.w	d1,SourceVec+DV_ReadCmd(a4)
+	move.w	d2,SourceVec+DV_WriteCmd(a4)
+	move.w	d1,DestVec+DV_ReadCmd(a4)
+	move.w	d2,DestVec+DV_WriteCmd(a4)
+	bra.w	s_wdone
+s_w8_auto:
 	move.l	SourceVec+DV_IORequest(a4),d0
 	beq.s	s_w8_dst		;source not a real device
 	move.w	#CMD_READ,SourceVec+DV_ReadCmd(a4)
@@ -941,10 +995,14 @@ s_w8:
 	bne.s	s_w8_src_scsi
 	tst.b	d2
 	beq.s	s_w8_dst		;<=4G: keep CMD_READ/WRITE
-	btst	#2,d0			;NSCMD-TD64 available?
-	beq.s	s_w8_src_scsi
+	btst	#2,d0			;NSCMD-TD64 advertised?
+	beq.s	s_w8_src_td64		;no -> classic TD64 default
 	move.w	#NSCMD_TD_READ64,SourceVec+DV_ReadCmd(a4)
 	move.w	#NSCMD_TD_WRITE64,SourceVec+DV_WriteCmd(a4)
+	bra.s	s_w8_dst
+s_w8_src_td64:
+	move.w	#TD_READ64,SourceVec+DV_ReadCmd(a4)
+	move.w	#TD_WRITE64,SourceVec+DV_WriteCmd(a4)
 	bra.s	s_w8_dst
 s_w8_src_scsi:
 	move.w	#HD_SCSICMD,SourceVec+DV_ReadCmd(a4)
@@ -961,9 +1019,13 @@ s_w8_dst:
 	tst.b	d2
 	beq.s	s_wdone
 	btst	#2,d0
-	beq.s	s_w8_dst_scsi
+	beq.s	s_w8_dst_td64
 	move.w	#NSCMD_TD_READ64,DestVec+DV_ReadCmd(a4)
 	move.w	#NSCMD_TD_WRITE64,DestVec+DV_WriteCmd(a4)
+	bra.s	s_wdone
+s_w8_dst_td64:
+	move.w	#TD_READ64,DestVec+DV_ReadCmd(a4)
+	move.w	#TD_WRITE64,DestVec+DV_WriteCmd(a4)
 	bra.s	s_wdone
 s_w8_dst_scsi:
 	move.w	#HD_SCSICMD,DestVec+DV_ReadCmd(a4)
@@ -1107,7 +1169,7 @@ s_t2:
 	bsr.w	SafeDoIO
 	tst.b	d0
 	beq.s	s_t3
-	bra.w	s_treaderr
+	bra.w	s_t2err
 s_ts2:
 	move.w	#HD_SCSICMD,IO_Command(a1)
 	moveq.l	#SCSI_Sizeof,d0
@@ -1139,7 +1201,7 @@ s_ts2:
 	clr.b	(a0)
 	bsr.w	SafeDoIO
 	tst.b	d0
-	bne.w	s_treaderr
+	bne.w	s_t2err
 s_t3:
 	lea	StringBuf(a4),a0
 	move.l	TimerDevice(a4),a6
@@ -1182,7 +1244,7 @@ s_t4:
 	bsr.w	SafeDoIO
 	tst.b	d0
 	beq.s	s_t5
-	bra.w	s_twriteerr
+	bra.w	s_t4err
 s_ts4:
 	move.w	#HD_SCSICMD,IO_Command(a1)
 	moveq.l	#SCSI_Sizeof,d0
@@ -1214,7 +1276,7 @@ s_ts4:
 	clr.b	(a0)
 	bsr.w	SafeDoIO
 	tst.b	d0
-	bne.s	s_twriteerr
+	bne.w	s_t4err
 s_t5:
 	lea	StringBuf(a4),a0
 	move.l	TimerDevice(a4),a6
@@ -1228,17 +1290,62 @@ s_t5:
 	bgt.w	s_tswath
 
 	clr.l	Result(a4)		;success
-	bra.s	s_closedev
+	bra.w	s_closedev
 s_tbreak:
 	move.l	ConsoleO(a4),d4
-	beq.s	s_closedev
+	beq.w	s_closedev
 
 	move.l	d4,d1
 	lea	BreakText(pc),a0
 	move.l	a0,d2
 	moveq.l	#BTEnd-BreakText,d3
 	CALLDOS	Write
-	bra.s	s_closedev
+	bra.w	s_closedev
+s_cmd32err:
+	move.l	ConsoleO(a4),d1
+	beq.w	s_closedev
+	lea	Cmd32Str(pc),a0
+	move.l	a0,d2
+	moveq.l	#Cmd32End-Cmd32Str,d3
+	CALLDOS	Write
+	bra.w	s_closedev
+s_t2err:
+	;read I/O failed (d0 = io_Error). If the command is unsupported, step
+	;down the ladder (NSCMD_TD_READ64 -> TD_READ64 -> HD_SCSICMD) and retry.
+	;A CMD= override is honored strictly: no downgrade, report the error.
+	tst.b	ForceCmd(a4)
+	bne.w	s_treaderr
+	cmp.l	#IOERR_NOCMD,d0
+	bne.w	s_treaderr		;genuine error: report d0 as-is
+	move.w	SourceVec+DV_ReadCmd(a4),d0
+	bsr.w	NextCmd
+	bne.s	s_t2edn
+	moveq.l	#IOERR_NOCMD,d0		;ladder exhausted: report -3
+	bra.w	s_treaderr
+s_t2edn:
+	move.l	d0,d1			;d1 = successor command
+	move.w	SourceVec+DV_ReadCmd(a4),d0	;d0 = old command
+	move.w	d1,SourceVec+DV_ReadCmd(a4)	;commit successor
+	bsr.w	PrintFallback		;notice: d0=old, d1=new
+	bra.w	s_t2			;retry this swath read
+s_t4err:
+	;write I/O failed (d0 = io_Error): same ladder on DestVec.
+	;A CMD= override is honored strictly: no downgrade, report the error.
+	tst.b	ForceCmd(a4)
+	bne.w	s_twriteerr
+	cmp.l	#IOERR_NOCMD,d0
+	bne.w	s_twriteerr
+	move.w	DestVec+DV_WriteCmd(a4),d0
+	bsr.w	NextCmd
+	bne.s	s_t4edn
+	moveq.l	#IOERR_NOCMD,d0
+	bra.w	s_twriteerr
+s_t4edn:
+	move.l	d0,d1
+	move.w	DestVec+DV_WriteCmd(a4),d0
+	move.w	d1,DestVec+DV_WriteCmd(a4)
+	bsr.w	PrintFallback
+	bra.w	s_t4			;retry this swath write
 s_treaderr:
 	lea	fe_read(pc),a1
 	bra.s	s_tereport
@@ -1460,8 +1567,67 @@ fch_name:
 	dc.b	'RWSPEED',':'&$df,0,0
 	even
 
+;--- parse CMD= override value -----------------------------
+; Reads the CMD/K value (ArgArray slot 11) and sets ForceCmd(a4):
+;   0=AUTO (also when not given) 1=CMD 2=TD64 3=NSCMD 4=SCSI.
+; d0 -> 0 = ok, -1 = unrecognised value.
+
+ParseForceCmd:
+	clr.b	ForceCmd(a4)
+	move.l	ArgArray+44(a4),d0	;CMD value string, or NULL
+	beq.s	pfc_ok			;not given -> AUTO
+	movem.l	d2/a2-a3,-(sp)
+	move.l	d0,a2			;a2 = input value
+	lea	ForceNameTab(pc),a3
+pfc_next:
+	move.b	(a3)+,d2		;kind ($ff = end of table)
+	cmp.b	#$ff,d2
+	beq.s	pfc_unknown
+	move.l	a2,a0			;input
+	move.l	a3,a1			;table name
+pfc_cmp:
+	move.b	(a0)+,d0
+	and.b	#$df,d0			;case-fold input
+	move.b	(a1)+,d1
+	and.b	#$df,d1			;case-fold table (digits fold consistently)
+	cmp.b	d0,d1
+	bne.s	pfc_skip
+	tst.b	d1
+	bne.s	pfc_cmp
+	move.b	d2,ForceCmd(a4)		;full match
+	moveq.l	#0,d0
+	movem.l	(sp)+,d2/a2-a3
+	rts
+pfc_skip:
+	tst.b	(a3)+			;skip rest of this name to next entry
+	bne.s	pfc_skip
+	bra.s	pfc_next
+pfc_unknown:
+	movem.l	(sp)+,d2/a2-a3
+	moveq.l	#-1,d0
+	rts
+pfc_ok:
+	moveq.l	#0,d0
+	rts
+
+ForceNameTab:
+	dc.b	0,'AUTO',0
+	dc.b	1,'CMD',0
+	dc.b	2,'TD64',0
+	dc.b	3,'NSCMD',0
+	dc.b	4,'SCSI',0
+	dc.b	$ff
+	even
+
+; read/write command pairs for ForceCmd 1..4 (CMD/TD64/NSCMD/SCSI)
+ForceCmdTab:
+	dc.w	CMD_READ,CMD_WRITE
+	dc.w	TD_READ64,TD_WRITE64
+	dc.w	NSCMD_TD_READ64,NSCMD_TD_WRITE64
+	dc.w	HD_SCSICMD,HD_SCSICMD
+
 ArgTemplate:
-	dc.b	'SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K',0
+	dc.b	'SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K,VERBOSE=V/S,CMD/K',0
 	even
 
 ;--- command-word → name lookup ----------------------------
@@ -1469,6 +1635,8 @@ ArgTemplate:
 ; Terminated with a 0-word entry.
 
 CmdNames:
+	dc.w	CMD_RESET
+	dc.l	cn_cmd_reset
 	dc.w	CMD_READ
 	dc.l	cn_cmd_read
 	dc.w	CMD_WRITE
@@ -1477,6 +1645,32 @@ CmdNames:
 	dc.l	cn_cmd_update
 	dc.w	CMD_CLEAR
 	dc.l	cn_cmd_clear
+	dc.w	CMD_STOP
+	dc.l	cn_cmd_stop
+	dc.w	CMD_START
+	dc.l	cn_cmd_start
+	dc.w	CMD_FLUSH
+	dc.l	cn_cmd_flush
+	dc.w	TD_MOTOR
+	dc.l	cn_td_motor
+	dc.w	TD_SEEK
+	dc.l	cn_td_seek
+	dc.w	TD_FORMAT
+	dc.l	cn_td_format
+	dc.w	TD_REMOVE
+	dc.l	cn_td_remove
+	dc.w	TD_CHANGENUM
+	dc.l	cn_td_chgnum
+	dc.w	TD_CHANGESTATE
+	dc.l	cn_td_chgstate
+	dc.w	TD_PROTSTATUS
+	dc.l	cn_td_protstat
+	dc.w	TD_GETDRIVETYPE
+	dc.l	cn_td_getdtype
+	dc.w	TD_ADDCHANGEINT
+	dc.l	cn_td_addci
+	dc.w	TD_REMCHANGEINT
+	dc.l	cn_td_remci
 	dc.w	TD_GETGEOMETRY
 	dc.l	cn_td_getgeo
 	dc.w	ETD_READ
@@ -1491,13 +1685,47 @@ CmdNames:
 	dc.l	cn_ns_r64
 	dc.w	NSCMD_TD_WRITE64
 	dc.l	cn_ns_w64
+	dc.w	NSCMD_TD_SEEK64
+	dc.l	cn_ns_s64
+	dc.w	NSCMD_TD_FORMAT64
+	dc.l	cn_ns_f64
+	dc.w	TD_READ64
+	dc.l	cn_td_read64
+	dc.w	TD_WRITE64
+	dc.l	cn_td_write64
+	dc.w	TD_SEEK64
+	dc.l	cn_td_seek64
+	dc.w	TD_FORMAT64
+	dc.l	cn_td_fmt64
+	dc.w	TD_RAWREAD
+	dc.l	cn_td_rawread
+	dc.w	TD_RAWWRITE
+	dc.l	cn_td_rawwrite
+	dc.w	TD_GETNUMTRACKS
+	dc.l	cn_td_getntrk
+	dc.w	TD_EJECT
+	dc.l	cn_td_eject
 	dc.w	HD_SCSICMD
 	dc.l	cn_scsi
 	dc.w	0			;terminator
+cn_cmd_reset:	dc.b	'CMD_RESET',0
 cn_cmd_read:	dc.b	'CMD_READ',0
 cn_cmd_write:	dc.b	'CMD_WRITE',0
 cn_cmd_update:	dc.b	'CMD_UPDATE',0
 cn_cmd_clear:	dc.b	'CMD_CLEAR',0
+cn_cmd_stop:	dc.b	'CMD_STOP',0
+cn_cmd_start:	dc.b	'CMD_START',0
+cn_cmd_flush:	dc.b	'CMD_FLUSH',0
+cn_td_motor:	dc.b	'TD_MOTOR',0
+cn_td_seek:	dc.b	'TD_SEEK',0
+cn_td_format:	dc.b	'TD_FORMAT',0
+cn_td_remove:	dc.b	'TD_REMOVE',0
+cn_td_chgnum:	dc.b	'TD_CHANGENUM',0
+cn_td_chgstate:	dc.b	'TD_CHANGESTATE',0
+cn_td_protstat:	dc.b	'TD_PROTSTATUS',0
+cn_td_getdtype:	dc.b	'TD_GETDRIVETYPE',0
+cn_td_addci:	dc.b	'TD_ADDCHANGEINT',0
+cn_td_remci:	dc.b	'TD_REMCHANGEINT',0
 cn_td_getgeo:	dc.b	'TD_GETGEOMETRY',0
 cn_etd_read:	dc.b	'ETD_READ',0
 cn_etd_write:	dc.b	'ETD_WRITE',0
@@ -1505,8 +1733,18 @@ cn_etd_update:	dc.b	'ETD_UPDATE',0
 cn_nsq:		dc.b	'NSCMD_DEVICEQUERY',0
 cn_ns_r64:	dc.b	'NSCMD_TD_READ64',0
 cn_ns_w64:	dc.b	'NSCMD_TD_WRITE64',0
+cn_ns_s64:	dc.b	'NSCMD_TD_SEEK64',0
+cn_ns_f64:	dc.b	'NSCMD_TD_FORMAT64',0
+cn_td_read64:	dc.b	'TD_READ64',0
+cn_td_write64:	dc.b	'TD_WRITE64',0
+cn_td_seek64:	dc.b	'TD_SEEK64',0
+cn_td_fmt64:	dc.b	'TD_FORMAT64',0
+cn_td_rawread:	dc.b	'TD_RAWREAD',0
+cn_td_rawwrite:	dc.b	'TD_RAWWRITE',0
+cn_td_getntrk:	dc.b	'TD_GETNUMTRACKS',0
+cn_td_eject:	dc.b	'TD_EJECT',0
 cn_scsi:	dc.b	'HD_SCSICMD',0
-cn_unknown:	dc.b	'???',0
+cn_unknown:	dc.b	'unknown',0
 	even
 
 ;--- lookup command word -> name string --------------------
@@ -1527,6 +1765,145 @@ cts_unknown:
 	lea	cn_unknown(pc),a0
 cts_end:
 	movem.l	(sp)+,d1/a1
+	rts
+
+;--- format word as "$XXXX" --------------------------------
+; d0 <- word
+; a0 -> HexBuf (NUL-terminated)
+
+WordToHex:
+	movem.l	d0-d2/a1,-(sp)
+	lea	HexBuf(pc),a1
+	move.b	#'$',(a1)+
+	moveq.l	#3,d2			;4 nibbles, high first
+wth_loop:
+	rol.w	#4,d0			;next nibble into low 4 bits
+	move.w	d0,d1
+	and.w	#$0f,d1
+	cmp.b	#10,d1
+	bcs.s	wth_dig
+	addq.b	#7,d1			;A..F
+wth_dig:
+	add.b	#'0',d1
+	move.b	d1,(a1)+
+	dbra	d2,wth_loop
+	clr.b	(a1)
+	movem.l	(sp)+,d0-d2/a1
+	lea	HexBuf(pc),a0
+	rts
+HexBuf:	dc.b	0,0,0,0,0,0		;"$XXXX",0
+	even
+
+;--- next fallback command ---------------------------------
+; Steps a >4 GiB read/write command down the support ladder when a device
+; rejects it with IOERR_NOCMD. CMD_READ/WRITE and HD_SCSICMD have no
+; successor (HD_SCSICMD is the last resort).
+; d0 <- current command word
+; d0 -> successor command word, or 0 if none
+
+NextCmd:
+	cmp.w	#NSCMD_TD_READ64,d0
+	bne.s	nc_1
+	move.w	#TD_READ64,d0
+	rts
+nc_1:
+	cmp.w	#NSCMD_TD_WRITE64,d0
+	bne.s	nc_2
+	move.w	#TD_WRITE64,d0
+	rts
+nc_2:
+	cmp.w	#TD_READ64,d0
+	beq.s	nc_scsi
+	cmp.w	#TD_WRITE64,d0
+	beq.s	nc_scsi
+	moveq.l	#0,d0
+	rts
+nc_scsi:
+	move.w	#HD_SCSICMD,d0
+	rts
+
+;--- print command fallback notice -------------------------
+; Tells the user the chosen command was unsupported and which one is
+; tried next, so the up-front "via <cmd>" line is not silently stale.
+; Preserves all transfer registers.
+; d0 <- old command word, d1 <- new command word
+
+PrintFallback:
+	movem.l	d0-d7/a0-a6,-(sp)
+	move.l	ConsoleO(a4),d2
+	beq.s	pf_ret
+	bsr.w	CmdToStr		;old name -> a0 (d0/d1 preserved)
+	move.l	a0,a2			;a2 = old name
+	move.w	d1,d0
+	bsr.w	CmdToStr		;new name -> a0
+	move.l	a0,-(sp)		;arg2 = new name
+	move.l	a2,-(sp)		;arg1 = old name
+	move.l	ConsoleO(a4),d1
+	lea	fb_note(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#8,sp
+pf_ret:
+	movem.l	(sp)+,d0-d7/a0-a6
+	rts
+
+;--- print ">4GiB methods:" capability summary -------------
+; Reads DV_CmdFlags(a3) (a3 = SourceVec) and lists the advertised
+; >4 GiB-capable commands, comma-separated, or "(none)".
+
+pi_methods:
+	move.b	DV_CmdFlags(a3),d5	;capability bits
+	move.l	ConsoleO(a4),d1
+	beq.s	pim_ret			;no console
+	lea	fi_meth_lbl(pc),a0	;label, no newline
+	move.l	a0,d2
+	moveq.l	#0,d3
+	CALLDOS	VFPrintf
+	moveq.l	#0,d4			;0 = nothing printed yet
+	btst	#2,d5			;NSCMD_TD64
+	beq.s	pim_1
+	lea	cn_cap_nscmd(pc),a0
+	bsr.s	pim_tok
+pim_1:
+	btst	#3,d5			;classic TD64
+	beq.s	pim_2
+	lea	cn_cap_td64(pc),a0
+	bsr.s	pim_tok
+pim_2:
+	btst	#4,d5			;HD_SCSICMD
+	beq.s	pim_3
+	lea	cn_cap_scsi(pc),a0
+	bsr.s	pim_tok
+pim_3:
+	tst.b	d4
+	bne.s	pim_nl
+	lea	cn_cap_none(pc),a0	;none advertised
+	bsr.s	pim_tok
+pim_nl:
+	move.l	ConsoleO(a4),d1
+	lea	fi_meth_nl(pc),a0	;just a newline
+	move.l	a0,d2
+	moveq.l	#0,d3
+	CALLDOS	VFPrintf
+pim_ret:
+	rts
+
+pim_tok:				;a0 = token; first plain, rest ", "-prefixed
+	move.l	a0,-(sp)		;arg = token
+	tst.b	d4
+	bne.s	pim_tsep
+	lea	fi_meth_t1(pc),a0	;"%s"
+	bra.s	pim_temit
+pim_tsep:
+	lea	fi_meth_t2(pc),a0	;", %s"
+pim_temit:
+	move.l	a0,d2
+	move.l	ConsoleO(a4),d1
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
+	moveq.l	#1,d4			;mark "something printed"
 	rts
 
 ;--- print help banner -------------------------------------
@@ -1610,40 +1987,43 @@ PrintInspect:
 	CALLDOS	VFPrintf
 	addq.l	#4,sp
 
-	;NSD line and (if NSD ok) supported-cmds walk
+	;NSD present? if not, show nothing here: the "for >4 GiB:" line
+	;below still reveals the command dd would use.
 	move.b	DV_CmdFlags(a3),d0
 	btst	#0,d0
-	bne.s	pi_nsd_ok
+	beq.w	pi_after_nsd
+	;NSD present: print the ">4GiB methods:" summary; the full command
+	;list follows only with VERBOSE.
+	bsr.w	pi_methods		;">4GiB methods:" summary (reads DV_CmdFlags)
+	move.l	ArgArray+40(a4),d0	;VERBOSE switch (slot 10)
+	beq.w	pi_after_nsd		;not verbose: skip the command list
 	move.l	ConsoleO(a4),d1
-	lea	fi_nsd_no(pc),a0
+	lea	fi_cmds(pc),a0
 	move.l	a0,d2
 	moveq.l	#0,d3
 	CALLDOS	VFPrintf
-	bra.s	pi_after_nsd
-pi_nsd_ok:
-	move.l	ConsoleO(a4),d1
-	lea	fi_nsd_y(pc),a0
-	move.l	a0,d2
-	moveq.l	#0,d3
-	CALLDOS	VFPrintf
-	;walk SupportedCommands list, print each name as its own line
+	;walk SupportedCommands list, print "$HEX (name)" per entry
 	move.l	QueryResult+QR_SupportedCmds(a4),a3	;temporarily use a3 as iterator
 	move.l	a3,d0
-	beq.s	pi_after_nsd
+	beq.w	pi_after_nsd
 pi_walk:
 	move.w	(a3)+,d0
-	beq.s	pi_after_nsd
+	beq.w	pi_after_nsd
+	move.w	d0,d4			;keep command word across calls
 	move.l	a3,-(sp)		;save iterator
-	bsr.w	CmdToStr		;d0 in, a0 out
-	move.l	a0,-(sp)		;arg: cmd-name string
+	bsr.w	CmdToStr		;d4 -> a0 = name (or "unknown")
+	move.l	a0,-(sp)		;arg2: name
+	move.w	d4,d0
+	bsr.w	WordToHex		;d4 -> a0 = "$XXXX"
+	move.l	a0,-(sp)		;arg1: hex string
 	move.l	ConsoleO(a4),d1
-	lea	fi_indent(pc),a0
+	lea	fi_cmdline(pc),a0
 	move.l	a0,d2
 	move.l	sp,d3
 	CALLDOS	VFPrintf
-	addq.l	#4,sp
+	addq.l	#8,sp
 	move.l	(sp)+,a3		;restore iterator
-	bra.s	pi_walk
+	bra.w	pi_walk
 pi_after_nsd:
 	lea	SourceVec(a4),a3	;restore a3 (may have been used as iterator)
 
@@ -1664,17 +2044,17 @@ pi_after_nsd:
 	;for >4 GiB: depends on CmdFlags bit 2
 	move.b	DV_CmdFlags(a3),d0
 	btst	#2,d0
-	beq.s	pi_hi_scsi
+	beq.s	pi_hi_td64
 	move.w	#NSCMD_TD_WRITE64,d0
 	bsr.w	CmdToStr
 	move.l	a0,-(sp)
 	move.w	#NSCMD_TD_READ64,d0
 	bra.s	pi_hi_emit
-pi_hi_scsi:
-	move.w	#HD_SCSICMD,d0
+pi_hi_td64:
+	move.w	#TD_WRITE64,d0
 	bsr.w	CmdToStr
 	move.l	a0,-(sp)
-	move.w	#HD_SCSICMD,d0
+	move.w	#TD_READ64,d0
 pi_hi_emit:
 	bsr.w	CmdToStr
 	move.l	a0,-(sp)
@@ -1695,9 +2075,16 @@ fi_total:	dc.b	'  total sectors:  %ld',13,10,0
 fi_cyl:		dc.b	'  cylinders:      %ld',13,10,0
 fi_heads:	dc.b	'  heads:          %ld',13,10,0
 fi_spt:		dc.b	'  sec/track:      %ld',13,10,0
-fi_nsd_no:	dc.b	'  NSD:            not supported',13,10,0
-fi_nsd_y:	dc.b	'  NSD:            supported, commands:',13,10,0
-fi_indent:	dc.b	'                  %s',13,10,0
+fi_cmds:	dc.b	'  commands:',13,10,0
+fi_meth_lbl:	dc.b	'  >4GiB methods:  ',0
+fi_meth_t1:	dc.b	'%s',0
+fi_meth_t2:	dc.b	', %s',0
+fi_meth_nl:	dc.b	13,10,0
+cn_cap_nscmd:	dc.b	'NSCMD_TD64',0
+cn_cap_td64:	dc.b	'TD64',0
+cn_cap_scsi:	dc.b	'HD_SCSI',0
+cn_cap_none:	dc.b	'(none)',0
+fi_cmdline:	dc.b	'                  %s (%s)',13,10,0
 fi_lo:		dc.b	'  for <=4 GiB:    %s / %s',13,10,0
 fi_hi:		dc.b	'  for  >4 GiB:    %s / %s',13,10,0
 fu_read:	dc.b	'read:  %s unit %ld via %s',13,10,0
@@ -1709,6 +2096,7 @@ fw_sizewarn:	dc.b	'WARNING: device reports a different block size (%ld)',10
 ft_progress:	dc.b	'%ld',13,0
 fe_read:	dc.b	'%s read error (%ld).',10,0
 fe_write:	dc.b	'%s write error (%ld).',10,0
+fb_note:	dc.b	'  %s not supported, falling back to %s',10,0
 fr_done:	dc.b	'%ld blocks of %ld bytes each transferred.',10,0
 fr_rspeed:	dc.b	'Read speed:  %ld kbyte/sec',10,0
 fr_wspeed:	dc.b	'Write speed: %ld kbyte/sec',10,0
@@ -1718,11 +2106,10 @@ HelpBanner:
 	dc.b	'dd '
 	VER_NUMBER
 	dc.b	' - raw block transfer tool',13,10,13,10
-	dc.b	'Usage: dd SRC DST [UNIT] [START] [COUNT] [BS] [US n] [UD n]',13,10
-	dc.b	'       dd INSPECT device.name [UNIT n]    (probe device, print capabilities)',13,10
-	dc.b	'       dd ?       (this help, then ReadArgs prompt)',13,10
-	dc.b	'       dd HELP    (same as `dd ?`, no interactive prompt)',13,10,13,10
-	dc.b	'Template: SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K',13,10,13,10
+	dc.b	'Usage: dd SRC DST [UNIT] [START] [COUNT] [BS] [US n] [UD n] [CMD x]',13,10
+	dc.b	'       dd INSPECT device.name [UNIT n] [VERBOSE]  (probe device, print capabilities)',13,10
+	dc.b	'       dd ? or HELP   (this help; ? also opens the ReadArgs prompt)',13,10,13,10
+	dc.b	'Template: SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K,VERBOSE=V/S,CMD/K',13,10,13,10
 	dc.b	'Args:',13,10
 	dc.b	'  SRC, DST  Source and destination. Either:',13,10
 	dc.b	'            - a device name (e.g. compactflash.device) plus UNIT or US/UD',13,10
@@ -1734,7 +2121,9 @@ HelpBanner:
 	dc.b	'  US, UD    Per-side unit. Use when both SRC and DST are devices.',13,10
 	dc.b	'  START     First block to transfer (default 0).',13,10
 	dc.b	'  COUNT     Number of blocks (default: entire disk or file).',13,10
-	dc.b	'  BS        Block size in bytes (default: detected from device).',13,10,13,10
+	dc.b	'  BS        Block size in bytes (default: detected from device).',13,10
+	dc.b	'  VERBOSE   With INSPECT: also list the full SupportedCommands set.',13,10
+	dc.b	'  CMD       Force the transfer command: AUTO|CMD|TD64|NSCMD|SCSI (default AUTO).',13,10,13,10
 	dc.b	'Examples:',13,10
 	dc.b	'  dd FILL: scsi.device 0                      ; wipe whole device',13,10
 	dc.b	'  dd FILL: scsi.device 0 0 1048576 512        ; wipe 512 MiB at LBA 0',13,10
@@ -1999,8 +2388,10 @@ BreakText:
 	dc.b	'** Break **', LF
 BTEnd:
 	dc.b	0
-MSName:
-	dc.b	'ram:ModeSenseData',0
+Cmd32Str:
+	dc.b	'dd: CMD=CMD cannot reach past 4 GiB; use TD64, NSCMD or SCSI',LF
+Cmd32End:
+	even
 
 ;*** that's it!!!! *****************************************
 	end
