@@ -11,9 +11,6 @@
 @{b}dd@{ub}
 
     @{"dd - Raw block transfer tool" link dd___Raw_block_transfer_tool}
-    @{"Template" link Template}
-    @{"Positional form" link Positional_form}
-    @{"Special names" link Special_names}
     @{"INSPECT mode" link INSPECT_mode}
     @{"IO command selection" link IO_command_selection}
         @{"Automatic selection" link Automatic_selection}
@@ -39,12 +36,6 @@
   @{"IO command selection" link IO_command_selection}
 @{b}M@{ub}
   @{"Migration from dd 1.x" link Migration_from_dd_1_x}
-@{b}P@{ub}
-  @{"Positional form" link Positional_form}
-@{b}S@{ub}
-  @{"Special names" link Special_names}
-@{b}T@{ub}
-  @{"Template" link Template}
 
 @endnode
 
@@ -54,25 +45,13 @@
 @{fg shine}dd@{fg text} reads and writes raw disk blocks. Since dd 2.0 it uses the AmigaOS
 argument parser. Type @{fg shine}dd ?@{fg text} (or @{fg shine}dd HELP@{fg text} ) to see the quick reference.
 
-----------------------------------------
-@{"<< Prev" link Main}  @{"Contents" link Main}  @{"Next >>" link Template}
-
-@endnode
-
-@node Template "Template"
-@{b}Template@{ub}
+@{i}Template@{ui}
 
 @{fg highlight}
   SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K,VERBOSE=V/S,CMD/K
 @{fg text}
 
-----------------------------------------
-@{"<< Prev" link dd___Raw_block_transfer_tool}  @{"Contents" link Main}  @{"Next >>" link Positional_form}
-
-@endnode
-
-@node Positional_form "Positional form"
-@{b}Positional form@{ub}
+@{i}Positional form@{ui}
 
 @{fg highlight}
   dd <src> <dst> [<unit>] [<start>] [<count>] [<blocksize>]
@@ -82,13 +61,7 @@ argument parser. Type @{fg shine}dd ?@{fg text} (or @{fg shine}dd HELP@{fg text}
 @{fg shine}SRC@{fg text} / @{fg shine}DST@{fg text} is a @{fg shine}.device@{fg text} . If @{b}both@{ub} are devices, use the keyword form
 @{fg shine}US <n>@{fg text} / @{fg shine}UD <n>@{fg text} to disambiguate.
 
-----------------------------------------
-@{"<< Prev" link Template}  @{"Contents" link Main}  @{"Next >>" link Special_names}
-
-@endnode
-
-@node Special_names "Special names"
-@{b}Special names@{ub}
+@{i}Special names@{ui}
 
   @{b}Name@{ub}      @{b}Where@{ub}  @{b}Meaning@{ub}                   
   --------  -----  ------------------------  
@@ -103,7 +76,7 @@ argument parser. Type @{fg shine}dd ?@{fg text} (or @{fg shine}dd HELP@{fg text}
                    benchmark.                
 
 ----------------------------------------
-@{"<< Prev" link Positional_form}  @{"Contents" link Main}  @{"Next >>" link INSPECT_mode}
+@{"<< Prev" link Main}  @{"Contents" link Main}  @{"Next >>" link INSPECT_mode}
 
 @endnode
 
@@ -165,7 +138,7 @@ line is printed and the swath is retried with the next command down the
 ladder.
 
 ----------------------------------------
-@{"<< Prev" link Special_names}  @{"Contents" link Main}  @{"Next >>" link IO_command_selection}
+@{"<< Prev" link dd___Raw_block_transfer_tool}  @{"Contents" link Main}  @{"Next >>" link IO_command_selection}
 
 @endnode
 
@@ -191,23 +164,35 @@ The choice depends on whether the byte range exceeds 32-bit addressing
 (4 GiB) and on what the driver advertises through NSD:
 
 @{fg highlight}
-    real .device ? --- no ---> DOS Read/Write (file, FILL:, RSPEED:)
-          |
-         yes
-          |
-    forced SCSI (bit 7) ? --- yes ---> HD_SCSICMD
-          |                            (set when block size is not 2^n)
-          no
-          |
-    range > 4 GiB ? --- no ---> CMD_READ / CMD_WRITE
-          |
-         yes
-          |
-    NSD advertises NSCMD_TD_READ64 ?
-          |
-          +-- yes --> NSCMD_TD_READ64 / NSCMD_TD_WRITE64
-          |
-          +-- no  --> TD_READ64 / TD_WRITE64
+  +---------------------+
+  |   real .device ?    |
+  +----------+----------+
+        no <-+-> yes
+         |         |
+         v         v
+    DOS Read/   +----------------------+
+    Write       |  forced SCSI         |
+   (file,       |  (bit 7 set) ?       |
+    FILL:,      +----------+-----------+
+    RSPEED:)          no <-+-> yes
+                           |         |
+                           v         v
+                   +---------------+  HD_SCSICMD
+                   |  range        |  (block size
+                   |  > 4 GiB ?    |   not 2^n)
+                   +-------+-------+
+                       no <+-> yes
+                        |        |
+                        v        v
+                   CMD_READ /  +--------------------------+
+                   CMD_WRITE   | NSD advertises           |
+                               | NSCMD_TD_READ64 ?        |
+                               +----------+---------------+
+                                     no <-+-> yes
+                                      |          |
+                                      v          v
+                                 TD_READ64   NSCMD_TD_READ64
+                                 TD_WRITE64  NSCMD_TD_WRITE64
 @{fg text}
 
 If a chosen command is rejected at I/O time with @{fg shine}IOERR_NOCMD@{fg text} (-3), dd
@@ -215,8 +200,9 @@ steps one rung down the ladder and retries the @{i}same@{ui} block range,
 printing a @{fg shine}<cmd> not supported, falling back to <cmd>@{fg text} notice:
 
 @{fg highlight}
-    NSCMD_TD_READ64   -->  TD_READ64   -->  HD_SCSICMD  -->  report -3
-    NSCMD_TD_WRITE64  -->  TD_WRITE64  -->  HD_SCSICMD  -->  report -3
+  NSCMD_TD_READ64  -->  TD_READ64  --+
+                                     +--->  HD_SCSICMD  --->  report -3
+  NSCMD_TD_WRITE64 -->  TD_WRITE64 --+
 @{fg text}
 
 @{fg shine}HD_SCSICMD@{fg text} (SCSI @{fg shine}READ10@{fg text} / @{fg shine}WRITE10@{fg text} ) is the last resort -- it needs the

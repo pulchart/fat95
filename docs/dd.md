@@ -2,13 +2,13 @@
 
 `dd` reads and writes raw disk blocks. Since dd 2.0 it uses the AmigaOS argument parser. Type `dd ?` (or `dd HELP`) to see the quick reference.
 
-## Template
+*Template*
 
 ```
 SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K,VERBOSE=V/S,CMD/K
 ```
 
-## Positional form
+*Positional form*
 
 ```
 dd <src> <dst> [<unit>] [<start>] [<count>] [<blocksize>]
@@ -16,7 +16,7 @@ dd <src> <dst> [<unit>] [<start>] [<count>] [<blocksize>]
 
 `SRC` and `DST` are required. The single `UNIT` slot applies to whichever of `SRC`/`DST` is a `.device`. If **both** are devices, use the keyword form `US <n>` / `UD <n>` to disambiguate.
 
-## Special names
+*Special names*
 
 | Name | Where | Meaning |
 |---|---|---|
@@ -76,30 +76,43 @@ For each side of a transfer (`SRC` is the read path, `DST` the write path) dd pi
 The choice depends on whether the byte range exceeds 32-bit addressing (4 GiB) and on what the driver advertises through NSD:
 
 ```
-  real .device ? --- no ---> DOS Read/Write (file, FILL:, RSPEED:)
-        |
-       yes
-        |
-  forced SCSI (bit 7) ? --- yes ---> HD_SCSICMD
-        |                            (set when block size is not 2^n)
-        no
-        |
-  range > 4 GiB ? --- no ---> CMD_READ / CMD_WRITE
-        |
-       yes
-        |
-  NSD advertises NSCMD_TD_READ64 ?
-        |
-        +-- yes --> NSCMD_TD_READ64 / NSCMD_TD_WRITE64
-        |
-        +-- no  --> TD_READ64 / TD_WRITE64
++---------------------+
+|   real .device ?    |
++----------+----------+
+      no <-+-> yes
+       |         |
+       v         v
+  DOS Read/   +----------------------+
+  Write       |  forced SCSI         |
+ (file,       |  (bit 7 set) ?       |
+  FILL:,      +----------+-----------+
+  RSPEED:)          no <-+-> yes
+                         |         |
+                         v         v
+                 +---------------+  HD_SCSICMD
+                 |  range        |  (block size
+                 |  > 4 GiB ?    |   not 2^n)
+                 +-------+-------+
+                     no <+-> yes
+                      |        |
+                      v        v
+                 CMD_READ /  +--------------------------+
+                 CMD_WRITE   | NSD advertises           |
+                             | NSCMD_TD_READ64 ?        |
+                             +----------+---------------+
+                                   no <-+-> yes
+                                    |          |
+                                    v          v
+                               TD_READ64   NSCMD_TD_READ64
+                               TD_WRITE64  NSCMD_TD_WRITE64
 ```
 
 If a chosen command is rejected at I/O time with `IOERR_NOCMD` (-3), dd steps one rung down the ladder and retries the *same* block range, printing a `<cmd> not supported, falling back to <cmd>` notice:
 
 ```
-  NSCMD_TD_READ64   -->  TD_READ64   -->  HD_SCSICMD  -->  report -3
-  NSCMD_TD_WRITE64  -->  TD_WRITE64  -->  HD_SCSICMD  -->  report -3
+NSCMD_TD_READ64  -->  TD_READ64  --+
+                                   +--->  HD_SCSICMD  --->  report -3
+NSCMD_TD_WRITE64 -->  TD_WRITE64 --+
 ```
 
 `HD_SCSICMD` (SCSI `READ10`/`WRITE10`) is the last resort — it needs the driver to implement raw SCSI passthrough, which not every device provides. `CMD_READ`/`CMD_WRITE` and `HD_SCSICMD` have no successor, so if they fail the error is reported. This is why a >4 GiB transfer on a device with no usable NSD still works: dd starts at `TD_READ64` and only drops to `HD_SCSICMD` if the driver rejects TD64 as well.

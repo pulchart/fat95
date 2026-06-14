@@ -16,7 +16,11 @@ COMPONENTS IN THIS RELEASE
 WHAT'S NEW (@DATE@)
 =======================
 
-tools:
+Tools:
+
+This release is mainly a dd maintenance update. dd 2.2 adds TD64 support for
+large-disk transfers, fixes unreliable NSD detection from the previous dd
+release, and improves INSPECT output.
 
 dd 2.2:
 * Support TD64 and harden NSD probe (fixes #20).
@@ -84,7 +88,8 @@ you can do so on Ko-fi: https://ko-fi.com/jaroslavpulchart
 
 HISTORY
 =======
-see https://github.com/pulchart/fat95/blob/master/README.md for complete history
+See docs/changes.guide for release notes and original fat95 history.
+Online version: https://github.com/pulchart/fat95/blob/master/docs/changes.md
 
 CHECKSUMS
 =========
@@ -93,6 +98,7 @@ CHECKSUMS
 CONTENTS
 ========
 fat95/docs/fat95.guide   - FAT95 filesystem handler documentation
+fat95/docs/changes.guide - Release notes and original fat95 history
 fat95/docs/dd.guide      - dd raw block transfer tool documentation
 fat95/docs/lsfsres.guide - lsfsres FileSystem.resource lister documentation
 
