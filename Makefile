@@ -5,8 +5,8 @@
 
 # Release version: YYYYMMDD package date + optional in-progress suffix
 # (-dev, -rc1, ...). Empty suffix for a final release.
-RELEASE_DATE = 20260613
-VERSION_SUFFIX = -dev
+RELEASE_DATE = 20260614
+VERSION_SUFFIX =
 
 # fat95 filesystem handler version
 FAT95_MAJOR = 3
@@ -203,16 +203,16 @@ $(VERSION_STAMP): FORCE
 		rm -f $(VERSION_STAMP).tmp; \
 	fi
 
-# Rewrite the topmost "What's New" header and the COMPONENTS block in
-# README.md from current Makefile vars. Add new release headers by hand.
+# Rewrite the topmost release-notes header and the COMPONENTS block in
+# docs/changes.md from current Makefile vars. Add new release headers by hand.
 version-readme:
-	$(Q)sed -i '0,/^### [0-9]\{8\}[^[:space:]]*/s/^### [0-9]\{8\}[^[:space:]]*/### $(VERSION)/' README.md
-	$(Q)block="#### Components in this release\n\n$$(sh tools/components.sh md $(COMPONENT_ARGS))"; \
+	$(Q)sed -i '0,/^## [0-9]\{8\}[^[:space:]]*/s/^## [0-9]\{8\}[^[:space:]]*/## $(VERSION)/' docs/changes.md
+	$(Q)block="_Components in this release_:\n\n$$(sh tools/components.sh md $(COMPONENT_ARGS))"; \
 	awk -v block="$$block" ' \
 	    /<!-- COMPONENTS:BEGIN -->/{print; print block; in_block=1; next} \
 	    /<!-- COMPONENTS:END -->/{in_block=0} \
-	    !in_block' README.md > README.md.tmp && mv README.md.tmp README.md
-	$(Q)echo "  README  topmost header + components updated to $(VERSION) ($(DATE))"
+	    !in_block' docs/changes.md > docs/changes.md.tmp && mv docs/changes.md.tmp docs/changes.md
+	$(Q)echo "  CHANGES topmost header + components updated to $(VERSION) ($(DATE))"
 
 # Version include file generation
 # Parameters: 1=file, 2=name, 3=major, 4=minor, 5=version, 6=macro_name, 7=date, 8=add_lf_null
@@ -399,6 +399,7 @@ release: check-vasm version-readme all $(README_NAME) guide check-lha
 	cp $(README_INFO) LICENSE "$$S/fat95/"; \
 	mkdir -p "$$S/fat95/docs"; \
 	cp $(GUIDE_FAT95)   "$$S/fat95/docs/"; \
+	cp $(GUIDE_CHANGES) "$$S/fat95/docs/"; \
 	cp $(GUIDE_DD)      "$$S/fat95/docs/"; \
 	cp $(GUIDE_LSFSRES) "$$S/fat95/docs/"; \
 	cp dist.info "$$S/fat95.info"; \
@@ -447,10 +448,10 @@ help:
 	@echo "  VASM_HOME=/opt/vbcc - vasm installation path"
 	@echo ""
 	@echo "Documentation targets:"
-	@echo "  guide / guides - Generate AmigaGuide from README.md"
+	@echo "  guide / guides - Generate AmigaGuide documentation"
 	@echo ""
 	@echo "Release targets:"
-	@echo "  version-readme - Update version suffix in README.md (in-place)"
+	@echo "  version-readme - Update current release notes in docs/changes.md"
 	@echo "  readme         - Generate $(README_NAME) from template"
 	@echo "  release        - Create Aminet LHA archive + readme"
 	@echo ""
@@ -480,18 +481,24 @@ help:
 # Generate AmigaGuide documentation from Markdown
 GUIDE_OUTPUT_DIR = dist/docs
 GUIDE_FAT95      = $(GUIDE_OUTPUT_DIR)/fat95.guide
+GUIDE_CHANGES    = $(GUIDE_OUTPUT_DIR)/changes.guide
 GUIDE_DD         = $(GUIDE_OUTPUT_DIR)/dd.guide
 GUIDE_LSFSRES    = $(GUIDE_OUTPUT_DIR)/lsfsres.guide
 # Backwards-compat alias for anything still referencing $(GUIDE_OUTPUT).
 GUIDE_OUTPUT     = $(GUIDE_FAT95)
 MD2GUIDE = ../cfd/tools/md2guide.py
 
-guide guides: $(GUIDE_FAT95) $(GUIDE_DD) $(GUIDE_LSFSRES)
+guide guides: $(GUIDE_FAT95) $(GUIDE_CHANGES) $(GUIDE_DD) $(GUIDE_LSFSRES)
 
 $(GUIDE_FAT95): README.md $(MD2GUIDE)
 	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) README.md $@ --version $(VERSION) --date $(DATE) --title "fat95" --ver-title "fat95 guide"
+
+$(GUIDE_CHANGES): docs/changes.md $(MD2GUIDE)
+	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
+	$(Q)echo "  GUIDE   $@"
+	$(Q)python3 $(MD2GUIDE) docs/changes.md $@ --version $(VERSION) --date $(DATE) --title "fat95 release notes" --ver-title "fat95 release notes guide"
 
 $(GUIDE_DD): docs/dd.md $(MD2GUIDE)
 	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)

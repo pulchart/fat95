@@ -1,5 +1,6 @@
 ; DiskDump raw block transfer tool
 ; Copyright (C) 2009  Torsten Jager <t.jager@gmx.de>
+; Copyright (C) 2026  Jaroslav Pulchart <jaroslav.pulchart@gmail.com>
 ; This file is part of FAT95, a free FAT compatible file system for Amiga.
 ;
 ; This tool is free software; you can redistribute it and/or
