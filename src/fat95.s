@@ -9,7 +9,7 @@
 ;
 ; This handler is distributed in the hope that it will be useful,
 ; but WITHOUT ANY WARRANTY; without even the implied warranty of
-; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 ; Lesser General Public License for more details.
 ;
 ; You should have received a copy of the GNU Lesser General Public
@@ -70,8 +70,8 @@ EXTBL	macro				;sign-extend byte \1 to longword
 
 ; --- 68000-only clr.l <mem> avoidance --------------------------
 ; On 68000/010 clr.l <ea> does a useless dummy read of the
-; destination before writing zero.  68020+ skips that read, so
-; clr.l is the right choice there.  Use ZCLRL via a pre-zeroed
+; destination before writing zero. 68020+ skips that read, so
+; clr.l is the right choice there. Use ZCLRL via a pre-zeroed
 ; data register so the 68000 build emits move.l Dn,<ea> while
 ; the 020+ build keeps native clr.l (and the binary stays
 ; bit-identical on that tier).
@@ -148,6 +148,8 @@ WaitIO		= -474
 OpenResource	= -498
 TypeOfMem	= -534
 OpenLibrary	= -552
+FindResident	= -96
+InitResident	= -102
 CopyMem		= -624
 
 ;struct Node
@@ -847,6 +849,7 @@ QueryResult	=  80		;embedded struct NSDeviceQueryResult
 ;$0200  store last read date
 ;$0400	convert short names to lowercase
 ;$0800	dito, including initial
+;$1000	quiet: suppress error requesters ("q" option)
 
 ;logical partition layout
 BlockSize	=  96
@@ -2319,6 +2322,18 @@ CloseDisk:
 	tst.w	PhysFlags(a4)
 	beq.s	cd_ok			;nothing inserted
 
+;-- never call into ptable while dying: UnmountPartitions holds the
+;   partition.resource lock across the ACTION_DIE it sent us, so
+;   MarkAbsent here would deadlock against it (and it retires the
+;   resource entry itself anyway)
+	tst.w	PleaseUnmount(a4)
+	bne.s	cd_noabsent
+	bsr	_sreq_diepend		;ACTION_DIE already queued?
+	tst.l	d0
+	bne.s	cd_noabsent
+
+	bsr	MarkAbsentViaPtable	;media gone: clear PRESENT in partition.resource
+cd_noabsent:
 	move.l	VolumeNode(a4),d0
 	beq.s	cd_report		;disk was invalid
 
@@ -3840,10 +3855,10 @@ ReverseL	macro			;reverse longword
 ;--- read a little-endian word from possibly-unaligned memory ---
 ; ReadLE_W takes three parameters: a constant byte-offset, an address
 ; register holding the base, and a data register receiving the host-
-; endian value.  E.g.  ReadLE_W 0,a0,d0
+; endian value. E.g. ReadLE_W 0,a0,d0
 ;
 ; On 68020+ the address can be unaligned, so the read is one move.w
-; plus a ReverseW.  On 68000 the read must be byte-by-byte; we
+; plus a ReverseW. On 68000 the read must be byte-by-byte; we
 ; shift-and-pack into the destination register and clear the upper
 ; bytes first so the macro doesn't depend on caller pre-clearing
 ; the register.
@@ -3861,7 +3876,7 @@ ReadLE_W	macro			;\3 = LE word at (\1)(\2), zero-extended
 		endm
 
 ;--- copy a little-endian longword from (a1)+ to a host-endian
-; longword field at \1(a4), using \2 as scratch on 68020+.  On 68000
+; longword field at \1(a4), using \2 as scratch on 68020+. On 68000
 ; we keep the original four-move.b sequence so the 68000 binary does
 ; not grow; on 68020+ we collapse to one move.l + ReverseL + move.l.
 
@@ -5412,99 +5427,6 @@ SetIntParams:
 	movem.l	(sp)+,d0-d1
 	rts
 
-;--- evaluate partition table ------------------------------
-; d0 <- Partition # 1..4 or 0 for "extended Partition"
-; a0 <- &struct MasterBootRecord
-; a2 <-> struct PartFrame (ULONG length, ULONG AbsBlock#)
-; a5 <- &StackFrame (PartFrame Table)
-; d0 -> absolute Block # or 0
-; d1 -> length
-
-GPA_TABSIZE	= 256			;32 frame entries
-
-GetPartition:
-	movem.l	d2-d3/a0,-(sp)
-	move.w	d0,d2
-	bne.s	gpa_1
-
-	moveq.l	#1,d2
-gpa_1:
-	move.w	d2,d1
-	lsl.w	#4,d1
-	add.w	#430,d1
-	add.w	d1,a0			;&entry in Partition table
-gpa_check:
-	move.b	4(a0),d1		;Partition type
-	moveq.l	#0,d3
-	subq.b	#1,d1
-	beq.s	gpa_fat			;$01 = FAT12
-
-	moveq.l	#1,d3
-	subq.b	#3,d1
-	beq.s	gpa_fat			;$04 = FAT16, < 32 M
-
-	subq.b	#1,d1
-	beq.s	gpa_ext			;$05 = extended Partition
-
-	subq.b	#1,d1
-	beq.s	gpa_fat			;$06 = FAT16, >= 32 M
-
-	moveq.l	#-1,d3
-	subq.b	#5,d1
-	beq.s	gpa_fat			;$0b = FAT32, <= 2 G
-
-	subq.b	#1,d1
-	beq.s	gpa_fat			;$0c = FAT32, LBA
-
-	moveq.l	#1,d3
-	subq.b	#2,d1
-	beq.s	gpa_fat			;$0e = FAT16, >= 32 M, LBA
-
-	subq.b	#1,d1
-	bne.s	gpa_next		;$0f = extended Partition, LBA
-gpa_ext:
-	tst.w	d0
-	beq.s	gpa_found
-	bra.s	gpa_next
-gpa_fat:
-	tst.w	d0
-	bne.s	gpa_found
-gpa_next:
-	add.w	#16,a0
-	addq.w	#1,d2
-	cmp.w	#5,d2
-	bcs.s	gpa_check
-gpa_error:
-	moveq.l	#0,d0			;"not found"
-	bra.s	gpa_end
-gpa_found:
-	move.w	d3,FATType(a4)		;Info for AutoLayout()
-	move.l	12(a0),d1
-	ReverseL d1			;length in Sectors
-	move.l	8(a0),d0
-	ReverseL d0			;relative Block #
-	move.l	d0,HiddenBlocks(a4)	;distance off MBR
-gpa_fcheck:
-	cmp.l	(a2),d0
-	bcs.s	gpa_fok			;start still within current frame..
-
-	addq.l	#8,a2			;..or maybe within parent,..
-	cmp.l	a5,a2
-	bcs.s	gpa_fcheck
-
-	subq.l	#8,a2			;..but at least within start frame
-gpa_fok:
-	add.l	4(a2),d0		;absolute Block #
-	move.l	a5,d2
-	sub.l	a2,d2			;frame table..
-	cmp.w	#GPA_TABSIZE+1-8,d2
-	bcc.s	gpa_end			;..full
-
-	move.l	d0,-(a2)
-	move.l	d1,-(a2)		;this Partition as new frame
-gpa_end:
-	movem.l	(sp)+,d2-d3/a0
-	rts
 
 ;--- validate boot block -----------------------------------
 ; a0 <-> &block contents
@@ -5526,7 +5448,7 @@ IsBootBlock:
 	cmp.b	#36,d1			;..at least behind parameter block
 	blt.s	ibb_error
 ibb_bscheck:
-	;Reject NTFS (OEM ID "NTFS    " at offset 3).  3(a0) is an odd
+	;Reject NTFS (OEM ID "NTFS    " at offset 3). 3(a0) is an odd
 	;address, so a `cmp.l #"NTFS",3(a0)` would Address-Error on 68000.
 	;Check byte at offset 3 first, then the remaining aligned long.
 	cmp.b	#'N',3(a0)		;NTFS OEM ID byte 0..
@@ -5568,6 +5490,265 @@ ibb_error:
 	moveq.l	#0,d0
 	bra.s	ibb_end
 
+;===========================================================
+; ScanViaPtable - resolve the selected partition through
+; ptable.library v2 + partition.resource instead of parsing the
+; MBR/GPT tables here. The walker lives in exactly one binary
+; (ptable.library, shipped in LIBS:); fat95 is a pure consumer, so
+; cfd and fat95 share one partition-table codebase.
+;
+; Only the auto-detect path uses this (explicit-geometry mounts set
+; SearchMode and never reach here). Hard requirement: if
+; ptable.library v2 is absent, auto-detect fails (d0 = 0).
+;
+; In : a4 = handler base (DevName / UnitNumber / PartitionSelector set)
+; Out: d0 = 1 and FirstBlock/TotalBlocks/FATType/HiddenBlocks set, or 0
+; Preserves every other register (GetDiskParams keeps d3 = disk status).
+;===========================================================
+_LVOScanPartitions    = -36
+_LVORegisterPartition = -54
+_LVOMarkAbsent        = -60
+
+;-- partition.resource / PartEntry offsets, mirror of ptable_pub.i,
+;   The resource ABI is append-only, fields are only ever added at the
+;   end (never inserted), so these offsets stay valid against any newer
+;   publisher. PRES_Layout below exists when the resource header's
+;   lib_PosSize >= 98; a value below PRES_LAYOUT_MIN means an old
+;   pre-v2 layout we must not touch.
+PRES_PartList	= 34
+PRES_Layout	= 94			;UWORD layout version stamp
+PRES_LAYOUT_MIN	= 2			;oldest layout these offsets fit
+PENT_Device	= 14
+PENT_Unit	= 18
+PENT_PartIndex	= 22
+PENT_Flags	= 27
+PENT_StartLBA	= 32
+PENT_BlockCount	= 36
+PENT_DosType	= 40
+PEB_PRESENT	= 0			;pe_Flags bit: entry valid/present
+
+ScanViaPtable:
+	movem.l	d1-d7/a0-a3/a5-a6,-(sp)
+;-- resource-first: if our partition is already published (cfd automount
+;   already ran), use it directly - no device re-read, no scan.
+	bsr	svp_pick
+	tst.l	d0
+	bne.s	svp_ok
+;-- nothing usable yet (no cfd automount, fat95 is the first consumer):
+;   bootstrap ptable, scan once to publish, then retry the lookup.
+	bsr	_OpenPtable		;open ptable.library (ROM bootstrap if needed)
+	move.l	d0,d7			;d7 = ptable.library base
+	beq.s	svp_fail
+	move.l	d7,a6
+	move.l	DevName(a4),a1
+	move.l	UnitNumber(a4),d0
+	jsr	_LVOScanPartitions(a6)	;publish partitions to the resource
+	move.l	d7,a1
+	CALLEXEC CloseLibrary		;resource persists after close
+	bsr	svp_pick
+	tst.l	d0
+	beq.s	svp_fail
+svp_ok:
+	moveq.l	#1,d0
+	movem.l	(sp)+,d1-d7/a0-a3/a5-a6
+	rts
+svp_fail:
+	moveq.l	#0,d0
+	movem.l	(sp)+,d1-d7/a0-a3/a5-a6
+	rts
+
+;===========================================================
+; svp_pick - locate this handler's partition in partition.resource
+; WITHOUT scanning the device. In: a4 = handler base.
+; Out: d0 = 1 with FirstBlock/TotalBlocks/HiddenBlocks/FATType/PartitionNum
+;      set; or d0 = 0 if the resource is absent or has no usable entry.
+; Only PRESENT FAT-dostype entries for DevName+Unit are eligible (a stale
+; entry from a removed card has PEB_PRESENT clear and is skipped).
+;===========================================================
+svp_pick:
+	movem.l	d2-d6/a0-a3/a5-a6,-(sp)
+	lea	PartResName2(pc),a1
+	CALLEXEC OpenResource
+	tst.l	d0
+	beq.w	svp_pfail
+	move.l	d0,a2			;a2 = partition.resource
+;-- layout guard: stamps exist when the header grew past the stamp
+;   fields (lib_PosSize >= 98). A stamp older than what these offsets
+;   need means an incompatible publisher (leave the resource alone).
+	cmp.w	#98,18(a2)		;lib_PosSize
+	bcs.s	svp_layok		;pre-stamp publisher -> assume v2
+	cmp.w	#PRES_LAYOUT_MIN,PRES_Layout(a2)
+	bcs.w	svp_pfail		;older layout -> unusable
+svp_layok:
+;-- target selector (1-based; 0 -> autoselect first)
+	moveq.l	#0,d2
+	move.b	PartitionSelector(a4),d2
+	bne.s	svp_haveS
+	moveq.l	#1,d2
+svp_haveS:
+;-- pick the d2-th match (by pe_PartIndex ascending) for DevName+Unit
+	moveq.l	#-1,d3			;d3 = prevIdx
+	move.l	d2,d4			;d4 = passes remaining
+svp_kpass:
+	sub.l	a5,a5			;a5 = best entry (0 = none)
+	move.l	#$7fffffff,d6		;d6 = best idx
+	lea	PRES_PartList(a2),a0
+	move.l	(a0),a1			;a1 = first node
+svp_walk:
+	move.l	(a1),d0			;ln_Succ
+	beq.s	svp_passend		;tail sentinel
+	move.l	UnitNumber(a4),d1
+	cmp.l	PENT_Unit(a1),d1
+	bne.s	svp_wnext
+	move.l	PENT_Device(a1),a0	;compare device name (C-strings)
+	move.l	DevName(a4),a3
+svp_sc:
+	move.b	(a0)+,d0
+	cmp.b	(a3)+,d0
+	bne.s	svp_wnext
+	tst.b	d0
+	bne.s	svp_sc
+;-- only PRESENT FAT-dostype entries count: the unified scanner also
+;   publishes RDB entries (DOS\x, PFS\x, ...) a FAT handler must not pick,
+;   and absent entries from a removed card must be skipped too
+	move.l	PENT_DosType(a1),d1
+	and.l	#$ffffff00,d1
+	cmp.l	#"FAT"<<8,d1
+	bne.s	svp_wnext
+	btst	#PEB_PRESENT,PENT_Flags(a1)
+	beq.s	svp_wnext
+	move.l	PENT_PartIndex(a1),d1	;matched dev+unit: rank by index
+	cmp.l	d3,d1
+	ble.s	svp_wnext		;idx <= prevIdx (already taken), signed: -1 < all
+	cmp.l	d6,d1
+	bge.s	svp_wnext		;idx >= best (not smaller)
+	move.l	d1,d6
+	move.l	a1,a5
+svp_wnext:
+	move.l	(a1),a1			;ln_Succ
+	bra.s	svp_walk
+svp_passend:
+	move.l	a5,d0
+	beq.s	svp_pfail		;fewer than d2 matches -> not found
+	move.l	d6,d3			;prevIdx = best idx
+	subq.l	#1,d4
+	bne.s	svp_kpass
+;-- a5 = selected partition entry
+	move.l	PENT_StartLBA(a5),FirstBlock(a4)
+	move.l	PENT_BlockCount(a5),TotalBlocks(a4)
+	clr.l	HiddenBlocks(a4)
+	move.w	#2,FATType(a4)		;auto width (refined from the boot block)
+	move.w	d2,PartitionNum(a4)
+	moveq.l	#1,d0
+	movem.l	(sp)+,d2-d6/a0-a3/a5-a6
+	rts
+svp_pfail:
+	moveq.l	#0,d0
+	movem.l	(sp)+,d2-d6/a0-a3/a5-a6
+	rts
+
+;===========================================================
+; PublishViaPtable - register this device/unit in partition.resource.
+; First ScanPartitions publishes the device's partitions as candidates
+; (synthetic names, not mounted); then RegisterPartition overlays the volume
+; this handler actually serves with its real DOS name (dn_Name) + mounted
+; state, so an explicitly mounted volume shows e.g. "MS" instead of the
+; synthesized automount name. Silent no-op if ptable.library is absent.
+; In : a4 = handler base (DevName / UnitNumber / FirstBlock / TotalBlocks
+;      / DeviceNode set)
+;===========================================================
+PublishViaPtable:
+	movem.l	d0-d4/a0-a3/a6,-(sp)	;save working registers
+	bsr	_OpenPtable		;open ptable.library (ROM bootstrap if needed)
+	move.l	d0,a3			;a3 = ptable.library base
+	beq.w	pvp_done
+;-- publish candidates. ScanViaPtable already did this on the
+;   partitioned path (PartitionNum != 0); scan here only for the
+;   superfloppy path (PartitionNum == 0).
+	tst.w	PartitionNum(a4)
+	bne.s	pvp_overlay
+	move.l	a3,a6
+	move.l	DevName(a4),a1
+	move.l	UnitNumber(a4),d0
+	jsr	_LVOScanPartitions(a6)
+pvp_overlay:
+;-- overlay the served volume with its real DOS name + mounted state
+	move.l	DeviceNode(a4),d0	;our DOS DeviceNode
+	beq.s	pvp_close		;no node -> skip
+	move.l	d0,a2			;a2 = devNode
+	move.l	DOL_Name(a2),d0		;BPTR dn_Name
+	beq.s	pvp_close		;no name -> skip
+	lsl.l	#2,d0
+	move.l	d0,a0			;a0 = name BSTR
+	move.l	DevName(a4),a1
+	move.l	UnitNumber(a4),d0
+	move.l	FirstBlock(a4),d1
+	move.l	TotalBlocks(a4),d2
+	move.l	DeviceFlags(a4),d3	;flags we opened the device with
+	move.l	EnvecBuf+DE_Control(a4),d4	;de_Control BPTR (0 = none)
+	lsl.l	#2,d4			;-> APTR to control BSTR
+	move.l	a3,a6			;a6 = ptable base (a3 kept for CloseLibrary)
+	jsr	_LVORegisterPartition(a6)
+pvp_close:
+	move.l	a3,a1
+	CALLEXEC CloseLibrary
+pvp_done:
+	movem.l	(sp)+,d0-d4/a0-a3/a6
+	rts
+
+;===========================================================
+; MarkAbsentViaPtable - on disk close/eject, clear PEB_PRESENT on this
+; device+unit's partition.resource entries. The DOS node + handler stay.
+; In : a4 = handler base (DevName / UnitNumber set). Preserves all registers.
+;===========================================================
+MarkAbsentViaPtable:
+	movem.l	d0-d2/a0-a3/a6,-(sp)
+	bsr	_OpenPtable		;open ptable.library (ROM bootstrap if needed)
+	move.l	d0,a3			;a3 = ptable.library base
+	beq.s	mav_done
+	move.l	DevName(a4),a1
+	move.l	UnitNumber(a4),d0
+	move.l	a3,a6
+	jsr	_LVOMarkAbsent(a6)
+	move.l	a3,a1
+	CALLEXEC CloseLibrary
+mav_done:
+	movem.l	(sp)+,d0-d2/a0-a3/a6
+	rts
+
+;===========================================================
+; _OpenPtable - OpenLibrary("ptable.library", v2); if not open,
+; FindResident + InitResident it from ROM and retry.
+; In : a4 = handler base (CALLEXEC reads ExecBase from it)
+; Out: d0 = ptable.library base, or 0 if unavailable.
+; Trashes d0/d1/a0/a1/a6.
+;===========================================================
+_OpenPtable:
+	moveq.l	#2,d0
+	lea	PtableLibName(pc),a1
+	CALLEXEC OpenLibrary
+	tst.l	d0
+	bne.s	_op_ret			;already open
+	lea	PtableLibName(pc),a1
+	CALLEXEC FindResident
+	tst.l	d0
+	beq.s	_op_ret			;not in ROM -> d0 = 0
+	move.l	d0,a1
+	sub.l	a0,a0			;segList = none
+	moveq.l	#0,d1
+	CALLEXEC InitResident
+	moveq.l	#2,d0
+	lea	PtableLibName(pc),a1
+	CALLEXEC OpenLibrary
+_op_ret:
+	rts
+
+PtableLibName:
+	dc.b	"ptable.library",0
+PartResName2:
+	dc.b	"partition.resource",0
+	even
+
 ;--- read disk layout --------------------------------------
 ; -> flags: Bit..
 ;	0 = disk inserted
@@ -5576,7 +5757,7 @@ ibb_error:
 ;	3 = boot block OK
 
 GetDiskParams:
-	link.w	a5,#-GPA_TABSIZE
+	link.w	a5,#0			;no stack locals
 	movem.l	d2-d7/a2,-(sp)		;GPT path uses d5/d6/d7 too
 
 ;- - general check - - - - - - - - - - - - - - - - - - - - -
@@ -5653,233 +5834,24 @@ gdp_notforeign:
 	clr.w	PartitionNum(a4)
 	bsr	IsBootBlock
 	tst.w	d0
-	bne.w	gdp_bootfound		;unpartitioned volume
+	beq.s	gdp_chkpart		;no boot block -> try partition table
+	bra.w	gdp_bootfound		;unpartitioned volume
+gdp_chkpart:
 
 	tst.b	SearchMode(a4)
 	bne.w	gdp_ndos		;set manually, dont search
 
-;- - check for GPT partition table - - - - - - - - - - - - -
-	;
-	; GPT Detection Flow:
-	; ~~~~~~~~~~~~~~~~~~~
-	; MBR block 0 loaded (a0)
-	;       |
-	; Check partition type 0xEE (protective MBR)?
-	;       |-- No --> gdp_mbr_search (normal MBR parsing)
-	;       |
-	;      Yes
-	;       |
-	; Read LBA 1 (GPT header)
-	;       |
-	; Check "EFI PART" signature
-	;       |
-	; Scan partition entries for FAT GUID (EBD0A0A2-...)
-	;       |
-	; Mount partition --> gdp_bootfound
-	;
-	;a0 still points to block 0 (MBR)
-	;Check if first partition entry is type 0xEE (protective MBR for GPT)
-	cmp.b	#$EE,446+4(a0)		;partition type at offset 446+4
-	bne.w	gdp_mbr_search		;not GPT, try MBR
-
-	;Protective MBR found - save d3 (disk status) and read GPT header
-	move.w	d3,-(sp)		;save disk status (contains write-protect flag)
-	addq.b	#1,SearchCount(a4)
-	moveq.l	#1,d0			;LBA 1 = GPT header
-	bsr	ReadSingle		;FirstBlock is 0 here
+;- - delegate partition lookup to ptable.library + resource -
+	bsr	ScanViaPtable		;d0 = 1 found -> FirstBlock/TotalBlocks set
 	tst.l	d0
-	beq.w	gdp_gpt_cleanup		;read failed
-
-	move.l	d0,a1			;&GPT header
-	cmp.l	#"EFI ",(a1)		;check "EFI PART" signature
-	bne.w	gdp_gpt_cleanup
-	cmp.l	#"PART",4(a1)
-	bne.w	gdp_gpt_cleanup
-
-	;GPT header valid - get partition entry info
-	move.l	72(a1),d4		;Partition entries LBA low (little-endian)
-	ReverseL d4
-	move.l	76(a1),d0		;Partition entries LBA high
-	tst.l	d0
-	bne.w	gdp_gpt_cleanup		;beyond 32-bit addressing
-	move.l	80(a1),d5		;Number of partition entries (little-endian)
-	ReverseL d5
-	move.l	84(a1),d6		;Size of partition entry (little-endian)
-	ReverseL d6
-	tst.w	d6
-	beq.w	gdp_gpt_cleanup		;invalid entry size
-
-	;Get requested partition number
-	moveq.l	#0,d2
-	move.b	PartitionSelector(a4),d2
-	bgt.s	gdp_gpt_p1
-	moveq.l	#1,d2			;autoselect first FAT partition
-gdp_gpt_p1:
-	move.w	d2,PartitionNum(a4)
-	subq.w	#1,d2			;convert to 0-based index
-	bmi.w	gdp_gpt_cleanup		;invalid partition number
-
-	;Scan GPT entries for FAT partition
-	moveq.l	#0,d7			;FAT partition counter
-	moveq.l	#0,d0			;current entry index (32-bit)
-gdp_gpt_loop:
-	cmp.l	d5,d0			;scanned all entries? (32-bit index vs count)
-	bcc.w	gdp_gpt_cleanup		;not found
-
-	;Calculate LBA and byte-offset for this entry
-	move.l	d0,-(sp)		;save entry index
-	move.l	d6,d1			;d1 = entry size
-	UMUL32				;d0 = entry_idx * entry_size (byte offset)
-	moveq.l	#0,d1
-	move.w	BlockSize(a4),d1	;BlockSize fits in 16 bits (512..4096)
-	UDIVMOD32			;d0 = block offset (quot), d1 = byte offset in block (rem)
-	move.l	d1,d3			;d3 = byte offset within block
-	add.l	d4,d0			;d0 = absolute LBA
-
-	;Read block containing this entry (SingleBuf cache absorbs repeats)
-	bsr	ReadSingle
-	move.l	(sp)+,d1		;restore entry index to d1 temporarily
-	tst.l	d0			;check if read succeeded
-	beq.w	gdp_gpt_cleanup		;read failed
-	move.l	d0,a1			;block data
-	move.l	d1,d0			;restore entry index to d0
-
-	add.w	d3,a1			;a1 = &partition entry (d3 < BlockSize, fits pos. word)
-
-	;Check if entry is used (GUID not all zeros)
-	tst.l	(a1)
-	beq.s	gdp_gpt_next		;unused entry
-
-	;Check partition type GUID (full 16 bytes) against FAT-carrying GUIDs:
-	;  EBD0A0A2-B9E5-4433-87C0-68B6B72699C7  Microsoft Basic Data
-	;  C12A7328-F81F-11D2-BA4B-00A0C93EC93B  EFI System Partition
-	;
-	;Outer dbra loop over gdp_gpt_guids table (d1 = remaining GUIDs - 1).
-	;Inner dbne loop: a3 walks entry GUID, a0 walks table; branches while
-	;equal (Z=1), falls through on first mismatch (Z=0) without decrementing
-	;d3, so lsl.l #2,d3 / add.l d3,a0 skips the unread longs of that table
-	;entry and leaves a0 at the start of the next one for the outer loop.
-	lea	gdp_gpt_guids(pc),a0
-	moveq.l	#1,d1			;outer counter: 2 GUIDs (0-based for dbra)
-gdp_gpt_cmp_outer:
-	move.l	a1,a3			;reset entry GUID scan pointer
-	moveq.l	#3,d3			;inner counter: 4 longs per GUID
-gdp_gpt_cmp_inner:
-	cmpm.l	(a3)+,(a0)+
-	dbne	d3,gdp_gpt_cmp_inner	;branch while equal; fall through on mismatch
-	beq.s	gdp_gpt_match		;all 4 longs matched -> FAT partition
-	lsl.l	#2,d3			;bytes remaining in this table GUID
-	add.l	d3,a0			;skip to start of next table GUID
-	dbra	d1,gdp_gpt_cmp_outer	;try next GUID; fall through when exhausted
-	bra.s	gdp_gpt_next
-
-gdp_gpt_guids:
-	dc.l	$A2A0D0EB,$E5B93344,$87C068B6,$B72699C7	;MS Basic Data
-	dc.l	$28732AC1,$1FF8D211,$BA4B00A0,$C93EC93B	;EFI System Partition
-
-gdp_gpt_match:
-	;Found FAT partition - is it the one we want?
-	cmp.w	d2,d7			;d7 = FAT partition counter, d2 = requested index
-	beq.s	gdp_gpt_found
-	addq.w	#1,d7			;next FAT partition
-gdp_gpt_next:
-	addq.l	#1,d0			;next entry (32-bit)
-	bra.w	gdp_gpt_loop
-
-gdp_gpt_found:
-	;Get partition start and end LBA (little-endian, 64-bit)
-	move.l	32(a1),d0		;First LBA low
-	ReverseL d0
-	move.l	36(a1),d1		;First LBA high
-	bne.s	gdp_gpt_cleanup		;beyond 32-bit addressing
-
-	move.l	40(a1),d1		;Last LBA low
-	ReverseL d1
-	move.l	44(a1),d3		;Last LBA high
-	tst.l	d3
-	bne.s	gdp_gpt_cleanup		;beyond 32-bit addressing
-
-	;Verify partition end is within 32-bit range BEFORE touching
-	;any global state - a failed Test64 must not leave half-written
-	;FirstBlock/TotalBlocks/HiddenBlocks visible to the caller.
-	sub.l	d0,d1
-	addq.l	#1,d1			;size = last - first + 1
-	move.l	d0,d2			;save first LBA across Test64
-	add.l	d1,d0
-	subq.l	#1,d0
-	bsr	Test64
-	tst.l	d0
-	beq.s	gdp_gpt_cleanup		;partition exceeds 4 Gbyte
-
-	;Range OK - commit partition info to globals
-	move.w	#2,FATType(a4)		;auto-detect FAT type
-	move.l	d2,FirstBlock(a4)
-	move.l	d1,TotalBlocks(a4)
-	clr.l	HiddenBlocks(a4)
-
-	;Restore d3 and use shared boot block validation
-	move.w	(sp)+,d3		;restore disk status
-	bra.s	gdp_readboot		;share boot block code with MBR path
-
-gdp_gpt_cleanup:
-	addq.l	#2,sp			;discard saved d3
-	bra.w	gdp_none		;partition not found = no disk
-
-;- - search MBR partition  - - - - - - - - - - - - - - - - -
-gdp_mbr_search:
-	move.l	a5,a2			;&frame table
-	clr.l	-(a2)			;start frame: from beginning..
-	moveq.l	#-1,d0
-	move.l	d0,-(a2)		;..to end
-	moveq.l	#0,d2
-	move.b	PartitionSelector(a4),d2
-	bgt.s	gdp_p1			;invalid MountList entry..
-
-	moveq.l	#1,d2			;..autoselect first FAT-partition
-gdp_p1:
-	move.w	d2,PartitionNum(a4)
-	subq.w	#5,d2
-	bcc.s	gdp_plog		;logical partition requested
-
-	addq.w	#5,d2
-	move.w	d2,d0
-	bsr	GetPartition
-	move.l	d0,d4
-	bne.s	gdp_pfound		;found primary partition
-
-	moveq.l	#0,d2
-gdp_plog:
-	moveq.l	#0,d0
-	bsr	GetPartition
-	move.l	d0,d4
-	beq.w	gdp_none		;partition not found = no disk
-
-	bsr	Test64
-	tst.l	d0
-	beq.w	gdp_none		;..or beyond 4 Gbyte
-
-	addq.b	#1,SearchCount(a4)
-	move.l	d4,d0
-	bsr	ReadSingle		;read next partition table
-	tst.l	d0
-	beq.w	gdp_ndos
-
-	move.l	d0,a0
-	subq.w	#1,d2
-	bpl.s	gdp_plog		;skip this logical partition
-
-	moveq.l	#1,d0
-	bsr	GetPartition
-	tst.l	d0			;partition not in expected place,..
-	beq.s	gdp_plog		;..search on below
-gdp_pfound:
-	move.l	d0,FirstBlock(a4)
-	move.l	d1,TotalBlocks(a4)
-	add.l	d1,d0
+	beq.w	gdp_none
+	move.l	FirstBlock(a4),d0
+	add.l	TotalBlocks(a4),d0
 	subq.l	#1,d0
 	bsr	Test64
 	tst.l	d0
 	beq.w	gdp_none		;partition exceeds 4 Gbyte
+	bra.w	gdp_readboot
 
 gdp_readboot:				;shared entry point for GPT
 	addq.b	#1,SearchCount(a4)
@@ -5941,6 +5913,7 @@ gdp_bootfound:
 
 	MoveLE32_BE TotalBlocks,d0	;if >= 64K
 gdp_2:
+	bsr	PublishViaPtable	;FirstBlock/TotalBlocks final: register volume
 	tst.w	RootDirEntries(a4)
 	bne.s	gdp_3
 
@@ -6436,6 +6409,40 @@ SafeDoIO:
 	movem.l	(sp)+,d2-d7/a2-a5
 	rts
 
+;-- ProbeTD64: some drivers accept NSCMD_TD_READ64 but do not advertise it
+;   via NSCMD_DEVICEQUERY. When a >4GB device has not flagged TD64, try a
+;   single NSCMD_TD_READ64 read of block 0; if the device accepts it,
+;   mark TD64 available so the >4GB path uses it instead of fallinclaude g back
+;   to HD_SCSICMD (which IDE rejects).
+;   Preserves d2 (the command being built in DiskGeometry) and a4.
+ProbeTD64:
+	movem.l	d0-d1/a0-a2/a6,-(sp)
+	move.l	#512,d0
+	move.l	#MEMF_PUBLIC,d1
+	CALLEXEC AllocMem
+	tst.l	d0
+	beq.s	ptd_done		;no mem -> leave TD64 bit clear
+	move.l	d0,a2			;a2 = scratch buffer
+	move.l	DiskRequest(a4),a1
+	move.w	#NSCMD_TD_READ64,IO_Command(a1)
+	clr.b	IO_Error(a1)
+	clr.l	IO_Actual(a1)		;high 32 bits = 0
+	clr.l	IO_Offset(a1)		;low  32 bits = 0 (block 0)
+	move.l	#512,IO_Length(a1)
+	move.l	a2,IO_Data(a1)
+	bsr	SafeDoIO		;a1 = IO request
+	move.l	DiskRequest(a4),a1
+	tst.b	IO_Error(a1)
+	bne.s	ptd_free		;rejected -> not supported
+	or.w	#2,CmdFlags(a4)		;accepted -> TD64 available
+ptd_free:
+	move.l	a2,a1
+	move.l	#512,d0
+	CALLEXEC FreeMem
+ptd_done:
+	movem.l	(sp)+,d0-d1/a0-a2/a6
+	rts
+
 DiskChangeNum:
 	btst	#0,CmdFlags+1(a4)
 	beq.s	dcn_end			;ETD commands unavailable
@@ -6455,12 +6462,12 @@ DiskMotorOff:
 	move.l	DiskRequest(a4),a1
 	move.w	#TD_MOTOR,IO_Command(a1)
 	clr.l	IO_Length(a1)
-	bra.s	SafeDoIO
+	bra.w	SafeDoIO
 
 DiskClear:
 	move.l	DiskRequest(a4),a1
 	move.w	#CMD_CLEAR,IO_Command(a1)
-	bra.s	SafeDoIO
+	bra.w	SafeDoIO
 
 DiskUpdate:
 	btst	#3,CmdFlags+1(a4)
@@ -6745,8 +6752,11 @@ dge_cmd1:
 	beq.s	dge_cmd2		;..and if > 4 Gbyte..
 
 	btst	#1,CmdFlags+1(a4)
-	beq.s	dge_cmd2		;..prefer TD64 commands..
-
+	bne.s	dge_usetd64		;..prefer TD64 commands..
+	bsr	ProbeTD64		;>4GB but TD64 not advertised: try it
+	btst	#1,CmdFlags+1(a4)
+	beq.s	dge_cmd2		;still none -> CMD/ETD (Test64 -> SCSI)
+dge_usetd64:
 	move.l	#NSCMD_TD_READ64<<16+NSCMD_TD_WRITE64,d2
 dge_cmd2:
 	move.l	d2,ReadCmd(a4)
@@ -8222,7 +8232,7 @@ xtd_i2:
 	tst.l	XL_Parent(a0)
 	bne.s	xtd_idone
 ;	Microsoft FAT spec: when the parent is the root, ".." must hold
-;	cluster 0, not the actual root cluster.  Linux and Windows
+;	cluster 0, not the actual root cluster. Linux and Windows
 ;	tolerate either form, but fsck.vfat flags the non-zero variant
 ;	on FAT32 volumes.
 	clr.w	MSDE_Sizeof+MSDE_1L(a2)
@@ -9110,7 +9120,7 @@ rf_scan:
 	tst.w	FATType(a4)
 	beq.s	rf_count		;FAT12: keep the GetFATEntry-based scan
 
-;	FAT16 fast path -- the on-disk entry is a little-endian word; 0
+;	FAT16 fast path - the on-disk entry is a little-endian word; 0
 ;	means free regardless of byte order, so we can skip the per-cluster
 ;	GetFATEntry call (saves a bsr + ReverseW + cmp for every cluster).
 	move.l	FATBuffer(a4),a0
@@ -9200,6 +9210,10 @@ ScanFAT32:
 	addq.l	#1,d5
 	sub.l	d2,d5			;# entries to go
 sf32_block:
+	tst.w	DiskChanged(a4)		;card gone/swapped..
+	bne.s	sf32_abort		;..abandon the scan, dont read
+	tst.w	PleaseUnmount(a4)	;unmount latched..
+	bne.s	sf32_abort		;..abandon the scan
 	move.l	d2,d0
 	moveq.l	#0,d1
 	bsr	MoveFATWindow
@@ -9233,7 +9247,9 @@ sf32_next:
 	ble.s	sf32_finished		;all done!!!
 
 	tst.w	DiskChanged(a4)
-	bne.s	sf32_end		;on disk change or..
+	bne.s	sf32_abort		;on disk change: abandon (dont reschedule)
+	tst.w	PleaseUnmount(a4)
+	bne.s	sf32_abort		;unmount latched: abandon
 
 	move.l	pr_MsgPort(a4),a0
 	add.w	#MP_MsgList,a0
@@ -9244,6 +9260,15 @@ sf32_end:
 	move.l	d2,BackgroundData(a4)
 	move.l	d3,FreeClusters(a4)
 	move.l	d4,NextFreeCluster(a4)
+	movem.l	(sp)+,d2-d6
+	rts
+
+;-- card gone or unmount in progress: stop validating for good so the idle
+;   loop can reach IdentifyDisk (media swap) or teardown (unmount). Unlike
+;   sf32_end this clears BackgroundJob instead of rescheduling, and unlike
+;   sf32_finished it leaves DiskState alone (re-derived on the change signal).
+sf32_abort:
+	clr.l	BackgroundJob(a4)
 	movem.l	(sp)+,d2-d6
 	rts
 
@@ -9739,9 +9764,9 @@ xch_add:
 	move.l	LastCluster(a4),d3
 	addq.l	#1,d3
 ;	Watchdog: at most (LastCluster - 1) data clusters exist, so the
-;	wrap-around scan visits each one at most once.  If FreeClusters
+;	wrap-around scan visits each one at most once. If FreeClusters
 ;	is stale (e.g. FAT read errors filled the buffer with the "end
-;	of chain" placeholder) we'd otherwise spin forever -- catch it
+;	of chain" placeholder) we'd otherwise spin forever - catch it
 ;	here and report disk full instead.
 	move.l	d3,d5
 	subq.l	#2,d5
@@ -11350,6 +11375,7 @@ so_tab:
 	dc.b	9,"D"
 	dc.b	10,"L"
 	dc.b	11,"l"
+	dc.b	12,"q"
 	dc.w	0
 
 ;--- local vars for ScanDisk() and SecurityErase() ---------
@@ -12561,6 +12587,18 @@ DoRequest:
 	link.w	a5,#DREQ_TEXT2
 	move.l	a2,-(sp)
 	sub.l	a2,a2			;default: no parent window
+;-- single-task handler: an open requester blocks the packet loop.
+;   Never requester once ACTION_DIE is latched or already queued on
+;   the port (teardown must not stall, and follow-up errors during
+;   it - e.g. the CloseDisk flush - must stay silent), or when the
+;   mount is configured quiet ("q" option).
+	tst.w	PleaseUnmount(a4)
+	bne.w	dreq_abort
+	bsr	_sreq_diepend		;DIE waiting? -> no new UI either
+	tst.l	d0
+	bne.w	dreq_abort
+	btst	#4,CmdFlags(a4)		;word bit 12 = quiet
+	bne.w	dreq_abort
 	move.l	DosPacket(a4),d0
 	beq.s	dreq_case		;no order
 
@@ -12656,7 +12694,7 @@ dreq_repeat:
 	pea	DREQ_POSTEXT(a5)
 	pea	DREQ_TEXT1(a5)		;&request text
 	move.l	a2,-(sp)		;&parent window
-	bsr	_AutoRequest
+	bsr	_SysRequest		;interruptible: DIE cancels, change retries
 	add.w	#32,sp
 	cmp.b	#TDERR_DISKCHANGED,8+3(a5)
 	bne.s	dreq_end		;"normal" read error
@@ -13285,6 +13323,102 @@ _Permit:
 	jmp	-$08a(a6)
 
 ;*** from intuition.library ********************************
+
+;--- interruptible system requester -------------------------
+; Same stack args as _AutoRequest (window, body, pos, neg, pFlag,
+; nFlag, width, height). Unlike AutoRequest it also waits on the
+; handler's own packet port while the requester is up: a queued
+; ACTION_DIE cancels the requester (-> 0 "abort"), unconditionally
+; and independent of the "q" option - the unmount must never wait
+; for a human. Anything else keeps the requester up; gadget clicks
+; behave exactly like AutoRequest (1/0).
+; Falls back to the blocking _AutoRequest on pre-V36 intuition.
+_SysRequest:
+	move.l	IntBase(a4),d0
+	beq.w	_sreq_noui		;no intuition -> "abort"
+	move.l	d0,a6
+	cmp.w	#36,LIB_Version(a6)
+	bcs.w	_AutoRequest		;tail call: same stack args
+	movem.l	d2-d3/a2-a3,-(sp)
+	movem.l	20(sp),a0-a3		;window/body/posText/negText
+	moveq.l	#0,d0			;no extra IDCMP flags
+	move.l	44(sp),d1		;width
+	move.l	48(sp),d2		;height
+	jsr	-360(a6)		;BuildSysRequest
+	moveq.l	#1,d1
+	cmp.l	d1,d0
+	bls.s	_sreq_done		;0/1: intuition fallback = the answer
+	move.l	d0,a2			;a2 = requester window
+_sreq_wait:
+;-- test for a queued ACTION_DIE BEFORE sleeping: its port signal may
+;   already be consumed (by an earlier Wait), so testing only after
+;   Wait would sleep forever on a packet that is already there
+	bsr.s	_sreq_diepend
+	tst.l	d0
+	bne.s	_sreq_die
+	move.l	86(a2),a0		;wd_UserPort
+	moveq.l	#0,d0
+	moveq.l	#0,d1
+	move.b	MP_SigBit(a0),d1
+	bset	d1,d0
+	move.l	pr_MsgPort(a4),a0	;handler port: packets + change int
+	move.b	MP_SigBit(a0),d1
+	bset	d1,d0
+	move.l	ExecBase(a4),a6
+	jsr	Wait(a6)
+	move.l	IntBase(a4),a6
+	move.l	a2,a0
+	sub.l	a1,a1			;no IDCMP result wanted
+	moveq.l	#0,d0			;dont wait inside the handler call
+	jsr	-600(a6)		;SysReqHandler
+	tst.l	d0
+	bmi.s	_sreq_wait		;no click yet: re-test DIE, re-wait
+	bra.s	_sreq_answer		;0/1 = gadget clicked
+_sreq_die:
+	moveq.l	#0,d0			;dying -> "abort", no interaction
+_sreq_answer:
+	move.l	d0,d3			;answer survives FreeSysRequest
+	move.l	IntBase(a4),a6
+	move.l	a2,a0
+	jsr	-372(a6)		;FreeSysRequest
+	move.l	d3,d0
+_sreq_done:
+	movem.l	(sp)+,d2-d3/a2-a3
+	rts
+_sreq_noui:
+	moveq.l	#0,d0
+	rts
+
+;-- is an ACTION_DIE packet waiting on the handler port?
+; -> d0 = 1 yes / 0 no. Preserves a2/a6-relative state of the caller.
+_sreq_diepend:
+	movem.l	a0-a1/a6,-(sp)
+	move.l	ExecBase(a4),a6
+	jsr	Forbid(a6)
+	move.l	pr_MsgPort(a4),a0
+	move.l	MP_MsgList(a0),a0	;lh_Head
+_srdp_walk:
+	move.l	(a0),d0			;ln_Succ (0 = tail sentinel)
+	beq.s	_srdp_no
+	move.l	LN_Name(a0),d1		;&DosPacket
+	beq.s	_srdp_next
+	move.l	d1,a1
+	moveq.l	#5,d1			;ACTION_DIE
+	cmp.l	DP_Type(a1),d1
+	beq.s	_srdp_yes
+_srdp_next:
+	move.l	d0,a0
+	bra.s	_srdp_walk
+_srdp_yes:
+	jsr	Permit(a6)
+	moveq.l	#1,d0
+	movem.l	(sp)+,a0-a1/a6
+	rts
+_srdp_no:
+	jsr	Permit(a6)
+	moveq.l	#0,d0
+	movem.l	(sp)+,a0-a1/a6
+	rts
 
 _AutoRequest:
 	movem.l	d2-d3/a2-a3,-(sp)

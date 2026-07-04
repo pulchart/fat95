@@ -10,7 +10,7 @@
 ;
 ; This tool is distributed in the hope that it will be useful,
 ; but WITHOUT ANY WARRANTY; without even the implied warranty of
-; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 ; Lesser General Public License for more details.
 ;
 ; You should have received a copy of the GNU Lesser General Public
@@ -1631,7 +1631,7 @@ ArgTemplate:
 	dc.b	'SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K,VERBOSE=V/S,CMD/K',0
 	even
 
-;--- command-word → name lookup ----------------------------
+;--- command-word -> name lookup ----------------------------
 ; Used by INSPECT printer and the per-transfer "via <cmd>" line.
 ; Terminated with a 0-word entry.
 

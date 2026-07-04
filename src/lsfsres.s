@@ -9,7 +9,7 @@
 ;
 ; This tool is distributed in the hope that it will be useful,
 ; but WITHOUT ANY WARRANTY; without even the implied warranty of
-; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 ; Lesser General Public License for more details.
 
 ; --- Includes ---
@@ -81,7 +81,7 @@ ROM_EXT_HI	= $00E80000
 ;--- global vars (stack frame) -----------------------------
 ; LINK allocates `VarsSize` bytes below a4. Offsets below are arranged
 ; so the larger buffers (Argv, NameBuf) live further from a4 than the
-; scalar pointers above them — no overlap.
+; scalar pointers above them.
 
 ExecBase	= -4		;long
 DosBase		= -8		;long
@@ -143,7 +143,7 @@ s_loop:
 	; [1] = DosType                 (%08lx)
 	; [2] = pointer to 4-char ASCII (%s)
 	; [3] = Version                 (%08lx)
-	; [4] = PatchFlags              (%04lx)  -- low 16 bits printed
+	; [4] = PatchFlags              (%04lx)  - low 16 bits printed
 	; [5] = SegList byte address    (%08lx)
 	; [6] = pointer to "[ROM]"/"[RAM]" (%s)
 	; [7] = pointer to Name string  (%s)

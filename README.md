@@ -24,6 +24,9 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 * Every AMIGA, OS 1.3+ (OS 2.0+ for full functionality)
 * A suitable device file for low level disk access, like the
   mfm.device for floppies, compactflash.device for CF in PCMCIA.
+* `ptable.library` v2 (in ROM or `LIBS:`) for whole-disk auto-detect
+  mounts of MBR/GPT cards. Mountlist entries that give explicit
+  geometry, and unpartitioned (superfloppy) volumes, do not need it.
 
 **Features**
 
@@ -183,6 +186,9 @@ Available options:
 | `D` | Record "last accessed" date on file reads | ON |
 | `l` | Show 8.3 filenames lowercase (e.g., "test.txt") | OFF |
 | `L` | Show 8.3 filenames with uppercase initial (e.g., "Test.txt") | OFF |
+| `q` | Quiet: never open error requesters (read/write/reinsert windows); errors are reported to the caller instead. Recommended for hot-plugged removable media | OFF |
+
+Regardless of `q`, no requester is opened once the handler has been asked to quit (`ACTION_DIE`), so an unmount can never stall behind a window.
 
 ### Startup Options
 
@@ -453,6 +459,10 @@ The exact status shown may depend on the order of disk insertion and reinsertion
 | `c/SetFileSize` | File size modification utility |
 | `c/boot95` | Boot partition creation tool |
 | `c/lsfsres` | FileSystem.resource entry lister |
+| `c/lsptres` | partition.resource entry lister (from ptable.library) |
+| `libs/<cpu>/ptable.library` | partition scan/automount library (small), bundled |
+
+`ptable.library` and `lsptres` are built from the companion [amigaos-ptable](https://github.com/pulchart/amigaos-ptable) repo and bundled here so whole-disk auto-detect works without a separate install; `lsptres` lists `partition.resource` (the partition-side companion to `lsfsres`).
 
 ### dd
 
@@ -479,6 +489,10 @@ This installs an Amiga automount sequence in the unused area between the MBR and
 ### lsfsres
 
 Lists `FileSystem.resource` entries. See [docs/lsfsres.md](docs/lsfsres.md) for more details.
+
+### lsptres
+
+Lists `partition.resource` entries (bundled from ptable.library). The partition-side companion to `lsfsres`.
 
 ## License
 
