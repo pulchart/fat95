@@ -1,6 +1,31 @@
-## 20260614
+## 20260730-dev
 
 <!-- COMPONENTS:BEGIN -->
+_Components in this release_:
+
+- `fat95 4.0-dev (30.07.2026)` _(new)_
+- `install95 3.19 (25.01.2026)`
+- `dd 2.2 (13.06.2026)`
+- `debug95 3.19 (25.01.2026)`
+- `SetFileSize 1.1 (25.01.2026)`
+- `boot95 3.19 (25.01.2026)`
+- `lsfsres 1.0 (16.05.2026)`
+- `ptable.library 2.0-dev (30.07.2026)` _(new)_
+- `lsptres 1.0-dev (30.07.2026)` _(new)_
+<!-- COMPONENTS:END -->
+
+
+#### fat95 handler
+
+- **New `q` (quiet) option.** Control `"+q"` silences all fat95 error windows for a mount (errors go to the calling program instead). Unmounting a removed card now cancels any open window automatically.
+- **Shared partition scanning.** fat95 auto-detects its FAT partition (MBR, GPT, and flat whole-disk FAT) from the shared `partition.resource` published by `ptable.library`, the same scan used by `compactflash.device`, instead of scanning the partition table itself. The resolved mount Flags/CONTROL are reported and shown by `lsptres`. Auto-detect now requires `ptable.library` (bundled, install to `LIBS:`); explicit-geometry mountlist entries still mount without it. See [ptable.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/ptable.md) and [lsptres.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/lsptres.md).
+
+#### Tools
+
+- `ptable.library` and `lsptres` are now bundled in the archive, shared with the CompactFlash driver. `lsptres` lists `partition.resource`.
+
+## 20260614
+
 _Components in this release_:
 
 - `fat95 3.24 (07.06.2026)`
@@ -10,7 +35,6 @@ _Components in this release_:
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
 - `lsfsres 1.0 (16.05.2026)`
-<!-- COMPONENTS:END -->
 
 #### Tools
 

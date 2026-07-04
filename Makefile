@@ -5,14 +5,14 @@
 
 # Release version: YYYYMMDD package date + optional in-progress suffix
 # (-dev, -rc1, ...). Empty suffix for a final release.
-RELEASE_DATE = 20260614
-VERSION_SUFFIX =
+RELEASE_DATE = 20260730
+VERSION_SUFFIX = -dev
 
 # fat95 filesystem handler version
-FAT95_MAJOR = 3
-FAT95_MINOR = 24
-FAT95_VERSION_SUFFIX =
-FAT95_DATE = 07.06.2026
+FAT95_MAJOR = 4
+FAT95_MINOR = 0
+FAT95_VERSION_SUFFIX = -dev
+FAT95_DATE = 30.07.2026
 
 # Tools versions
 INSTALL95_MAJOR = 3
@@ -58,8 +58,14 @@ SETFILESIZE_VERSION = $(SETFILESIZE_MAJOR).$(SETFILESIZE_MINOR)$(SETFILESIZE_VER
 BOOT95_VERSION      = $(BOOT95_MAJOR).$(BOOT95_MINOR)$(BOOT95_VERSION_SUFFIX)
 LSFSRES_VERSION     = $(LSFSRES_MAJOR).$(LSFSRES_MINOR)$(LSFSRES_VERSION_SUFFIX)
 
+# ptable.library + lsptres versions/dates read from the ptable build stamps.
+PLIB_VERSION    = $(firstword $(shell cat $(PTABLE_VERSION_FILE) 2>/dev/null))
+PLIB_DATE       = $(word 2,$(shell cat $(PTABLE_VERSION_FILE) 2>/dev/null))
+LSPTRES_VERSION = $(firstword $(shell cat $(PTABLE_LSPTRES_VERSION_FILE) 2>/dev/null))
+LSPTRES_DATE    = $(word 2,$(shell cat $(PTABLE_LSPTRES_VERSION_FILE) 2>/dev/null))
+
 # Component table driving TOOLS and the README/dist auto-gen blocks.
-COMPONENTS = FAT95 INSTALL95 DD DEBUG95 SETFILESIZE BOOT95 LSFSRES
+COMPONENTS = FAT95 INSTALL95 DD DEBUG95 SETFILESIZE BOOT95 LSFSRES PLIB LSPTRES
 
 FAT95_NAME         = fat95
 FAT95_KIND         = handler
@@ -81,6 +87,12 @@ BOOT95_TARGET      = $(TARGET_BOOT95)
 LSFSRES_NAME       = lsfsres
 LSFSRES_KIND       = tool
 LSFSRES_TARGET     = $(TARGET_LSFSRES)
+# Bundled from the ptable repo.
+PLIB_NAME          = ptable.library
+PLIB_KIND          = library
+LSPTRES_NAME       = lsptres
+LSPTRES_KIND       = tool
+LSPTRES_TARGET     = dist/c/lsptres
 
 # CPU tiers for the handler fan-out (tools stay single-tier).
 CPUS = 68020 68000
@@ -89,7 +101,9 @@ CPUS = 68020 68000
 define _artifact_entries
 $(if $(filter tool,$($(1)_KIND)),\
 $($(1)_NAME):$($(1)_TARGET):$($(1)_VERSION):$($(1)_DATE),\
-$(foreach c,$(CPUS),$($(1)_NAME)_$(c):$(OUTDIR)/$(c)/$($(1)_NAME):$($(1)_VERSION):$($(1)_DATE)))
+$(if $(filter library,$($(1)_KIND)),\
+$(foreach c,$(CPUS),$($(1)_NAME)_$(c):dist/libs/$(c)/$($(1)_NAME):$($(1)_VERSION):$($(1)_DATE)),\
+$(foreach c,$(CPUS),$($(1)_NAME)_$(c):$(OUTDIR)/$(c)/$($(1)_NAME):$($(1)_VERSION):$($(1)_DATE))))
 endef
 
 # "PREFIX|name|version|date" per component, fed to tools/components.sh
@@ -142,17 +156,16 @@ OUTDIR = dist/l
 OUTDIR_020 = $(OUTDIR)/68020
 OUTDIR_000 = $(OUTDIR)/68000
 
-# Files: Driver (two CPU tiers)
-# 68020+ ships under l/68020/ (A1200 stock + 68020+ accelerators
-# 030/040/060/080).  68000 ships under l/68000/ for stock A500/A600/
-# A1000/A2000/CDTV.  Tools stay single-tier (68000) because they do
-# no math hot-path work.
+# ptable.library repo (override PTABLE= to point at a local checkout). Bundled
+# into the release LIBS: so whole-disk auto-detect works without it in ROM.
+PTABLE ?= extern/ptable
+PTABLE_VERSION_FILE = $(PTABLE)/dist/ptable.version
+PTABLE_LSPTRES_VERSION_FILE = $(PTABLE)/dist/lsptres.version
+
+# Files: Driver
 SOURCE = $(SRCDIR)/fat95.s
 TARGET_020 = $(OUTDIR_020)/fat95
 TARGET_000 = $(OUTDIR_000)/fat95
-# TARGET retained as an alias for the 020+ binary for any downstream
-# snippets that still reference it (e.g. tool-chain helpers).
-TARGET = $(TARGET_020)
 DRIVER_TARGETS = $(TARGET_020) $(TARGET_000)
 
 # Files: Tools
@@ -203,9 +216,45 @@ $(VERSION_STAMP): FORCE
 		rm -f $(VERSION_STAMP).tmp; \
 	fi
 
-# Rewrite the topmost release-notes header and the COMPONENTS block in
-# docs/changes.md from current Makefile vars. Add new release headers by hand.
-version-readme:
+# Build ptable.library (small) + lsptres in the ptable repo and stage the
+# built artifacts into dist/ for the release; nothing ptable-owned is rebuilt
+# here, so every release ships the ptable-built bytes. MD2GUIDE/NDK are passed
+# as absolute paths: the submodule's own relative defaults do not resolve from
+# inside extern/ptable. Phony; a missing $(PTABLE) is a soft skip.
+.PHONY: ptable-bundle
+ptable-bundle:
+	$(Q)if [ -f "$(PTABLE)/Makefile" ]; then \
+		$(MAKE) -C "$(PTABLE)" all guides MD2GUIDE=$(abspath $(MD2GUIDE)) NDK=$(abspath NDK) >/dev/null; \
+		mkdir -p dist/libs/68020 dist/libs/68000 dist/c $(GUIDE_OUTPUT_DIR); \
+		cp "$(PTABLE)/dist/small/68020/ptable.library" dist/libs/68020/; \
+		cp "$(PTABLE)/dist/small/68000/ptable.library" dist/libs/68000/; \
+		cp "$(PTABLE)/dist/c/lsptres" dist/c/lsptres; \
+		cp "$(PTABLE)/dist/docs/lsptres.guide" $(GUIDE_OUTPUT_DIR)/; \
+		echo "  bundled ptable.library (small) + lsptres from $(PTABLE)"; \
+	else \
+		echo "  NOTE: $(PTABLE) absent - ptable.library / lsptres not bundled"; \
+	fi
+
+# Move the ptable checkout to its upstream tip and rebuild everything that
+# bundles it. Uses the branch tip rather than "git submodule update": if the
+# recorded commit was orphaned by an upstream history rewrite, restoring the
+# pin would fail. Leaves the result uncommitted for review. Phony; a $(PTABLE)
+# that is not a git checkout is a soft skip.
+.PHONY: ptable-sync
+ptable-sync:
+	$(Q)if [ -e "$(PTABLE)/.git" ]; then \
+		git -C "$(PTABLE)" fetch origin; \
+		git -C "$(PTABLE)" checkout --detach origin/master; \
+		$(MAKE) all; \
+		echo "  ptable synced to $$(git -C "$(PTABLE)" rev-parse --short HEAD) ($$(cat $(PTABLE_VERSION_FILE)))"; \
+		echo "  review, then commit $(PTABLE) with the rebuilt dist/ artifacts"; \
+	else \
+		echo "  NOTE: $(PTABLE) is not a git checkout - nothing to sync"; \
+	fi
+
+# version-readme reads the ptable stamps for the PLIB/LSPTRES component versions,
+# so the bundle (which builds them) must run first.
+version-readme: ptable-bundle
 	$(Q)sed -i '0,/^## [0-9]\{8\}[^[:space:]]*/s/^## [0-9]\{8\}[^[:space:]]*/## $(VERSION)/' docs/changes.md
 	$(Q)block="_Components in this release_:\n\n$$(sh tools/components.sh md $(COMPONENT_ARGS))"; \
 	awk -v block="$$block" ' \
@@ -397,11 +446,18 @@ release: check-vasm version-readme all $(README_NAME) guide check-lha
 	cp src/*.s src/*.i "$$S/fat95/src/"; \
 	cp $(README_NAME) "$$S/fat95/fat95.readme"; \
 	cp $(README_INFO) LICENSE "$$S/fat95/"; \
+	if [ -d dist/libs ]; then \
+		cp -r dist/libs "$$S/fat95/"; \
+		echo "  bundled ptable.library (small) + lsptres (staged by ptable-bundle)"; \
+	else \
+		echo "  NOTE: $(PTABLE) absent - ptable.library / lsptres not bundled"; \
+	fi; \
 	mkdir -p "$$S/fat95/docs"; \
 	cp $(GUIDE_FAT95)   "$$S/fat95/docs/"; \
 	cp $(GUIDE_CHANGES) "$$S/fat95/docs/"; \
 	cp $(GUIDE_DD)      "$$S/fat95/docs/"; \
 	cp $(GUIDE_LSFSRES) "$$S/fat95/docs/"; \
+	[ -f $(GUIDE_LSPTRES) ] && cp $(GUIDE_LSPTRES) "$$S/fat95/docs/" || true; \
 	cp dist.info "$$S/fat95.info"; \
 	for d in dist/DOSDrivers dist/english dist/deutsch dist/magyar dist/polska dist/russian dist/espa* dist/fran*; do \
 		[ -d "$$d" ] && cp -r "$$d" "$$S/fat95/"; \
@@ -420,6 +476,7 @@ release: check-vasm version-readme all $(README_NAME) guide check-lha
 clean:
 	rm -f $(DRIVER_TARGETS) $(TARGET_INSTALL95) $(TARGET_DD) $(TARGET_DEBUG95) $(TARGET_SETFILESIZE) $(TARGET_BOOT95) $(TARGET_LSFSRES)
 	rm -f $(VERSION_FAT95_INC) $(VERSION_INSTALL95_INC) $(VERSION_DD_INC) $(VERSION_DEBUG95_INC) $(VERSION_SETFILESIZE_INC) $(VERSION_BOOT95_INC) $(VERSION_LSFSRES_INC) $(VERSION_STAMP)
+	rm -rf dist/libs dist/c/lsptres $(GUIDE_LSPTRES)
 	$(Q)[ ! -d $(OUTDIR_020) ] || rmdir --ignore-fail-on-non-empty $(OUTDIR_020)
 	$(Q)[ ! -d $(OUTDIR_000) ] || rmdir --ignore-fail-on-non-empty $(OUTDIR_000)
 
@@ -449,6 +506,9 @@ help:
 	@echo ""
 	@echo "Documentation targets:"
 	@echo "  guide / guides - Generate AmigaGuide documentation"
+	@echo ""
+	@echo "Dependency targets:"
+	@echo "  ptable-sync    - Move $(PTABLE) to its upstream tip and rebuild (uncommitted)"
 	@echo ""
 	@echo "Release targets:"
 	@echo "  version-readme - Update current release notes in docs/changes.md"
@@ -484,8 +544,7 @@ GUIDE_FAT95      = $(GUIDE_OUTPUT_DIR)/fat95.guide
 GUIDE_CHANGES    = $(GUIDE_OUTPUT_DIR)/changes.guide
 GUIDE_DD         = $(GUIDE_OUTPUT_DIR)/dd.guide
 GUIDE_LSFSRES    = $(GUIDE_OUTPUT_DIR)/lsfsres.guide
-# Backwards-compat alias for anything still referencing $(GUIDE_OUTPUT).
-GUIDE_OUTPUT     = $(GUIDE_FAT95)
+GUIDE_LSPTRES    = $(GUIDE_OUTPUT_DIR)/lsptres.guide
 MD2GUIDE = ../cfd/tools/md2guide.py
 
 guide guides: $(GUIDE_FAT95) $(GUIDE_CHANGES) $(GUIDE_DD) $(GUIDE_LSFSRES)
