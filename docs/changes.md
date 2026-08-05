@@ -5,7 +5,7 @@ _Components in this release_:
 
 - `fat95 4.0-dev (30.07.2026)` _(new)_
 - `install95 3.19 (25.01.2026)`
-- `dd 2.2 (13.06.2026)`
+- `dd 2.3-dev (05.08.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
@@ -23,6 +23,18 @@ _Components in this release_:
 #### Tools
 
 - `ptable.library` and `lsptres` are now bundled in the archive, shared with the CompactFlash driver. `lsptres` lists `partition.resource`.
+
+#### dd 2.3
+
+- New `CMDSRC` (`CS=`) and `CMDDST` (`CD=`) force the transfer command for one side only. `CMD` still sets both sides. Only a real `.device` side is affected.
+- A forced command the driver does not advertise is now reported before the transfer, together with the methods the device does offer. An I/O error `-3` points at `dd INSPECT`.
+- New `MAXTRANSFER` (`MT=`) sets the bytes per device request (default 131072).
+- New `MEM` sets the buffer memory type (`ANY|PUBLIC|CHIP|FAST|24BIT`), instead of the type the driver reports.
+- Every transfer prints an `xfer:` line with the request size and memory type in use.
+- `INSPECT` also reports buffer memory type, device type and geometry flags.
+- A driver reporting fewer bytes moved than requested is reported once per transfer.
+- Fixed: the SCSI `READ CAPACITY` geometry fallback used an unallocated buffer.
+- Fixed: a block size larger than one request looped without progress.
 
 ## 20260614
 

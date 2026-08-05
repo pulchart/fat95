@@ -5,7 +5,7 @@
 *Template*
 
 ```
-SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K,VERBOSE=V/S,CMD/K
+SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K,VERBOSE=V/S,CMD/K,CS=CMDSRC/K,CD=CMDDST/K,MT=MAXTRANSFER/N/K,MEM/K
 ```
 
 *Positional form*
@@ -42,6 +42,8 @@ scsi.device unit 0:
   cylinders:      31076
   heads:          4
   sec/track:      63
+  buf mem type:   $00000001
+  device type:    0, flags: $00
   >4GiB methods:  NSCMD_TD64, TD64, HD_SCSI
   commands:
                   $0002 (CMD_READ)
@@ -62,10 +64,13 @@ scsi.device unit 0:
 The output covers:
 
 - Sector size, total sectors, CHS geometry (cylinders/heads/sec-per-track).
+- `buf mem type:` is the memory type the driver asks its buffers to live in (`TD_GETGEOMETRY`'s `dg_BufMemType`), and `device type:` / `flags:` are the remaining geometry fields. `$00000001` is plain `MEMF_PUBLIC`, i.e. the driver states no DMA restriction. See [Transfer size and buffer memory](#transfer-size-and-buffer-memory).
 - Transfer capabilities: a `>4GiB methods:` line summarises the large-transfer commands the device offers (`NSCMD_TD64`, `TD64`, `HD_SCSI`, or `(none)`), and with `VERBOSE` a `commands:` block lists its full command set. Each command is shown as its hex value and name, with `(unknown)` for any value dd doesn't recognise.
 - Which command set dd would use for a transfer on this device, both for ranges that fit in 4 GiB byte-addressing (`CMD_READ` / `CMD_WRITE`) and for ranges past 4 GiB. See [IO command selection](#io-command-selection).
 
-Every real transfer also prints a one-line "read: ... via <cmd>" and "write: ... via <cmd>" before the data loop starts, so you can confirm the dispatched command without re-running INSPECT. If a command is rejected mid-transfer, a "<cmd> not supported, falling back to <cmd>" line is printed and the swath is retried with the next command down the ladder.
+Every real transfer also prints a one-line "read: ... via <cmd>" and "write: ... via <cmd>" before the data loop starts, so you can confirm the dispatched command without re-running INSPECT, followed by an "xfer: ... bytes per request, memory ..." line showing the request size and the memory type the buffer was allocated from. If a command is rejected mid-transfer, a "<cmd> not supported, falling back to <cmd>" line is printed and the swath is retried with the next command down the ladder.
+
+If a driver reports fewer bytes moved than dd asked for, dd prints "note: <device> reported N of M bytes moved" once and carries on. Not every driver fills that field in, so a `0 of M` note can also mean the driver simply left it at zero.
 
 ## IO command selection
 
@@ -131,6 +136,42 @@ NSCMD_TD_WRITE64 -->  TD_WRITE64 --+
 
 A forced command is honored strictly: it is **not** auto-downgraded, so if the device rejects it the error is reported (e.g. `read error (-3)`). `CMD=CMD` uses a 32-bit byte offset and is refused for transfers that cross 4 GiB (use `TD64`/`NSCMD`/`SCSI` for those). The byte-offset commands (`CMD`/`TD64`/`NSCMD`) assume a power-of-2 block size; for an odd block size use `CMD=SCSI`. `CMD=` does not affect INSPECT output (which reports device capability, not the forced choice).
 
+When the chosen command is one the driver does not advertise through NSD, dd says so before the transfer starts and lists what the device does offer:
+
+```
+dd: warning: myscsi.device unit 0 does not advertise TD64
+  >4GiB methods:  NSCMD_TD64, HD_SCSI
+```
+
+The override is still applied as asked. dd can only make this check when the driver answers `NSCMD_DEVICEQUERY`; without NSD there is no capability list to compare against and dd stays quiet.
+
+#### Per-side overrides
+
+`CMD=` sets both sides. `CMDSRC=<name>` (short `CS=`) and `CMDDST=<name>` (short `CD=`) set one side each and take precedence over `CMD=` for that side. Use them for a device-to-device copy where the two drivers support different command families:
+
+```
+; TD64 on the read side, NSCMD on the write side
+dd cf.device scsi.device US 0 UD 0 CS TD64 CD NSCMD
+```
+
+Note that `CMD`/`CMDSRC`/`CMDDST` only affect sides that are a real `.device`. A file, `FILL:`, `RSPEED:` or `RWSPEED:` side always uses DOS `Read`/`Write`, so forcing a command there has no effect at all: in `dd CD0:IMAGE scsi.device 0 CMD=TD64` the only side the override reaches is the write to `scsi.device`.
+
+## Transfer size and buffer memory
+
+dd moves data in swaths, one device request per swath. By default a swath is 131072 bytes (1 MB for the `RSPEED:`/`RWSPEED:` benchmarks), allocated from `MEMF_PUBLIC` plus whatever memory type the driver asked for through `dg_BufMemType`. Both are adjustable:
+
+| Argument | Meaning |
+|---|---|
+| `MAXTRANSFER=<bytes>` (`MT=`) | Bytes per device request. Rounded down to a whole number of 512-byte units and clamped to 1 MB. |
+| `MEM=<type>` | Buffer memory: `ANY`, `PUBLIC`, `CHIP`, `FAST` or `24BIT`. Replaces the driver-reported type instead of adding to it; `MEMF_PUBLIC` is always included. |
+
+```
+dd RAM:image scsi.device 0 MT 65024
+dd RAM:image scsi.device 0 MT 65024 MEM 24BIT
+```
+
+`dd INSPECT` shows what the driver claims (`buf mem type:`), and the `xfer:` line of a real transfer shows what dd actually used.
+
 ## Examples
 
 ```
@@ -162,6 +203,12 @@ dd INSPECT scsi.device VERBOSE
 ; force a specific transfer command (no auto-fallback)
 dd uaehf.device NIL: 0 CMD=TD64
 dd scsi.device RAM:dump 0 0 1000 CMD=SCSI
+
+; different command per side on a device-to-device copy
+dd cf.device scsi.device US 0 UD 0 CS TD64 CD NSCMD
+
+; request size and buffer memory type
+dd RAM:image scsi.device 0 MT 65024 MEM 24BIT
 ```
 
 ## Migration from dd 1.x

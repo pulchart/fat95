@@ -73,6 +73,9 @@ MN_Length	= 18
 
 ;memory type
 MEMF_PUBLIC	= 1
+MEMF_CHIP	= 2
+MEMF_FAST	= 4
+MEMF_24BITDMA	= $200
 MEMF_CLEAR	= $10000
 
 ;struct ExecBase
@@ -293,7 +296,8 @@ DV_CmdFlags	= 36		;byte of per-bit flags:
 				;  bit 7 - force SCSI (non-power-of-2 block size)
 				;Command selection reads bit 2 and bit 7.
 				;Bits 3 and 4 are capability flags shown by INSPECT.
-DV_pad		= 37
+DV_ForceCmd	= 37		;byte: this side's CMD= override
+				;0=AUTO 1=CMD 2=TD64 3=NSCMD 4=SCSI
 DV_Sizeof	= 40
 
 ;--- global vars -------------------------------------------
@@ -315,7 +319,7 @@ BlockShift	= -154
 ;SCSIFlag deleted, replaced by per-DV DV_CmdFlags bit 7
 FillByte	= -157
 FillFlag	= -158
-ForceCmd	= -159			;byte: 0=AUTO 1=CMD 2=TD64 3=NSCMD 4=SCSI (CMD= override)
+ShortWarn	= -159			;non-zero -> short-transfer warning already printed
 InspectFlag	= -160			;non-zero -> INSPECT mode (probe + print, no transfer)
 DoneBlocks	= -164
 BlockSize	= -168
@@ -328,8 +332,10 @@ RTime		= -196
 WTime		= -204
 QueryResult	= -220			;16-byte NSDeviceQueryResult buffer
 StringBuf	= -732
-ArgArray	= -780			;12 longs for ReadArgs (zeroed before call)
-Vars_Sizeof	= -780
+MaxTransfer	= -736			;MAXTRANSFER= bytes per request, 0 = default
+MemType		= -740			;MEM= buffer memory flags, 0 = derive from geometry
+ArgArray	= -804			;16 longs for ReadArgs (zeroed before call)
+Vars_Sizeof	= -804
 
 ;--- +++ TEST +++ TEST +++ ---------------------------------
 
@@ -415,8 +421,10 @@ s_help_done:
 ;- - evaluate parameters via ReadArgs - - - - - - - - - - -
 
 	clr.l	RDArgs(a4)
+	clr.l	MaxTransfer(a4)		;below the s_nullvars range, clear by hand
+	clr.l	MemType(a4)
 	lea	ArgArray(a4),a0
-	moveq.l	#11,d0			;ArgArray has 12 slots
+	moveq.l	#15,d0			;ArgArray has 16 slots
 s_argclr:
 	clr.l	(a0)+
 	dbra	d0,s_argclr
@@ -430,9 +438,19 @@ s_argclr:
 	move.l	d0,RDArgs(a4)
 	beq.w	s_argerr		;parse failed, DOS already printed why
 
-	bsr.w	ParseForceCmd		;CMD= override -> ForceCmd; d0!=0 if bad value
+	bsr.w	ParseForceCmd		;CMD=/CMDSRC/CMDDST -> DV_ForceCmd per side
 	tst.l	d0
 	bne.w	s_cmderr
+
+	bsr.w	ParseMemType		;MEM= -> MemType; d0!=0 if bad value
+	tst.l	d0
+	bne.w	s_memerr
+
+	move.l	ArgArray+56(a4),d0	;MAXTRANSFER (slot 14)
+	beq.s	s_argmt
+	move.l	d0,a0
+	move.l	(a0),MaxTransfer(a4)
+s_argmt:
 
 	;INSPECT mode: probe a device, print capabilities, exit.
 	;No SRC/DST needed; INSPECT carries the device name.
@@ -551,11 +569,16 @@ s_argclose:
 s_argerr:
 	bra.w	s_closedos		;ReadArgs already printed an error
 s_cmderr:
+	lea	CmdErrStr(pc),a0
+	moveq.l	#CmdErrEnd-CmdErrStr,d3
+	bra.s	s_msgerr
+s_memerr:
+	lea	MemErrStr(pc),a0
+	moveq.l	#MemErrEnd-MemErrStr,d3
+s_msgerr:
 	move.l	ConsoleO(a4),d1
 	beq.w	s_closedos
-	lea	CmdErrStr(pc),a0
 	move.l	a0,d2
-	moveq.l	#CmdErrEnd-CmdErrStr,d3
 	CALLDOS	Write
 	bra.w	s_closedos
 
@@ -563,8 +586,11 @@ NoUnitStr:
 	dc.b	'dd: device named but no UNIT/US/UD given',10
 NoUnitEnd:
 CmdErrStr:
-	dc.b	'dd: unknown CMD value (AUTO|CMD|TD64|NSCMD|SCSI)',10
+	dc.b	'dd: unknown CMD/CMDSRC/CMDDST value (AUTO|CMD|TD64|NSCMD|SCSI)',10
 CmdErrEnd:
+MemErrStr:
+	dc.b	'dd: unknown MEM value (ANY|PUBLIC|CHIP|FAST|24BIT)',10
+MemErrEnd:
 	even
 s_pdone:
 s_args_done:
@@ -654,13 +680,19 @@ s_odevice:
 	move.l	d1,DV_NumBlocks(a3)
 	bra.s	s_omodesense
 s_oreadcapacity:
+	;BlockBuffer is not allocated yet at open time, so the 8-byte reply
+	;lands in StringBuf (frame scratch, only used for GetSysTime and
+	;console reads later on).
+	lea	StringBuf(a4),a2
+	clr.l	(a2)
+	clr.l	4(a2)
 	move.l	DV_IORequest(a3),a1
 	move.w	#HD_SCSICMD,IO_Command(a1)
 	moveq.l	#SCSI_Sizeof,d0
 	move.l	d0,IO_Length(a1)
 	lea	IO_SCSI(a1),a0
 	move.l	a0,IO_Data(a1)
-	move.l	BlockBuffer(a4),(a0)+	;SCSI_Data = &target
+	move.l	a2,(a0)+		;SCSI_Data = &target
 	moveq.l	#8,d0
 	move.l	d0,(a0)+		;SCSI_Length
 	clr.l	(a0)+			;SCSI_Actual
@@ -683,7 +715,7 @@ s_oreadcapacity:
 	tst.b	d0
 	bne.s	s_omodesense
 
-	move.l	BlockBuffer(a4),a0
+	lea	StringBuf(a4),a0
 	move.l	(a0)+,d0
 	addq.l	#1,d0
 	move.l	d0,DV_NumBlocks(a3)
@@ -799,15 +831,34 @@ s_buffers:
 
 	lsl.l	#3,d0
 s_b1:
-	swap	d0
+	swap	d0			;128 kbyte, 1 Mbyte when benchmarking
+	move.l	MaxTransfer(a4),d1
+	beq.s	s_b3			;no MAXTRANSFER: keep the default
+	and.l	#$fffffe00,d1		;whole 512-byte units only..
+	bne.s	s_b2
+
+	move.l	#512,d1			;..at least one..
+s_b2:
+	cmp.l	#1<<20,d1
+	bcs.s	s_bmt
+
+	move.l	#1<<20,d1		;..and at most 1 Mbyte
+s_bmt:
+	move.l	d1,d0
+s_b3:
 	move.l	d0,BBufSize(a4)
+	move.l	MemType(a4),d1		;MEM= overrides what the driver reports
+	bne.s	s_b4
+
 	moveq.l	#MEMF_PUBLIC,d1
 	or.l	SourceVec+DV_BufMemType(a4),d1
 	or.l	DestVec+DV_BufMemType(a4),d1
+s_b4:
+	move.l	d1,MemType(a4)		;effective type, shown on the "xfer:" line
 	CALLEXEC AllocMem
 	move.l	d0,BlockBuffer(a4)
 	beq.w	s_closedev
-	
+
 ;- - determine transfer window  - - - - - - - - - - - - - -
 
 s_window:
@@ -857,6 +908,10 @@ s_w5:
 	move.l	BBufSize(a4),d0
 	bsr.w	UDivMod32
 	move.l	d0,BufBlocks(a4)
+	bne.s	s_wbufok
+
+	bra.w	s_mterr			;not even one Block per request
+s_wbufok:
 	move.l	CustomSize(a4),d0
 	beq.s	s_w6			;auto Block size
 
@@ -958,79 +1013,24 @@ s_w8:
 ;         +-- no  --> TD_READ64 / TD_WRITE64
 ;
 ; Runtime fallback (s_t2/s_t4): on IOERR_NOCMD (-3) the swath is retried
-; with the next command down the ladder (see NextCmd) --
+; with the next command down the ladder (see NextCmd):
 ;     NSCMD_TD_READ64  -> TD_READ64  -> HD_SCSICMD -> report -3
 ;     NSCMD_TD_WRITE64 -> TD_WRITE64 -> HD_SCSICMD -> report -3
 ; CMD_READ/CMD_WRITE and HD_SCSICMD have no successor.
 ;
-; A CMD= override (ForceCmd) pins both sides to one command, skips the
-; selection below, and disables the fallback (strict; see s_t2err/s_t4err).
+; An override pins one side to one command, skips the selection above for
+; that side, and disables the fallback there (strict; see s_t2err/s_t4err).
+; CMD= sets both sides, CMDSRC/CMDDST set one; the value lands in
+; DV_ForceCmd, so each side is picked on its own (see PickCmd).
 
-	tst.b	ForceCmd(a4)		;CMD= override active?
-	beq.s	s_w8_auto
-	moveq.l	#0,d0
-	move.b	ForceCmd(a4),d0		;1..4
-	cmp.b	#1,d0			;CMD (32-bit byte offset) ?
-	bne.s	s_w8_force_idx
-	tst.b	d2			;..and range > 4 GiB ?
-	bne.w	s_cmd32err		;reject: CMD_READ/WRITE would wrap
-s_w8_force_idx:
-	subq.l	#1,d0
-	add.l	d0,d0
-	add.l	d0,d0			;index * 4 (two words per entry)
-	lea	ForceCmdTab(pc),a0
-	move.w	0(a0,d0.l),d1		;forced read command
-	move.w	2(a0,d0.l),d2		;forced write command
-	move.w	d1,SourceVec+DV_ReadCmd(a4)
-	move.w	d2,SourceVec+DV_WriteCmd(a4)
-	move.w	d1,DestVec+DV_ReadCmd(a4)
-	move.w	d2,DestVec+DV_WriteCmd(a4)
-	bra.w	s_wdone
-s_w8_auto:
-	move.l	SourceVec+DV_IORequest(a4),d0
-	beq.s	s_w8_dst		;source not a real device
-	move.w	#CMD_READ,SourceVec+DV_ReadCmd(a4)
-	move.w	#CMD_WRITE,SourceVec+DV_WriteCmd(a4)
-	move.b	SourceVec+DV_CmdFlags(a4),d0
-	btst	#7,d0			;forced SCSI?
-	bne.s	s_w8_src_scsi
-	tst.b	d2
-	beq.s	s_w8_dst		;<=4G: keep CMD_READ/WRITE
-	btst	#2,d0			;NSCMD-TD64 advertised?
-	beq.s	s_w8_src_td64		;no -> classic TD64 default
-	move.w	#NSCMD_TD_READ64,SourceVec+DV_ReadCmd(a4)
-	move.w	#NSCMD_TD_WRITE64,SourceVec+DV_WriteCmd(a4)
-	bra.s	s_w8_dst
-s_w8_src_td64:
-	move.w	#TD_READ64,SourceVec+DV_ReadCmd(a4)
-	move.w	#TD_WRITE64,SourceVec+DV_WriteCmd(a4)
-	bra.s	s_w8_dst
-s_w8_src_scsi:
-	move.w	#HD_SCSICMD,SourceVec+DV_ReadCmd(a4)
-	move.w	#HD_SCSICMD,SourceVec+DV_WriteCmd(a4)
-
-s_w8_dst:
-	move.l	DestVec+DV_IORequest(a4),d0
-	beq.s	s_wdone			;dest not a real device
-	move.w	#CMD_READ,DestVec+DV_ReadCmd(a4)
-	move.w	#CMD_WRITE,DestVec+DV_WriteCmd(a4)
-	move.b	DestVec+DV_CmdFlags(a4),d0
-	btst	#7,d0
-	bne.s	s_w8_dst_scsi
-	tst.b	d2
-	beq.s	s_wdone
-	btst	#2,d0
-	beq.s	s_w8_dst_td64
-	move.w	#NSCMD_TD_READ64,DestVec+DV_ReadCmd(a4)
-	move.w	#NSCMD_TD_WRITE64,DestVec+DV_WriteCmd(a4)
-	bra.s	s_wdone
-s_w8_dst_td64:
-	move.w	#TD_READ64,DestVec+DV_ReadCmd(a4)
-	move.w	#TD_WRITE64,DestVec+DV_WriteCmd(a4)
-	bra.s	s_wdone
-s_w8_dst_scsi:
-	move.w	#HD_SCSICMD,DestVec+DV_ReadCmd(a4)
-	move.w	#HD_SCSICMD,DestVec+DV_WriteCmd(a4)
+	lea	SourceVec(a4),a3
+	bsr.w	PickCmd
+	tst.l	d0
+	bmi.w	s_cmd32err
+	lea	DestVec(a4),a3
+	bsr.w	PickCmd
+	tst.l	d0
+	bmi.w	s_cmd32err
 s_wdone:
 
 ;- - prepare fill mode  - - - - - - - - - - - - - - - - - -
@@ -1096,6 +1096,18 @@ s_fdone_dst:
 	CALLDOS	VFPrintf
 	lea	12(sp),sp
 s_fdone_done:
+	;request size and buffer memory type, so a transfer report always
+	;carries the two values MAXTRANSFER= and MEM= change
+	move.l	ConsoleO(a4),d1
+	beq.s	s_fdone_end
+	move.l	MemType(a4),-(sp)	;arg2: effective memory flags
+	move.l	BBufSize(a4),-(sp)	;arg1: bytes per request
+	lea	fu_xfer(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#8,sp
+s_fdone_end:
 
 ;- - transfer data  - - - - - - - - - - - - - - - - - - - -
 
@@ -1169,8 +1181,13 @@ s_t2:
 	move.l	d0,IO_Offset(a1)
 	bsr.w	SafeDoIO
 	tst.b	d0
-	beq.s	s_t3
-	bra.w	s_t2err
+	bne.w	s_t2err
+
+	move.l	DV_IORequest(a3),a1	;a3 = SourceVec, a1 clobbered by DoIO
+	move.l	IO_Actual(a1),d0
+	move.l	d3,d1
+	bsr.w	CheckActual
+	bra.s	s_t3
 s_ts2:
 	move.w	#HD_SCSICMD,IO_Command(a1)
 	moveq.l	#SCSI_Sizeof,d0
@@ -1203,6 +1220,11 @@ s_ts2:
 	bsr.w	SafeDoIO
 	tst.b	d0
 	bne.w	s_t2err
+
+	move.l	DV_IORequest(a3),a1	;a3 = SourceVec, a1 clobbered by DoIO
+	move.l	IO_SCSI+SCSI_Actual(a1),d0
+	move.l	d3,d1
+	bsr.w	CheckActual
 s_t3:
 	lea	StringBuf(a4),a0
 	move.l	TimerDevice(a4),a6
@@ -1244,8 +1266,13 @@ s_t4:
 	move.l	d0,IO_Offset(a1)
 	bsr.w	SafeDoIO
 	tst.b	d0
-	beq.s	s_t5
-	bra.w	s_t4err
+	bne.w	s_t4err
+
+	move.l	DV_IORequest(a3),a1	;a3 = DestVec, a1 clobbered by DoIO
+	move.l	IO_Actual(a1),d0
+	move.l	d3,d1
+	bsr.w	CheckActual
+	bra.s	s_t5
 s_ts4:
 	move.w	#HD_SCSICMD,IO_Command(a1)
 	moveq.l	#SCSI_Sizeof,d0
@@ -1278,6 +1305,11 @@ s_ts4:
 	bsr.w	SafeDoIO
 	tst.b	d0
 	bne.w	s_t4err
+
+	move.l	DV_IORequest(a3),a1	;a3 = DestVec, a1 clobbered by DoIO
+	move.l	IO_SCSI+SCSI_Actual(a1),d0
+	move.l	d3,d1
+	bsr.w	CheckActual
 s_t5:
 	lea	StringBuf(a4),a0
 	move.l	TimerDevice(a4),a6
@@ -1303,18 +1335,23 @@ s_tbreak:
 	CALLDOS	Write
 	bra.w	s_closedev
 s_cmd32err:
+	lea	Cmd32Str(pc),a0
+	moveq.l	#Cmd32End-Cmd32Str,d3
+	bra.s	s_terrmsg
+s_mterr:
+	lea	MTSmallStr(pc),a0
+	moveq.l	#MTSmallEnd-MTSmallStr,d3
+s_terrmsg:
 	move.l	ConsoleO(a4),d1
 	beq.w	s_closedev
-	lea	Cmd32Str(pc),a0
 	move.l	a0,d2
-	moveq.l	#Cmd32End-Cmd32Str,d3
 	CALLDOS	Write
 	bra.w	s_closedev
 s_t2err:
 	;read I/O failed (d0 = io_Error). If the command is unsupported, step
 	;down the ladder (NSCMD_TD_READ64 -> TD_READ64 -> HD_SCSICMD) and retry.
-	;A CMD= override is honored strictly: no downgrade, report the error.
-	tst.b	ForceCmd(a4)
+	;A forced command is honored strictly: no downgrade, report the error.
+	tst.b	DV_ForceCmd(a3)		;a3 = SourceVec
 	bne.w	s_treaderr
 	cmp.l	#IOERR_NOCMD,d0
 	bne.w	s_treaderr		;genuine error: report d0 as-is
@@ -1331,8 +1368,8 @@ s_t2edn:
 	bra.w	s_t2			;retry this swath read
 s_t4err:
 	;write I/O failed (d0 = io_Error): same ladder on DestVec.
-	;A CMD= override is honored strictly: no downgrade, report the error.
-	tst.b	ForceCmd(a4)
+	;A forced command is honored strictly: no downgrade, report the error.
+	tst.b	DV_ForceCmd(a3)		;a3 = DestVec
 	bne.w	s_twriteerr
 	cmp.l	#IOERR_NOCMD,d0
 	bne.w	s_twriteerr
@@ -1359,6 +1396,20 @@ s_tereport:
 	move.l	d0,-(sp)		;arg2: error code (signed)
 	move.l	DV_Name(a3),-(sp)	;arg1: device name
 	move.l	a1,d2			;format (read or write)
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	move.l	4(sp),d0		;the error code again (arg2)
+	addq.l	#8,sp
+	cmp.l	#IOERR_NOCMD,d0
+	bne.s	s_closedev
+
+	;-3 means "driver does not implement this command". Say what to do
+	;about it instead of leaving the user with a bare number.
+	move.l	DV_Unit(a3),-(sp)	;arg2: unit
+	move.l	DV_Name(a3),-(sp)	;arg1: device name
+	move.l	ConsoleO(a4),d1
+	lea	fe_nocmd(pc),a0
+	move.l	a0,d2
 	move.l	sp,d3
 	CALLDOS	VFPrintf
 	addq.l	#8,sp
@@ -1568,47 +1619,74 @@ fch_name:
 	dc.b	'RWSPEED',':'&$df,0,0
 	even
 
-;--- parse CMD= override value -----------------------------
-; Reads the CMD/K value (ArgArray slot 11) and sets ForceCmd(a4):
-;   0=AUTO (also when not given) 1=CMD 2=TD64 3=NSCMD 4=SCSI.
+;--- parse CMD=/CMDSRC=/CMDDST= override values -------------
+; CMD (slot 11) applies to both sides, CMDSRC (slot 12) and CMDDST (slot 13)
+; then override their own side. The kind lands in DV_ForceCmd of the matching
+; DevVec: 0=AUTO (also when not given) 1=CMD 2=TD64 3=NSCMD 4=SCSI.
 ; d0 -> 0 = ok, -1 = unrecognised value.
 
 ParseForceCmd:
-	clr.b	ForceCmd(a4)
-	move.l	ArgArray+44(a4),d0	;CMD value string, or NULL
-	beq.s	pfc_ok			;not given -> AUTO
+	clr.b	SourceVec+DV_ForceCmd(a4)
+	clr.b	DestVec+DV_ForceCmd(a4)
+	move.l	ArgArray+44(a4),d0	;CMD: both sides
+	beq.s	pfc_src
+	bsr.s	MatchForceCmd
+	bmi.s	pfc_bad
+	move.b	d0,SourceVec+DV_ForceCmd(a4)
+	move.b	d0,DestVec+DV_ForceCmd(a4)
+pfc_src:
+	move.l	ArgArray+48(a4),d0	;CMDSRC: read side only
+	beq.s	pfc_dst
+	bsr.s	MatchForceCmd
+	bmi.s	pfc_bad
+	move.b	d0,SourceVec+DV_ForceCmd(a4)
+pfc_dst:
+	move.l	ArgArray+52(a4),d0	;CMDDST: write side only
+	beq.s	pfc_ok
+	bsr.s	MatchForceCmd
+	bmi.s	pfc_bad
+	move.b	d0,DestVec+DV_ForceCmd(a4)
+pfc_ok:
+	moveq.l	#0,d0
+	rts
+pfc_bad:
+	moveq.l	#-1,d0
+	rts
+
+;--- match one command-family name -------------------------
+; d0 <- &value string
+; d0 -> kind 0..4, or -1 when the name is not in ForceNameTab
+
+MatchForceCmd:
 	movem.l	d2/a2-a3,-(sp)
 	move.l	d0,a2			;a2 = input value
 	lea	ForceNameTab(pc),a3
-pfc_next:
+mfc_next:
 	move.b	(a3)+,d2		;kind ($ff = end of table)
 	cmp.b	#$ff,d2
-	beq.s	pfc_unknown
+	beq.s	mfc_unknown
 	move.l	a2,a0			;input
 	move.l	a3,a1			;table name
-pfc_cmp:
+mfc_cmp:
 	move.b	(a0)+,d0
 	and.b	#$df,d0			;case-fold input
 	move.b	(a1)+,d1
 	and.b	#$df,d1			;case-fold table (digits fold consistently)
 	cmp.b	d0,d1
-	bne.s	pfc_skip
+	bne.s	mfc_skip
 	tst.b	d1
-	bne.s	pfc_cmp
-	move.b	d2,ForceCmd(a4)		;full match
-	moveq.l	#0,d0
+	bne.s	mfc_cmp
+	moveq.l	#0,d0			;full match
+	move.b	d2,d0
 	movem.l	(sp)+,d2/a2-a3
 	rts
-pfc_skip:
+mfc_skip:
 	tst.b	(a3)+			;skip rest of this name to next entry
-	bne.s	pfc_skip
-	bra.s	pfc_next
-pfc_unknown:
+	bne.s	mfc_skip
+	bra.s	mfc_next
+mfc_unknown:
 	movem.l	(sp)+,d2/a2-a3
 	moveq.l	#-1,d0
-	rts
-pfc_ok:
-	moveq.l	#0,d0
 	rts
 
 ForceNameTab:
@@ -1620,6 +1698,65 @@ ForceNameTab:
 	dc.b	$ff
 	even
 
+;--- parse MEM= buffer memory type -------------------------
+; Reads the MEM/K value (slot 15) into MemType(a4). Every table entry
+; carries MEMF_PUBLIC, so a non-zero MemType means "the user picked one"
+; and the type reported by TD_GETGEOMETRY is ignored (see s_buffers).
+; d0 -> 0 = ok, -1 = unrecognised value.
+
+ParseMemType:
+	move.l	ArgArray+60(a4),d0	;MEM value string, or NULL
+	beq.s	pmt_ok			;not given -> derive from geometry
+	movem.l	d2/a2-a3,-(sp)
+	move.l	d0,a2			;a2 = input value
+	lea	MemNameTab(pc),a3
+pmt_next:
+	move.l	(a3),d2			;flags (-1 = end of table)
+	moveq.l	#-1,d0
+	cmp.l	d0,d2
+	beq.s	pmt_unknown
+	move.l	a2,a0			;input
+	lea	4(a3),a1		;table name
+pmt_cmp:
+	move.b	(a0)+,d0
+	and.b	#$df,d0			;case-fold input
+	move.b	(a1)+,d1
+	and.b	#$df,d1			;case-fold table (digits fold consistently)
+	cmp.b	d0,d1
+	bne.s	pmt_skip
+	tst.b	d1
+	bne.s	pmt_cmp
+	move.l	d2,MemType(a4)		;full match
+	moveq.l	#0,d0
+	movem.l	(sp)+,d2/a2-a3
+	rts
+pmt_skip:
+	lea	12(a3),a3		;fixed-size entries keep the flags aligned
+	bra.s	pmt_next
+pmt_unknown:
+	movem.l	(sp)+,d2/a2-a3
+	moveq.l	#-1,d0
+	rts
+pmt_ok:
+	moveq.l	#0,d0
+	rts
+
+; 12 bytes per entry: memory flags + 8 bytes of 0-padded name. Fixed size
+; because a long must stay even-aligned on 68000.
+MemNameTab:
+	dc.l	MEMF_PUBLIC
+	dc.b	'ANY',0,0,0,0,0
+	dc.l	MEMF_PUBLIC
+	dc.b	'PUBLIC',0,0
+	dc.l	MEMF_PUBLIC+MEMF_CHIP
+	dc.b	'CHIP',0,0,0,0
+	dc.l	MEMF_PUBLIC+MEMF_FAST
+	dc.b	'FAST',0,0,0,0
+	dc.l	MEMF_PUBLIC+MEMF_24BITDMA
+	dc.b	'24BIT',0,0,0
+	dc.l	-1
+	even
+
 ; read/write command pairs for ForceCmd 1..4 (CMD/TD64/NSCMD/SCSI)
 ForceCmdTab:
 	dc.w	CMD_READ,CMD_WRITE
@@ -1628,7 +1765,8 @@ ForceCmdTab:
 	dc.w	HD_SCSICMD,HD_SCSICMD
 
 ArgTemplate:
-	dc.b	'SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K,VERBOSE=V/S,CMD/K',0
+	dc.b	'SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K,VERBOSE=V/S,CMD/K,'
+	dc.b	'CS=CMDSRC/K,CD=CMDDST/K,MT=MAXTRANSFER/N/K,MEM/K',0
 	even
 
 ;--- command-word -> name lookup ----------------------------
@@ -1823,6 +1961,143 @@ nc_scsi:
 	move.w	#HD_SCSICMD,d0
 	rts
 
+;--- pick the I/O commands for one side --------------------
+; Runs the selection documented at s_wdone for a single DevVec: an override
+; in DV_ForceCmd wins, otherwise the capability ladder decides. Files,
+; FILL: and the benchmarks have no IORequest and are left alone.
+; a3 <- &DevVec, d2 <- $ff when the range needs >4 GiB addressing
+; d0 -> 0 = ok, -1 = forced CMD_READ/CMD_WRITE cannot reach that far
+
+PickCmd:
+	movem.l	d1-d3/a0,-(sp)
+	move.l	DV_IORequest(a3),d0
+	beq.s	pc_ok			;not a real device: DOS Read/Write
+	move.w	#CMD_READ,DV_ReadCmd(a3)
+	move.w	#CMD_WRITE,DV_WriteCmd(a3)
+	moveq.l	#0,d0
+	move.b	DV_ForceCmd(a3),d0
+	bne.s	pc_forced
+
+	move.b	DV_CmdFlags(a3),d0
+	btst	#7,d0			;forced SCSI?
+	bne.s	pc_scsi
+	tst.b	d2
+	beq.s	pc_ok			;<=4G: keep CMD_READ/WRITE
+	btst	#2,d0			;NSCMD-TD64 advertised?
+	beq.s	pc_td64			;no -> classic TD64 default
+	move.w	#NSCMD_TD_READ64,DV_ReadCmd(a3)
+	move.w	#NSCMD_TD_WRITE64,DV_WriteCmd(a3)
+	bra.s	pc_ok
+pc_td64:
+	move.w	#TD_READ64,DV_ReadCmd(a3)
+	move.w	#TD_WRITE64,DV_WriteCmd(a3)
+	bra.s	pc_ok
+pc_scsi:
+	move.w	#HD_SCSICMD,DV_ReadCmd(a3)
+	move.w	#HD_SCSICMD,DV_WriteCmd(a3)
+	bra.s	pc_ok
+pc_forced:
+	cmp.b	#1,d0			;CMD (32-bit byte offset)..
+	bne.s	pc_fidx
+	tst.b	d2			;..and range > 4 GiB ?
+	bne.s	pc_err			;reject: CMD_READ/WRITE would wrap
+pc_fidx:
+	move.l	d0,d3			;keep the kind for the capability check
+	subq.l	#1,d0
+	add.l	d0,d0
+	add.l	d0,d0			;index * 4 (two words per entry)
+	lea	ForceCmdTab(pc),a0
+	move.w	0(a0,d0.l),d1
+	move.w	d1,DV_ReadCmd(a3)
+	move.w	2(a0,d0.l),d1
+	move.w	d1,DV_WriteCmd(a3)
+	move.l	d3,d0
+	bsr.w	WarnForced
+pc_ok:
+	moveq.l	#0,d0
+pc_end:
+	movem.l	(sp)+,d1-d3/a0
+	rts
+pc_err:
+	moveq.l	#-1,d0
+	bra.s	pc_end
+
+;--- warn about a forced command the driver does not offer --
+; The override stays in effect; this only keeps the IOERR_NOCMD that follows
+; from arriving out of nowhere. Silent when the device has no usable NSD,
+; because then dd has no capability list to judge against.
+; a3 <- &DevVec, d0 <- forced kind 1..4
+
+WarnForced:
+	movem.l	d0-d7/a0-a6,-(sp)
+	move.b	DV_CmdFlags(a3),d1
+	btst	#0,d1			;NSD usable?
+	beq.w	wf_ret
+	cmp.b	#2,d0			;TD64 -> bit 3
+	bne.s	wf_1
+	moveq.l	#3,d2
+	lea	cn_cap_td64(pc),a2
+	bra.s	wf_test
+wf_1:
+	cmp.b	#3,d0			;NSCMD -> bit 2
+	bne.s	wf_2
+	moveq.l	#2,d2
+	lea	cn_cap_nscmd(pc),a2
+	bra.s	wf_test
+wf_2:
+	cmp.b	#4,d0			;SCSI -> bit 4
+	bne.w	wf_ret			;CMD: not part of the >4 GiB ladder
+	moveq.l	#4,d2
+	lea	cn_cap_scsi(pc),a2
+wf_test:
+	btst	d2,d1
+	bne.w	wf_ret			;advertised, nothing to report
+	move.l	ConsoleO(a4),d0
+	beq.w	wf_ret
+	move.l	a2,-(sp)		;arg3: method name
+	move.l	DV_Unit(a3),-(sp)	;arg2: unit
+	move.l	DV_Name(a3),-(sp)	;arg1: device name
+	move.l	ConsoleO(a4),d1
+	lea	fw_noadv(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	lea	12(sp),sp
+	bsr.w	pi_methods		;..and list what it does advertise
+wf_ret:
+	movem.l	(sp)+,d0-d7/a0-a6
+	rts
+
+;--- warn once about a short device transfer ---------------
+; A driver reporting fewer bytes than dd asked for is the signature of a
+; request that hit some driver-side maximum, so it is worth saying out loud.
+; dd carries on regardless, and the notice is printed only once so a driver
+; that never fills the field cannot flood the console.
+; a3 <- &DevVec, d0 <- bytes reported, d1 <- bytes requested
+
+CheckActual:
+	cmp.l	d0,d1
+	bls.s	ca_ret			;reported >= requested: fine
+	tst.b	ShortWarn(a4)
+	bne.s	ca_ret			;said once already
+	movem.l	d0-d7/a0-a6,-(sp)
+	st.b	ShortWarn(a4)
+	move.l	ConsoleO(a4),d2
+	beq.s	ca_end
+	move.l	d1,-(sp)		;arg3: requested
+	move.l	d0,-(sp)		;arg2: reported
+	move.l	DV_Name(a3),-(sp)	;arg1: device name
+	move.l	ConsoleO(a4),d1
+	lea	fs_short(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	lea	12(sp),sp
+ca_end:
+	movem.l	(sp)+,d0-d7/a0-a6
+ca_ret:
+	rts
+
 ;--- print command fallback notice -------------------------
 ; Tells the user the chosen command was unsupported and which one is
 ; tried next, so the up-front "via <cmd>" line is not silently stale.
@@ -1988,6 +2263,29 @@ PrintInspect:
 	CALLDOS	VFPrintf
 	addq.l	#4,sp
 
+	;buffer memory type the driver asks for (MEM= overrides it)
+	move.l	DriveGeometry+DG_BufMemType(a4),-(sp)
+	move.l	ConsoleO(a4),d1
+	lea	fi_memt(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
+
+	;device type and geometry flags
+	moveq.l	#0,d0
+	move.b	DriveGeometry+DG_Flags(a4),d0
+	move.l	d0,-(sp)		;arg2: flags
+	moveq.l	#0,d0
+	move.b	DriveGeometry+DG_DeviceType(a4),d0
+	move.l	d0,-(sp)		;arg1: device type
+	move.l	ConsoleO(a4),d1
+	lea	fi_dtype(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#8,sp
+
 	;NSD present? if not, show nothing here: the "for >4 GiB:" line
 	;below still reveals the command dd would use.
 	move.b	DV_CmdFlags(a3),d0
@@ -2076,6 +2374,8 @@ fi_total:	dc.b	'  total sectors:  %ld',13,10,0
 fi_cyl:		dc.b	'  cylinders:      %ld',13,10,0
 fi_heads:	dc.b	'  heads:          %ld',13,10,0
 fi_spt:		dc.b	'  sec/track:      %ld',13,10,0
+fi_memt:	dc.b	'  buf mem type:   $%08lx',13,10,0
+fi_dtype:	dc.b	'  device type:    %ld, flags: $%02lx',13,10,0
 fi_cmds:	dc.b	'  commands:',13,10,0
 fi_meth_lbl:	dc.b	'  >4GiB methods:  ',0
 fi_meth_t1:	dc.b	'%s',0
@@ -2090,6 +2390,9 @@ fi_lo:		dc.b	'  for <=4 GiB:    %s / %s',13,10,0
 fi_hi:		dc.b	'  for  >4 GiB:    %s / %s',13,10,0
 fu_read:	dc.b	'read:  %s unit %ld via %s',13,10,0
 fu_write:	dc.b	'write: %s unit %ld via %s',13,10,0
+fu_xfer:	dc.b	'xfer:  %ld bytes per request, memory $%08lx',13,10,0
+fw_noadv:	dc.b	'dd: warning: %s unit %ld does not advertise %s',10,0
+fs_short:	dc.b	'  note: %s reported %ld of %ld bytes moved (shown once)',10,0
 fo_nofile:	dc.b	'could not open file "%s".',10,0
 fo_nodev:	dc.b	'opening unit %ld of %s failed (%ld).',10,0
 fw_sizewarn:	dc.b	'WARNING: device reports a different block size (%ld)',10
@@ -2097,6 +2400,9 @@ fw_sizewarn:	dc.b	'WARNING: device reports a different block size (%ld)',10
 ft_progress:	dc.b	'%ld',13,0
 fe_read:	dc.b	'%s read error (%ld).',10,0
 fe_write:	dc.b	'%s write error (%ld).',10,0
+fe_nocmd:	dc.b	'  -3 means the driver does not implement that command. Run',10
+		dc.b	'  "dd INSPECT %s UNIT %ld VERBOSE" to see what it offers, then',10
+		dc.b	'  pick CMD, CMDSRC or CMDDST to match (or leave it on AUTO).',10,0
 fb_note:	dc.b	'  %s not supported, falling back to %s',10,0
 fr_done:	dc.b	'%ld blocks of %ld bytes each transferred.',10,0
 fr_rspeed:	dc.b	'Read speed:  %ld kbyte/sec',10,0
@@ -2107,10 +2413,11 @@ HelpBanner:
 	dc.b	'dd '
 	VER_NUMBER
 	dc.b	' - raw block transfer tool',13,10,13,10
-	dc.b	'Usage: dd SRC DST [UNIT] [START] [COUNT] [BS] [US n] [UD n] [CMD x]',13,10
+	dc.b	'Usage: dd SRC DST [UNIT] [START] [COUNT] [BS] [US n] [UD n] [CMD x] [MT n] [MEM t]',13,10
 	dc.b	'       dd INSPECT device.name [UNIT n] [VERBOSE]  (probe device, print capabilities)',13,10
 	dc.b	'       dd ? or HELP   (this help; ? also opens the ReadArgs prompt)',13,10,13,10
-	dc.b	'Template: SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K,VERBOSE=V/S,CMD/K',13,10,13,10
+	dc.b	'Template: SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K,',13,10
+	dc.b	'          VERBOSE=V/S,CMD/K,CS=CMDSRC/K,CD=CMDDST/K,MT=MAXTRANSFER/N/K,MEM/K',13,10,13,10
 	dc.b	'Args:',13,10
 	dc.b	'  SRC, DST  Source and destination. Either:',13,10
 	dc.b	'            - a device name (e.g. compactflash.device) plus UNIT or US/UD',13,10
@@ -2124,7 +2431,11 @@ HelpBanner:
 	dc.b	'  COUNT     Number of blocks (default: entire disk or file).',13,10
 	dc.b	'  BS        Block size in bytes (default: detected from device).',13,10
 	dc.b	'  VERBOSE   With INSPECT: also list the full SupportedCommands set.',13,10
-	dc.b	'  CMD       Force the transfer command: AUTO|CMD|TD64|NSCMD|SCSI (default AUTO).',13,10,13,10
+	dc.b	'  CMD       Force the transfer command: AUTO|CMD|TD64|NSCMD|SCSI (default AUTO).',13,10
+	dc.b	'  CS, CD    Per-side CMD. Use when SRC and DST need different commands.',13,10
+	dc.b	'  MT        Bytes per device request (default 131072).',13,10
+	dc.b	'  MEM       Buffer memory: ANY|PUBLIC|CHIP|FAST|24BIT. Default is what',13,10
+	dc.b	'            the driver reports.',13,10,13,10
 	dc.b	'Examples:',13,10
 	dc.b	'  dd FILL: scsi.device 0                      ; wipe whole device',13,10
 	dc.b	'  dd FILL: scsi.device 0 0 1048576 512        ; wipe 512 MiB at LBA 0',13,10
@@ -2392,6 +2703,9 @@ BTEnd:
 Cmd32Str:
 	dc.b	'dd: CMD=CMD cannot reach past 4 GiB; use TD64, NSCMD or SCSI',LF
 Cmd32End:
+MTSmallStr:
+	dc.b	'dd: Block size exceeds one request; raise MAXTRANSFER',LF
+MTSmallEnd:
 	even
 
 ;*** that's it!!!! *****************************************
