@@ -41,7 +41,7 @@ Total: 13 entries in FileSystem.resource.
 
 ### fat95 baked into Kickstart ROM
 
-v3.24+: cold-boot registration of `FAT\0`..`FAT\8` (the DosType-byte scheme) plus `464154FF` (the device-name scheme): ten fat95 entries, all sharing the same handler code (same `Loc`). ROM registration was broken before fat95 3.22, so prior ROM builds still fall back to `L:fat95` (RAM).
+fat95 3.22 added cold-boot registration of `FAT\0`..`FAT\8` (the DosType-byte scheme); 3.24 added `464154FF` (the device-name scheme). From 3.24 on that is ten fat95 entries, all sharing the same handler code (same `Loc`). ROM registration was broken before 3.22, so prior ROM builds still fall back to `L:fat95` (RAM).
 
 ```
  #: DosType (ascii) Version  Patch SegList  Loc   Name
@@ -69,7 +69,7 @@ v3.24+: cold-boot registration of `FAT\0`..`FAT\8` (the DosType-byte scheme) plu
 21: 444F5301 (DOS.)    002F0004 0000  00000000 [RAM]   filesysres 47.4 (16.1.2021)
 22: 554E4901 (UNI.)    00000000 0008  7C994110 [RAM]   filesysres 47.4 (16.1.2021)
 ----------------------------------------------------------
-Total: 23 entries in FileSystem.resource.
+Total: 22 entries in FileSystem.resource.
 ```
 
 **Reading the fat95 entries**:

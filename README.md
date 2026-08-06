@@ -318,10 +318,12 @@ CF0:
     Priority       = 5
     GlobVec        = -1
 
-    /* Option A: DosType byte (`FAT\<n>`): FAT\1 = first FAT partition */
+    /* Keep exactly one of the two DosType lines below. */
+
+    /* Option A: DosType byte (FAT\<n>): FAT\1 = first FAT partition */
     DosType        = 0x46415401
 
-    /* Option B: DosType byte (`FAT\255`): partition by device name e.g. cf0 = first FAT partition */
+    /* Option B: device name suffix: CF0 = first FAT partition */
     DosType        = 0x464154FF
 
     Activate       = 1
