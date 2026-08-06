@@ -5,7 +5,7 @@ _Components in this release_:
 
 - `fat95 4.0-dev (30.07.2026)` _(new)_
 - `install95 3.19 (25.01.2026)`
-- `dd 2.3-dev (05.08.2026)` _(new)_
+- `dd 2.3-dev (06.08.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
@@ -33,6 +33,7 @@ _Components in this release_:
 - Every transfer prints an `xfer:` line with the request size and memory type in use.
 - `INSPECT` also reports buffer memory type, device type and geometry flags.
 - A driver reporting fewer bytes moved than requested is reported once per transfer.
+- Fixed: a source file that is not a whole number of blocks lost its last partial block. On a device the bytes the file does not cover keep their old content, to a file the copy comes out the same size.
 - Fixed: the SCSI `READ CAPACITY` geometry fallback used an unallocated buffer.
 - Fixed: a block size larger than one request looped without progress.
 

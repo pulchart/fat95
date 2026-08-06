@@ -24,6 +24,16 @@ dd <src> <dst> [<unit>] [<start>] [<count>] [<blocksize>]
 | `RSPEED:` | DST | Read-only throughput benchmark (no actual write). |
 | `RWSPEED:` | DST | Read+write throughput benchmark. |
 
+dd transfers whole blocks. When the source is a file whose size is not a multiple of the block size, the destination's last block is read back first and only the part the file covers is replaced, so the bytes past the end of the file keep the content they had:
+
+```
+note: source file ends mid-block, keeping the 24 bytes already there
+```
+
+The read-back happens before anything is written: if the destination cannot hand that block over, dd reports it and transfers nothing.
+
+A file destination takes any byte count, so there dd simply writes what the source had and the copy comes out the same size.
+
 ## INSPECT mode
 
 `dd INSPECT <device.name> [UNIT n] [VERBOSE]` (short: `dd I <device.name>`) probes the device and prints what dd sees, without doing any I/O. Add `VERBOSE` to also list the driver's full `SupportedCommands` set:
