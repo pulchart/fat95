@@ -1018,15 +1018,21 @@ s_w8:
 ;         |                            (set when block size is not 2^n)
 ;         no
 ;         |
+;   NSD advertises a 64-bit command ?
+;         |
+;         +-- NSCMD_TD_READ64 --> NSCMD_TD_READ64 / NSCMD_TD_WRITE64
+;         |                       (any range)
+;         +-- TD_READ64 -------->  TD_READ64 / TD_WRITE64
+;         |                       (any range)
+;        none
+;         |
 ;   range > 4 GiB ? --- no ---> CMD_READ / CMD_WRITE
 ;         |
-;        yes
-;         |
-;   NSD advertises NSCMD_TD_READ64 ?
-;         |
-;         +-- yes --> NSCMD_TD_READ64 / NSCMD_TD_WRITE64
-;         |
-;         +-- no  --> TD_READ64 / TD_WRITE64
+;         +-- yes -----------> TD_READ64 / TD_WRITE64 (blind attempt)
+;
+; A detected 64-bit command wins over the range: it carries the same
+; request as CMD_READ/CMD_WRITE with a zero high offset, so nothing is
+; lost below 4 GiB.
 ;
 ; Runtime fallback (s_t2/s_t4): on IOERR_NOCMD (-3) the swath is retried
 ; with the next command down the ladder (see NextCmd):
@@ -1112,17 +1118,30 @@ s_fdone_dst:
 	CALLDOS	VFPrintf
 	lea	12(sp),sp
 s_fdone_done:
-	;request size and buffer memory type, so a transfer report always
-	;carries the two values MAXTRANSFER= and MEM= change
+	;bytes per request, so a transfer report carries the value
+	;MAXTRANSFER= changes. The memory type is named only when the user
+	;asked for one: the flags mean nothing to anybody else.
 	move.l	ConsoleO(a4),d1
-	beq.s	s_fdone_end
-	move.l	MemType(a4),-(sp)	;arg2: effective memory flags
+	beq.s	s_fdone_tail
+	move.l	ArgArray+60(a4),d0	;MEM= as typed, or NULL
+	beq.s	s_fdone_x1
+
+	move.l	d0,-(sp)		;arg2: the memory type asked for
+	move.l	BBufSize(a4),-(sp)	;arg1: bytes per request
+	lea	fu_xferm(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#8,sp
+	bra.s	s_fdone_tail
+s_fdone_x1:
 	move.l	BBufSize(a4),-(sp)	;arg1: bytes per request
 	lea	fu_xfer(pc),a0
 	move.l	a0,d2
 	move.l	sp,d3
 	CALLDOS	VFPrintf
-	addq.l	#8,sp
+	addq.l	#4,sp
+s_fdone_tail:
 
 	;source file that does not end on a Block boundary: secure that Block
 	;now, before anything is written (see PrepTail)
@@ -2104,26 +2123,31 @@ nc_scsi:
 PickCmd:
 	movem.l	d1-d3/a0,-(sp)
 	move.l	DV_IORequest(a3),d0
-	beq.s	pc_ok			;not a real device: DOS Read/Write
+	beq.w	pc_ok			;not a real device: DOS Read/Write
 	move.w	#CMD_READ,DV_ReadCmd(a3)
 	move.w	#CMD_WRITE,DV_WriteCmd(a3)
 	moveq.l	#0,d0
 	move.b	DV_ForceCmd(a3),d0
-	bne.s	pc_forced
+	bne.w	pc_forced
 
 	move.b	DV_CmdFlags(a3),d0
 	btst	#7,d0			;forced SCSI?
 	bne.s	pc_scsi
-	tst.b	d2
-	beq.s	pc_ok			;<=4G: keep CMD_READ/WRITE
 	btst	#2,d0			;NSCMD-TD64 advertised?
-	beq.s	pc_td64			;no -> classic TD64 default
-	move.w	#NSCMD_TD_READ64,DV_ReadCmd(a3)
-	move.w	#NSCMD_TD_WRITE64,DV_WriteCmd(a3)
-	bra.s	pc_ok
+	bne.s	pc_ns64			;then use it, whatever the range
+	btst	#3,d0			;classic TD64 advertised?
+	bne.s	pc_td64			;same, whatever the range
+
+	tst.b	d2
+	beq.s	pc_ok			;no 64-bit command: the range decides,
+					;<=4G stays on CMD_READ/CMD_WRITE
 pc_td64:
 	move.w	#TD_READ64,DV_ReadCmd(a3)
 	move.w	#TD_WRITE64,DV_WriteCmd(a3)
+	bra.s	pc_ok
+pc_ns64:
+	move.w	#NSCMD_TD_READ64,DV_ReadCmd(a3)
+	move.w	#NSCMD_TD_WRITE64,DV_WriteCmd(a3)
 	bra.s	pc_ok
 pc_scsi:
 	move.w	#HD_SCSICMD,DV_ReadCmd(a3)
@@ -2459,39 +2483,46 @@ pi_walk:
 pi_after_nsd:
 	lea	SourceVec(a4),a3	;restore a3 (may have been used as iterator)
 
-	;for <=4 GiB: CMD_READ / CMD_WRITE
-	move.w	#CMD_WRITE,d0
-	bsr.w	CmdToStr
-	move.l	a0,-(sp)		;arg2: CMD_WRITE name
-	move.w	#CMD_READ,d0
-	bsr.w	CmdToStr
-	move.l	a0,-(sp)		;arg1: CMD_READ name
-	move.l	ConsoleO(a4),d1
-	lea	fi_lo(pc),a0
-	move.l	a0,d2
-	move.l	sp,d3
-	CALLDOS	VFPrintf
-	addq.l	#8,sp
-
-	;for >4 GiB: depends on CmdFlags bit 2
+	;which commands a transfer would use. A 64-bit command the driver
+	;offers is taken whatever the range, so without one the device's own
+	;size decides, which is what a whole-device transfer would hit.
 	move.b	DV_CmdFlags(a3),d0
 	btst	#2,d0
-	beq.s	pi_hi_td64
+	beq.s	pi_c_td64
 	move.w	#NSCMD_TD_WRITE64,d0
 	bsr.w	CmdToStr
-	move.l	a0,-(sp)
+	move.l	a0,-(sp)		;arg2: write command name
 	move.w	#NSCMD_TD_READ64,d0
-	bra.s	pi_hi_emit
-pi_hi_td64:
+	bra.s	pi_c_emit
+pi_c_td64:
+	btst	#3,d0
+	bne.s	pi_c_t64		;classic TD64 advertised
+
+	move.l	DV_BlockSize(a3),d0
+	bsr.w	Log2			;d0 = BlockShift
+	moveq.l	#32,d1
+	sub.l	d0,d1
+	move.l	DV_NumBlocks(a3),d0
+	beq.s	pi_c_cmd		;size unknown: assume it fits
+	subq.l	#1,d0
+	lsr.l	d1,d0			;last Block past 4 GiB ?
+	beq.s	pi_c_cmd
+pi_c_t64:
 	move.w	#TD_WRITE64,d0
 	bsr.w	CmdToStr
-	move.l	a0,-(sp)
+	move.l	a0,-(sp)		;arg2: write command name
 	move.w	#TD_READ64,d0
-pi_hi_emit:
+	bra.s	pi_c_emit
+pi_c_cmd:
+	move.w	#CMD_WRITE,d0
 	bsr.w	CmdToStr
-	move.l	a0,-(sp)
+	move.l	a0,-(sp)		;arg2: write command name
+	move.w	#CMD_READ,d0
+pi_c_emit:
+	bsr.w	CmdToStr
+	move.l	a0,-(sp)		;arg1: read command name
 	move.l	ConsoleO(a4),d1
-	lea	fi_hi(pc),a0
+	lea	fi_via(pc),a0
 	move.l	a0,d2
 	move.l	sp,d3
 	CALLDOS	VFPrintf
@@ -2519,11 +2550,11 @@ cn_cap_td64:	dc.b	'TD64',0
 cn_cap_scsi:	dc.b	'HD_SCSI',0
 cn_cap_none:	dc.b	'(none)',0
 fi_cmdline:	dc.b	'                  %s (%s)',13,10,0
-fi_lo:		dc.b	'  for <=4 GiB:    %s / %s',13,10,0
-fi_hi:		dc.b	'  for  >4 GiB:    %s / %s',13,10,0
+fi_via:		dc.b	'  read/write via: %s / %s',13,10,0
 fu_read:	dc.b	'read:  %s unit %ld via %s',13,10,0
 fu_write:	dc.b	'write: %s unit %ld via %s',13,10,0
-fu_xfer:	dc.b	'xfer:  %ld bytes per request, memory $%08lx',13,10,0
+fu_xfer:	dc.b	'xfer:  %ld bytes per request',13,10,0
+fu_xferm:	dc.b	'xfer:  %ld bytes per request, memory %s',13,10,0
 fu_tailk:	dc.b	'note: source file ends mid-block, keeping the %ld bytes already there',10,0
 fw_noadv:	dc.b	'dd: warning: %s unit %ld does not advertise %s',10,0
 fs_short:	dc.b	'  note: %s reported %ld of %ld bytes moved (shown once)',10,0
