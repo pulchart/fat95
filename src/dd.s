@@ -453,7 +453,14 @@ s_argclr:
 	move.l	ArgArray+56(a4),d0	;MAXTRANSFER (slot 14)
 	beq.s	s_argmt
 	move.l	d0,a0
-	move.l	(a0),MaxTransfer(a4)
+	move.l	(a0),d0
+	bne.s	s_argmt_set
+
+	moveq.l	#1,d0			;MT 0 is a typo, not "no limit": let it
+					;clamp to one Block like any other too
+					;small value, instead of meaning "unset"
+s_argmt_set:
+	move.l	d0,MaxTransfer(a4)
 s_argmt:
 
 	;INSPECT mode: probe a device, print capabilities, exit.
@@ -829,13 +836,12 @@ s_odone:
 ;- - get buffers  - - - - - - - - - - - - - - - - - - - - -
 
 s_buffers:
-	moveq.l	#2,d0
+	move.l	#$1fe00,d0		;255 Blocks
 	cmp.b	#2,FillFlag(a4)
 	bcs.s	s_b1
 
-	lsl.l	#3,d0
+	move.l	#1<<20,d0		;..1 Mbyte when benchmarking
 s_b1:
-	swap	d0			;128 kbyte, 1 Mbyte when benchmarking
 	move.l	MaxTransfer(a4),d1
 	beq.s	s_b3			;no MAXTRANSFER: keep the default
 	and.l	#$fffffe00,d1		;whole 512-byte units only..
@@ -1118,9 +1124,8 @@ s_fdone_dst:
 	CALLDOS	VFPrintf
 	lea	12(sp),sp
 s_fdone_done:
-	;bytes per request, so a transfer report carries the value
-	;MAXTRANSFER= changes. The memory type is named only when the user
-	;asked for one: the flags mean nothing to anybody else.
+	;bytes per request, the value MAXTRANSFER= changes. The memory type
+	;is named only when MEM= asked for one.
 	move.l	ConsoleO(a4),d1
 	beq.s	s_fdone_tail
 	move.l	ArgArray+60(a4),d0	;MEM= as typed, or NULL
@@ -1148,7 +1153,6 @@ s_fdone_tail:
 	bsr.w	PrepTail
 	tst.l	d0
 	bmi.w	s_closedev
-s_fdone_end:
 
 ;- - transfer data  - - - - - - - - - - - - - - - - - - - -
 
@@ -1438,6 +1442,8 @@ s_freemain:
 s_report:
 	tst.b	InspectFlag(a4)
 	bne.w	s_closedos		;INSPECT: skip transfer summary
+	tst.l	DoneBlocks(a4)
+	beq.w	s_closedos		;nothing moved: the error already said it
 	move.l	ConsoleO(a4),d1
 	beq.w	s_closedos
 
@@ -1987,8 +1993,8 @@ dx_end:
 ; When the source file ends inside its last Block, the bytes past its end
 ; belong to the destination, not to the file. Read that Block back now and
 ; keep it in TailBuf, so the short final read can put those bytes back
-; instead of zeroing them. Done up front on purpose: a destination that
-; cannot hand the Block over stops the transfer before it starts.
+; instead of zeroing them. It happens before the transfer starts, so a
+; destination that cannot return the Block stops it before any write.
 ; A file destination is created empty, so there is nothing to keep and the
 ; tail is zero-padded instead.
 ; d0 -> 0 = ok (nothing to do, or Block saved), -1 = give up
@@ -2180,9 +2186,9 @@ pc_err:
 	bra.s	pc_end
 
 ;--- warn about a forced command the driver does not offer --
-; The override stays in effect; this only keeps the IOERR_NOCMD that follows
-; from arriving out of nowhere. Silent when the device has no usable NSD,
-; because then dd has no capability list to judge against.
+; The override stays in effect; the warning only reports that the driver
+; does not list the command. Silent when the device has no usable NSD,
+; because then dd has no capability list to compare against.
 ; a3 <- &DevVec, d0 <- forced kind 1..4
 
 WarnForced:
@@ -2226,10 +2232,9 @@ wf_ret:
 	rts
 
 ;--- warn once about a short device transfer ---------------
-; A driver reporting fewer bytes than dd asked for is the signature of a
-; request that hit some driver-side maximum, so it is worth saying out loud.
-; dd carries on regardless, and the notice is printed only once so a driver
-; that never fills the field cannot flood the console.
+; A driver reporting fewer bytes than dd asked for hit some driver-side
+; maximum. dd carries on regardless, and the notice is printed only once so
+; a driver that never fills the field cannot flood the console.
 ; a3 <- &DevVec, d0 <- bytes reported, d1 <- bytes requested
 
 CheckActual:
@@ -2600,7 +2605,7 @@ HelpBanner:
 	dc.b	'  VERBOSE   With INSPECT: also list the full SupportedCommands set.',13,10
 	dc.b	'  CMD       Force the transfer command: AUTO|CMD|TD64|NSCMD|SCSI (default AUTO).',13,10
 	dc.b	'  CS, CD    Per-side CMD. Use when SRC and DST need different commands.',13,10
-	dc.b	'  MT        Bytes per device request (default 131072).',13,10
+	dc.b	'  MT        Bytes per device request (default 130560).',13,10
 	dc.b	'  MEM       Buffer memory: ANY|PUBLIC|CHIP|FAST|24BIT. Default is what',13,10
 	dc.b	'            the driver reports.',13,10,13,10
 	dc.b	'Examples:',13,10

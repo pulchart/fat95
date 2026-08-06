@@ -30,6 +30,25 @@ fat95 handler:
   requires ptable.library (bundled, install to LIBS:); explicit-geometry
   mountlist entries still mount without it.
 
+tools:
+
+dd 2.3:
+* A 64-bit transfer command (NSCMD_TD64 or TD64) is now used whenever
+  the driver advertises one, not only past 4 GiB.
+* New CMDSRC (CS=) and CMDDST (CD=) force the transfer command for one
+  side only; CMD still sets both. A forced command the driver does not
+  advertise is reported before the transfer starts, and an I/O error -3
+  points at dd INSPECT.
+* New MAXTRANSFER (MT=) sets the bytes per device request (default
+  130560), and MEM sets the buffer memory type
+  (ANY|PUBLIC|CHIP|FAST|24BIT).
+* INSPECT also reports buffer memory type, device type and geometry
+  flags, and names the command dd would use.
+* Fixed: a source file that is not a whole number of blocks lost its
+  last partial block.
+* Fixed: a bad buffer when a device does not report its geometry, and a
+  hang when the block size exceeds one request.
+
 Bundled:
 
 * ptable.library and lsptres are now included in the archive, shared with

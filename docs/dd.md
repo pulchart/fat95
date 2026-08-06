@@ -32,7 +32,7 @@ note: source file ends mid-block, keeping the 24 bytes already there
 
 The read-back happens before anything is written: if the destination cannot hand that block over, dd reports it and transfers nothing.
 
-A file destination takes any byte count, so there dd simply writes what the source had and the copy comes out the same size.
+A file destination takes any byte count, so there dd writes what the source had and the copy comes out the same size.
 
 ## INSPECT mode
 
@@ -79,7 +79,7 @@ The output covers:
 
 Every real transfer also prints a one-line "read: ... via <cmd>" and "write: ... via <cmd>" before the data loop starts, so you can confirm the dispatched command without re-running INSPECT, followed by an "xfer: ... bytes per request" line showing the request size in use, with the memory type named after it when `MEM=` asked for one. If a command is rejected mid-transfer, a "<cmd> not supported, falling back to <cmd>" line is printed and the swath is retried with the next command down the ladder.
 
-If a driver reports fewer bytes moved than dd asked for, dd prints "note: <device> reported N of M bytes moved" once and carries on. Not every driver fills that field in, so a `0 of M` note can also mean the driver simply left it at zero.
+If a driver reports fewer bytes moved than dd asked for, dd prints "note: <device> reported N of M bytes moved" once and carries on. Not every driver fills that field in, so a `0 of M` note can also mean the driver left it at zero.
 
 ## IO command selection
 
@@ -172,7 +172,7 @@ Note that `CMD`/`CMDSRC`/`CMDDST` only affect sides that are a real `.device`. A
 
 ## Transfer size and buffer memory
 
-dd moves data in swaths, one device request per swath. By default a swath is 131072 bytes (1 MB for the `RSPEED:`/`RWSPEED:` benchmarks), allocated from `MEMF_PUBLIC` plus whatever memory type the driver asked for through `dg_BufMemType`. Both are adjustable:
+dd moves data in swaths, one device request per swath. By default a swath is 130560 bytes (1 MB for the `RSPEED:`/`RWSPEED:` benchmarks), allocated from `MEMF_PUBLIC` plus whatever memory type the driver asked for through `dg_BufMemType`. Both are adjustable:
 
 | Argument | Meaning |
 |---|---|
@@ -180,7 +180,7 @@ dd moves data in swaths, one device request per swath. By default a swath is 131
 | `MEM=<type>` | Buffer memory: `ANY`, `PUBLIC`, `CHIP`, `FAST` or `24BIT`. Replaces the driver-reported type instead of adding to it; `MEMF_PUBLIC` is always included. |
 
 ```
-dd RAM:image scsi.device 0 MT 65024
+dd RAM:image scsi.device 0 MT 262144
 dd RAM:image scsi.device 0 MT 65024 MEM 24BIT
 ```
 
