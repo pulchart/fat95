@@ -334,8 +334,10 @@ QueryResult	= -220			;16-byte NSDeviceQueryResult buffer
 StringBuf	= -732
 MaxTransfer	= -736			;MAXTRANSFER= bytes per request, 0 = default
 MemType		= -740			;MEM= buffer memory flags, 0 = derive from geometry
-ArgArray	= -804			;16 longs for ReadArgs (zeroed before call)
-Vars_Sizeof	= -804
+TailBytes	= -744			;odd bytes in the source file's last Block, 0 = none
+TailBuf		= -748			;that Block as read back from the destination, or 0
+ArgArray	= -812			;16 longs for ReadArgs (zeroed before call)
+Vars_Sizeof	= -812
 
 ;--- +++ TEST +++ TEST +++ ---------------------------------
 
@@ -423,6 +425,8 @@ s_help_done:
 	clr.l	RDArgs(a4)
 	clr.l	MaxTransfer(a4)		;below the s_nullvars range, clear by hand
 	clr.l	MemType(a4)
+	clr.l	TailBytes(a4)
+	clr.l	TailBuf(a4)
 	lea	ArgArray(a4),a0
 	moveq.l	#15,d0			;ArgArray has 16 slots
 s_argclr:
@@ -962,12 +966,24 @@ s_w6:
 	move.l	FIB_Size(a0),d0
 	move.l	d0,FileSize(a4)
 	move.l	BlockSize(a4),d1
-	bsr.w	UDivMod32
+	bsr.w	UDivMod32		;d0 = whole Blocks, d1 = odd tail bytes
+	move.l	d1,d2			;d2 free again (was the ExamineFH FIB)
+	beq.s	s_w6_whole
+
+	addq.l	#1,d0			;a Block device takes whole Blocks only,
+					;so round up and pad the last one
+s_w6_whole:
 	move.l	NumBlocks(a4),d1
 	cmp.l	d1,d0
-	bcc.s	s_w7
+	bcc.s	s_w6_cnt		;count stops at or before the file
 
 	move.l	d0,NumBlocks(a4)	;limit to file size
+	move.l	d0,d1
+s_w6_cnt:
+	cmp.l	d1,d0			;does the transfer end on the odd Block?
+	bne.s	s_w7
+
+	move.l	d2,TailBytes(a4)	;then remember its tail
 s_w7:
 	cmp.b	#2,FillFlag(a4)
 	bcs.s	s_w8			;when benchmarking..
@@ -1107,6 +1123,12 @@ s_fdone_done:
 	move.l	sp,d3
 	CALLDOS	VFPrintf
 	addq.l	#8,sp
+
+	;source file that does not end on a Block boundary: secure that Block
+	;now, before anything is written (see PrepTail)
+	bsr.w	PrepTail
+	tst.l	d0
+	bmi.w	s_closedev
 s_fdone_end:
 
 ;- - transfer data  - - - - - - - - - - - - - - - - - - - -
@@ -1159,72 +1181,44 @@ s_t1:
 	cmp.l	d0,d3
 	beq.w	s_t3
 
+	;short read: the file ended inside the last Block (see s_w6). Fill the
+	;rest of that Block with what PrepTail read off the destination, so
+	;only the part the file covers changes. Anything else is a real error.
+	tst.l	d0
+	bmi.s	s_treadio		;-1 = DOS error
+	move.l	d3,d1
+	sub.l	d0,d1			;d1 = missing bytes
+	cmp.l	BlockSize(a4),d1
+	bcc.s	s_treadio		;short by a whole Block or more
+	tst.l	TailBytes(a4)
+	beq.s	s_treadio		;file was a whole number of Blocks
+	tst.l	TailBuf(a4)
+	beq.s	s_tshort		;no Block to put back: see below
+
+	move.l	d2,a0
+	add.l	d0,a0			;end of the file data in the buffer
+	move.l	TailBuf(a4),a1
+	add.l	BlockSize(a4),a1
+	sub.l	d1,a1			;same offset inside the saved Block
+s_tkeep:
+	move.b	(a1)+,(a0)+
+	subq.l	#1,d1
+	bgt.s	s_tkeep
+	bra.w	s_t3
+s_tshort:
+	;destination is a file, which takes any byte count, so hand it just
+	;the bytes the file had and keep the copy the same size
+	move.l	d0,d3
+	bra.w	s_t3
+s_treadio:
 	CALLDOS	IoErr
 	bra.w	s_treaderr
 s_t2:
-	move.l	SourceVec+DV_IORequest(a4),a1
-	move.w	SourceVec+DV_ReadCmd(a4),d0
-	cmp.w	#HD_SCSICMD,d0
-	beq.s	s_ts2
-
-	move.w	d0,IO_Command(a1)	;CMD_READ or NSCMD_TD_READ64
-	move.l	d2,IO_Data(a1)
-	move.l	d3,IO_Length(a1)
-	move.l	d4,d0			;block #
-	rol.l	d7,d0			;rotate byte-offset high bits into low
-	moveq.l	#0,d1
-	bset	d7,d1
-	subq.l	#1,d1			;d1 = BlockMask = (1<<BlockShift)-1
-	and.l	d0,d1			;d1 = high 32 bits of byte offset
-	move.l	d1,IO_Actual(a1)	;TD64 HighOffset (0 for CMD_READ)
-	eor.l	d1,d0			;d0 = low 32 bits
-	move.l	d0,IO_Offset(a1)
-	bsr.w	SafeDoIO
+	move.w	DV_ReadCmd(a3),d0	;a3 = SourceVec
+	moveq.l	#SCSIF_READ,d1
+	bsr.w	DevXfer
 	tst.b	d0
 	bne.w	s_t2err
-
-	move.l	DV_IORequest(a3),a1	;a3 = SourceVec, a1 clobbered by DoIO
-	move.l	IO_Actual(a1),d0
-	move.l	d3,d1
-	bsr.w	CheckActual
-	bra.s	s_t3
-s_ts2:
-	move.w	#HD_SCSICMD,IO_Command(a1)
-	moveq.l	#SCSI_Sizeof,d0
-	move.l	d0,IO_Length(a1)
-	lea	IO_SCSI(a1),a0
-	move.l	a0,IO_Data(a1)
-	move.l	d2,(a0)+		;SCSI_Data = &dest
-	move.l	d3,(a0)+		;SCSI_Length
-	clr.l	(a0)+			;SCSI_Actual
-	moveq.l	#IO_SCommand,d1
-	add.l	a1,d1
-	move.l	d1,(a0)+		;SCSI_Command
-	move.w	#10,(a0)+		;SCSI_CmdLength
-	clr.w	(a0)+			;SCSI_CmdActual
-	move.b	#SCSIF_READ,(a0)+	;SCSI_Flags
-	clr.b	(a0)+			;SCSI_Status
-	clr.l	(a0)+			;SCSI_SenseData
-	clr.w	(a0)+			;SCSI_SenseLength
-	clr.w	(a0)			;SCSI_SenseActual
-	move.l	d1,a0
-	move.b	#READ10,(a0)+		;command line
-	clr.b	(a0)+
-	move.l	d4,(a0)+
-	clr.b	(a0)+
-	rol.w	#8,d5
-	move.b	d5,(a0)+
-	rol.w	#8,d5
-	move.b	d5,(a0)+
-	clr.b	(a0)
-	bsr.w	SafeDoIO
-	tst.b	d0
-	bne.w	s_t2err
-
-	move.l	DV_IORequest(a3),a1	;a3 = SourceVec, a1 clobbered by DoIO
-	move.l	IO_SCSI+SCSI_Actual(a1),d0
-	move.l	d3,d1
-	bsr.w	CheckActual
 s_t3:
 	lea	StringBuf(a4),a0
 	move.l	TimerDevice(a4),a6
@@ -1247,69 +1241,11 @@ s_t3:
 	CALLDOS	IoErr
 	bra.w	s_twriteerr
 s_t4:
-	move.l	DestVec+DV_IORequest(a4),a1
-	move.w	DestVec+DV_WriteCmd(a4),d0
-	cmp.w	#HD_SCSICMD,d0
-	beq.s	s_ts4
-
-	move.w	d0,IO_Command(a1)	;CMD_WRITE or NSCMD_TD_WRITE64
-	move.l	d2,IO_Data(a1)
-	move.l	d3,IO_Length(a1)
-	move.l	d4,d0			;block #
-	rol.l	d7,d0
-	moveq.l	#0,d1
-	bset	d7,d1
-	subq.l	#1,d1			;d1 = BlockMask = (1<<BlockShift)-1
-	and.l	d0,d1			;d1 = high 32 bits of byte offset
-	move.l	d1,IO_Actual(a1)	;TD64 HighOffset (0 for CMD_WRITE)
-	eor.l	d1,d0			;d0 = low 32 bits
-	move.l	d0,IO_Offset(a1)
-	bsr.w	SafeDoIO
+	move.w	DV_WriteCmd(a3),d0	;a3 = DestVec
+	moveq.l	#SCSIF_WRITE,d1
+	bsr.w	DevXfer
 	tst.b	d0
 	bne.w	s_t4err
-
-	move.l	DV_IORequest(a3),a1	;a3 = DestVec, a1 clobbered by DoIO
-	move.l	IO_Actual(a1),d0
-	move.l	d3,d1
-	bsr.w	CheckActual
-	bra.s	s_t5
-s_ts4:
-	move.w	#HD_SCSICMD,IO_Command(a1)
-	moveq.l	#SCSI_Sizeof,d0
-	move.l	d0,IO_Length(a1)
-	lea	IO_SCSI(a1),a0
-	move.l	a0,IO_Data(a1)
-	move.l	d2,(a0)+		;SCSI_Data = &source
-	move.l	d3,(a0)+		;SCSI_Length
-	clr.l	(a0)+			;SCSI_Actual
-	moveq.l	#IO_SCommand,d1
-	add.l	a1,d1
-	move.l	d1,(a0)+		;SCSI_Command
-	move.w	#10,(a0)+		;SCSI_CmdLength
-	clr.w	(a0)+			;SCSI_CmdActual
-	move.b	#SCSIF_WRITE,(a0)+	;SCSI_Flags
-	clr.b	(a0)+			;SCSI_Status
-	clr.l	(a0)+			;SCSI_SenseData
-	clr.w	(a0)+			;SCSI_SenseLength
-	clr.w	(a0)			;SCSI_SenseActual
-	move.l	d1,a0
-	move.b	#WRITE10,(a0)+		;command line
-	clr.b	(a0)+
-	move.l	d4,(a0)+
-	clr.b	(a0)+
-	rol.w	#8,d5
-	move.b	d5,(a0)+
-	rol.w	#8,d5
-	move.b	d5,(a0)+
-	clr.b	(a0)
-	bsr.w	SafeDoIO
-	tst.b	d0
-	bne.w	s_t4err
-
-	move.l	DV_IORequest(a3),a1	;a3 = DestVec, a1 clobbered by DoIO
-	move.l	IO_SCSI+SCSI_Actual(a1),d0
-	move.l	d3,d1
-	bsr.w	CheckActual
 s_t5:
 	lea	StringBuf(a4),a0
 	move.l	TimerDevice(a4),a6
@@ -1466,6 +1402,14 @@ s_cnext:
 ;- - free buffer  - - - - - - - - - - - - - - - - - - - - -
 
 s_freebuf:
+	move.l	TailBuf(a4),d1
+	beq.s	s_freemain
+
+	move.l	d1,a1
+	move.l	BlockSize(a4),d0
+	CALLEXEC FreeMem
+	clr.l	TailBuf(a4)
+s_freemain:
 	move.l	BBufSize(a4),d0
 	move.l	BlockBuffer(a4),a1
 	CALLEXEC FreeMem
@@ -1933,6 +1877,195 @@ wth_dig:
 HexBuf:	dc.b	0,0,0,0,0,0		;"$XXXX",0
 	even
 
+;--- one device transfer -----------------------------------
+; Drives both halves of a swath and the last-Block read-back in PrepTail.
+; The command word picks the shape: HD_SCSICMD builds a 10-byte READ10 or
+; WRITE10 CDB, everything else is a plain byte-offset request carrying the
+; TD64 high longword in io_Actual (0 for CMD_READ/CMD_WRITE).
+; a3 <- &DevVec, d0 <- command, d1 <- SCSIF_READ or SCSIF_WRITE
+; d2 <- buffer, d3 <- byte count, d4 <- first Block, d7 <- BlockShift
+; d0 -> io_Error (0 = ok); all other registers preserved
+
+DevXfer:
+	movem.l	d1-d3/a0-a1,-(sp)
+	move.l	DV_IORequest(a3),a1
+	cmp.w	#HD_SCSICMD,d0
+	beq.s	dx_scsi
+
+	move.w	d0,IO_Command(a1)	;CMD_READ/WRITE or a TD64 command
+	move.l	d2,IO_Data(a1)
+	move.l	d3,IO_Length(a1)
+	move.l	d4,d0			;block #
+	rol.l	d7,d0			;rotate byte-offset high bits into low
+	moveq.l	#0,d1
+	bset	d7,d1
+	subq.l	#1,d1			;d1 = BlockMask = (1<<BlockShift)-1
+	and.l	d0,d1			;d1 = high 32 bits of byte offset
+	move.l	d1,IO_Actual(a1)	;TD64 HighOffset
+	eor.l	d1,d0			;d0 = low 32 bits
+	move.l	d0,IO_Offset(a1)
+	bsr.w	SafeDoIO
+	tst.b	d0
+	bne.s	dx_end
+
+	move.l	DV_IORequest(a3),a1	;a1 clobbered by DoIO
+	move.l	IO_Actual(a1),d0
+	bra.s	dx_actual
+dx_scsi:
+	move.w	#HD_SCSICMD,IO_Command(a1)
+	moveq.l	#SCSI_Sizeof,d0
+	move.l	d0,IO_Length(a1)
+	lea	IO_SCSI(a1),a0
+	move.l	a0,IO_Data(a1)
+	move.l	d2,(a0)+		;SCSI_Data
+	move.l	d3,(a0)+		;SCSI_Length
+	clr.l	(a0)+			;SCSI_Actual
+	moveq.l	#IO_SCommand,d0
+	add.l	a1,d0
+	move.l	d0,(a0)+		;SCSI_Command
+	move.w	#10,(a0)+		;SCSI_CmdLength
+	clr.w	(a0)+			;SCSI_CmdActual
+	move.b	d1,(a0)+		;SCSI_Flags
+	clr.b	(a0)+			;SCSI_Status
+	clr.l	(a0)+			;SCSI_SenseData
+	clr.w	(a0)+			;SCSI_SenseLength
+	clr.w	(a0)			;SCSI_SenseActual
+	move.l	d0,a0			;command line
+	moveq.l	#WRITE10,d0
+	tst.b	d1			;SCSIF_READ = 1, SCSIF_WRITE = 0
+	beq.s	dx_op
+
+	moveq.l	#READ10,d0
+dx_op:
+	move.b	d0,(a0)+
+	clr.b	(a0)+
+	move.l	d4,(a0)+		;LBA
+	clr.b	(a0)+
+	move.l	d3,d0			;divide, not shift: a Block size that is
+	move.l	BlockSize(a4),d1	;not 2^n is what forces SCSI in the
+	bsr.w	UDivMod32		;first place (see s_w5)
+	move.w	d0,d1			;d0 = Blocks in this request
+	rol.w	#8,d1
+	move.b	d1,(a0)+
+	rol.w	#8,d1
+	move.b	d1,(a0)+
+	clr.b	(a0)
+	bsr.w	SafeDoIO
+	tst.b	d0
+	bne.s	dx_end
+
+	move.l	DV_IORequest(a3),a1
+	move.l	IO_SCSI+SCSI_Actual(a1),d0
+dx_actual:
+	move.l	d3,d1
+	bsr.w	CheckActual		;warn once on a short transfer
+	moveq.l	#0,d0
+dx_end:
+	movem.l	(sp)+,d1-d3/a0-a1
+	rts
+
+;--- secure the last Block before writing anything ---------
+; When the source file ends inside its last Block, the bytes past its end
+; belong to the destination, not to the file. Read that Block back now and
+; keep it in TailBuf, so the short final read can put those bytes back
+; instead of zeroing them. Done up front on purpose: a destination that
+; cannot hand the Block over stops the transfer before it starts.
+; A file destination is created empty, so there is nothing to keep and the
+; tail is zero-padded instead.
+; d0 -> 0 = ok (nothing to do, or Block saved), -1 = give up
+
+PrepTail:
+	movem.l	d1-d7/a0-a3,-(sp)
+	move.l	TailBytes(a4),d0
+	beq.w	pt_ok			;file ends on a Block boundary
+	move.l	DestVec+DV_IORequest(a4),d0
+	beq.w	pt_ok			;a file takes the odd byte count as it is
+
+	move.l	BlockSize(a4),d0
+	move.l	MemType(a4),d1		;same memory type as the main buffer
+	CALLEXEC AllocMem
+	move.l	d0,TailBuf(a4)
+	beq.w	pt_fail			;out of memory: silent, as elsewhere
+
+	move.l	d0,d2			;buffer
+	move.l	BlockSize(a4),d3	;one Block
+	move.l	StartBlock(a4),d4
+	add.l	NumBlocks(a4),d4
+	subq.l	#1,d4			;last Block of the transfer
+	move.w	BlockShift(a4),d7
+	lea	DestVec(a4),a3
+	move.w	DV_WriteCmd(a3),d0
+	bsr.w	WrToRdCmd
+	move.w	d0,d5			;d5 = command to try
+pt_try:
+	move.w	d5,d0
+	moveq.l	#SCSIF_READ,d1
+	bsr.w	DevXfer
+	tst.b	d0
+	beq.s	pt_note			;got it
+
+	move.l	d0,d6			;keep the error for the report
+	cmp.l	#IOERR_NOCMD,d0
+	bne.s	pt_report
+	move.w	d5,d0
+	bsr.w	NextCmd			;step down the ladder, quietly
+	beq.s	pt_report
+
+	move.w	d0,d5
+	bra.s	pt_try
+pt_report:
+	move.l	ConsoleO(a4),d1
+	beq.s	pt_fail
+	move.l	d6,-(sp)		;arg2: error code
+	move.l	DV_Name(a3),-(sp)	;arg1: device name
+	lea	fe_tailrd(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#8,sp
+pt_fail:
+	movem.l	(sp)+,d1-d7/a0-a3
+	moveq.l	#-1,d0
+	rts
+pt_note:
+	;the Block is secured: say how much of it the file does not cover
+	move.l	ConsoleO(a4),d1
+	beq.s	pt_ok
+	move.l	BlockSize(a4),d0
+	sub.l	TailBytes(a4),d0
+	move.l	d0,-(sp)		;arg1: bytes kept as they were
+	lea	fu_tailk(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
+pt_ok:
+	movem.l	(sp)+,d1-d7/a0-a3
+	moveq.l	#0,d0
+	rts
+
+;--- write command -> its read counterpart -----------------
+; Used for the last-Block read-back: the write command is the one the
+; destination is known to take, so read with its opposite number.
+; d0 <-> command word (HD_SCSICMD and anything else unchanged)
+
+WrToRdCmd:
+	cmp.w	#NSCMD_TD_WRITE64,d0
+	bne.s	w2r_1
+	move.w	#NSCMD_TD_READ64,d0
+	rts
+w2r_1:
+	cmp.w	#TD_WRITE64,d0
+	bne.s	w2r_2
+	move.w	#TD_READ64,d0
+	rts
+w2r_2:
+	cmp.w	#CMD_WRITE,d0
+	bne.s	w2r_end
+	move.w	#CMD_READ,d0
+w2r_end:
+	rts
+
 ;--- next fallback command ---------------------------------
 ; Steps a >4 GiB read/write command down the support ladder when a device
 ; rejects it with IOERR_NOCMD. CMD_READ/WRITE and HD_SCSICMD have no
@@ -2391,6 +2524,7 @@ fi_hi:		dc.b	'  for  >4 GiB:    %s / %s',13,10,0
 fu_read:	dc.b	'read:  %s unit %ld via %s',13,10,0
 fu_write:	dc.b	'write: %s unit %ld via %s',13,10,0
 fu_xfer:	dc.b	'xfer:  %ld bytes per request, memory $%08lx',13,10,0
+fu_tailk:	dc.b	'note: source file ends mid-block, keeping the %ld bytes already there',10,0
 fw_noadv:	dc.b	'dd: warning: %s unit %ld does not advertise %s',10,0
 fs_short:	dc.b	'  note: %s reported %ld of %ld bytes moved (shown once)',10,0
 fo_nofile:	dc.b	'could not open file "%s".',10,0
@@ -2400,6 +2534,8 @@ fw_sizewarn:	dc.b	'WARNING: device reports a different block size (%ld)',10
 ft_progress:	dc.b	'%ld',13,0
 fe_read:	dc.b	'%s read error (%ld).',10,0
 fe_write:	dc.b	'%s write error (%ld).',10,0
+fe_tailrd:	dc.b	'dd: cannot read back the last block of %s (%ld).',10
+		dc.b	'  It is only partly covered by the file; nothing was written.',10,0
 fe_nocmd:	dc.b	'  -3 means the driver does not implement that command. Run',10
 		dc.b	'  "dd INSPECT %s UNIT %ld VERBOSE" to see what it offers, then',10
 		dc.b	'  pick CMD, CMDSRC or CMDDST to match (or leave it on AUTO).',10,0
