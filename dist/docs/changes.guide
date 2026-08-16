@@ -70,27 +70,25 @@
 
   * @{fg shine}ptable.library@{fg text} and @{fg shine}lsptres@{fg text} are now bundled in the archive, shared with the
     CompactFlash driver. @{fg shine}lsptres@{fg text} lists @{fg shine}partition.resource@{fg text} .
-
-@{b}dd 2.3@{ub}
-
-  * A 64-bit transfer command ( @{fg shine}NSCMD_TD64@{fg text} , or classic @{fg shine}TD64@{fg text} ) is now used
-    whenever the driver advertises one, not only past 4 GiB.
-  * New @{fg shine}CMDSRC@{fg text} ( @{fg shine}CS=@{fg text} ) and @{fg shine}CMDDST@{fg text} ( @{fg shine}CD=@{fg text} ) force the transfer command for one side
-    only. @{fg shine}CMD@{fg text} still sets both sides. Only a real @{fg shine}.device@{fg text} side is affected.
-  * A forced command the driver does not advertise is now reported before the
-    transfer, together with the methods the device does offer. An I/O error @{fg shine}-3@{fg text}
-    points at @{fg shine}dd INSPECT@{fg text} .
-  * New @{fg shine}MAXTRANSFER@{fg text} (@{fg shine}MT=@{fg text}) sets the bytes per device request (default 130560).
-  * New @{fg shine}MEM@{fg text} sets the buffer memory type ( @{fg shine}ANY|PUBLIC|CHIP|FAST|24BIT@{fg text} ), instead of
-    the type the driver reports.
-  * Every transfer prints an @{fg shine}xfer:@{fg text} line with the bytes per request in use.
-  * @{fg shine}INSPECT@{fg text} also reports the buffer memory type and the device type.
-  * A driver reporting fewer bytes moved than requested is reported once per
-    transfer.
-  * Fixed: a source file that is not a whole number of blocks lost its last
-    partial block.
-  * Fixed: a bad buffer when a device does not report its geometry.
-  * Fixed: a hang when the block size exceeds one request.
+  * @{b}dd 2.3@{ub}
+    * A 64-bit transfer command ( @{fg shine}NSCMD_TD64@{fg text} , or classic @{fg shine}TD64@{fg text} ) is now used
+      whenever the driver advertises one, not only past 4 GiB.
+    * New @{fg shine}CMDSRC@{fg text} ( @{fg shine}CS=@{fg text} ) and @{fg shine}CMDDST@{fg text} ( @{fg shine}CD=@{fg text} ) force the transfer command for one
+      side only. @{fg shine}CMD@{fg text} still sets both sides. Only a real @{fg shine}.device@{fg text} side is affected.
+    * A forced command the driver does not advertise is now reported before the
+      transfer, together with the methods the device does offer. An I/O error @{fg shine}-3@{fg text}
+      points at @{fg shine}dd INSPECT@{fg text} .
+    * New @{fg shine}MAXTRANSFER@{fg text} (@{fg shine}MT=@{fg text}) sets the bytes per device request (default 130560).
+    * New @{fg shine}MEM@{fg text} sets the buffer memory type ( @{fg shine}ANY|PUBLIC|CHIP|FAST|24BIT@{fg text} ), instead
+      of the type the driver reports.
+    * Every transfer prints an @{fg shine}xfer:@{fg text} line with the bytes per request in use.
+    * @{fg shine}INSPECT@{fg text} also reports the buffer memory type and the device type.
+    * A driver reporting fewer bytes moved than requested is reported once per
+      transfer.
+    * Fixed: a source file that is not a whole number of blocks lost its last
+      partial block.
+    * Fixed: a bad buffer when a device does not report its geometry.
+    * Fixed: a hang when the block size exceeds one request.
 
 ----------------------------------------
 @{"<< Prev" link Main}  @{"Contents" link Main}  @{"Next >>" link 20260614}
