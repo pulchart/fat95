@@ -2286,6 +2286,151 @@ pf_ret:
 	movem.l	(sp)+,d0-d7/a0-a6
 	rts
 
+;--- print the device type by name -------------------------
+; The driver reports a SCSI-2 device class and a flag byte; print both in
+; words. A class with no name prints as its number, a flag bit with no
+; name is appended raw.
+; d0 <- dg_DeviceType, d1 <- dg_Flags
+
+pi_devtype:
+	movem.l	d0-d7/a0-a2,-(sp)
+	move.l	d0,d5			;d5 = device class
+	move.l	d1,d6			;d6 = flags
+	move.l	ConsoleO(a4),d1
+	beq.w	pdt_end
+	lea	fi_dtlbl(pc),a0		;label, no newline
+	move.l	a0,d2
+	moveq.l	#0,d3
+	CALLDOS	VFPrintf
+	moveq.l	#0,d4			;0 = nothing printed yet
+	lea	DevTypeTab(pc),a1
+pdt_scan:
+	move.b	(a1)+,d0		;class ($ff = end of table)
+	cmp.b	#$ff,d0
+	beq.s	pdt_num
+	cmp.b	d5,d0
+	beq.s	pdt_name
+pdt_skip:
+	tst.b	(a1)+			;step over this name
+	bne.s	pdt_skip
+	bra.s	pdt_scan
+pdt_name:
+	move.l	a1,a0
+	bsr.w	pim_tok
+	bra.s	pdt_flags
+pdt_num:
+	move.l	d5,-(sp)		;arg1: the class as it came
+	move.l	ConsoleO(a4),d1
+	lea	fi_dtnum(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
+	moveq.l	#1,d4
+pdt_flags:
+	btst	#0,d6			;DGF_REMOVABLE
+	beq.s	pdt_rest
+	lea	cn_dt_remove(pc),a0
+	bsr.w	pim_tok
+pdt_rest:
+	move.l	d6,d0
+	and.l	#$fe,d0			;flag bits with no name
+	beq.s	pdt_nl
+	move.l	d6,-(sp)		;arg1: the flags as they came
+	move.l	ConsoleO(a4),d1
+	lea	fi_dtraw(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
+pdt_nl:
+	move.l	ConsoleO(a4),d1
+	lea	fi_meth_nl(pc),a0
+	move.l	a0,d2
+	moveq.l	#0,d3
+	CALLDOS	VFPrintf
+pdt_end:
+	movem.l	(sp)+,d0-d7/a0-a2
+	rts
+
+; SCSI-2 device classes, see NDK devices/trackdisk.h
+DevTypeTab:
+	dc.b	0,'direct access',0
+	dc.b	1,'sequential access',0
+	dc.b	2,'printer',0
+	dc.b	3,'processor',0
+	dc.b	4,'WORM',0
+	dc.b	5,'CD-ROM',0
+	dc.b	6,'scanner',0
+	dc.b	7,'optical disk',0
+	dc.b	8,'medium changer',0
+	dc.b	9,'communication',0
+	dc.b	31,'unknown',0
+	dc.b	$ff
+	even
+
+;--- print the buffer memory type by name ------------------
+; The driver hands over a MEMF_ mask; print it in the words MEM= takes.
+; Bits with no name are appended raw so nothing is hidden.
+; d0 <- memory flags
+
+pi_memtype:
+	movem.l	d0-d5/a0-a2,-(sp)
+	move.l	ConsoleO(a4),d1
+	beq.w	pmt_end
+	move.l	d0,d5			;d5 = the flags
+	lea	fi_memlbl(pc),a0	;label, no newline
+	move.l	a0,d2
+	moveq.l	#0,d3
+	CALLDOS	VFPrintf
+	moveq.l	#0,d4			;0 = nothing printed yet
+	btst	#0,d5			;MEMF_PUBLIC
+	beq.s	pmt_1
+	lea	cn_mem_pub(pc),a0
+	bsr.w	pim_tok
+pmt_1:
+	btst	#1,d5			;MEMF_CHIP
+	beq.s	pmt_2
+	lea	cn_mem_chip(pc),a0
+	bsr.w	pim_tok
+pmt_2:
+	btst	#2,d5			;MEMF_FAST
+	beq.s	pmt_3
+	lea	cn_mem_fast(pc),a0
+	bsr.w	pim_tok
+pmt_3:
+	btst	#9,d5			;MEMF_24BITDMA
+	beq.s	pmt_4
+	lea	cn_mem_24bit(pc),a0
+	bsr.w	pim_tok
+pmt_4:
+	tst.b	d4
+	bne.s	pmt_rest
+
+	lea	cn_mem_any(pc),a0	;no bit set at all
+	bsr.w	pim_tok
+pmt_rest:
+	move.l	d5,d0
+	and.l	#$fffffdf8,d0		;anything outside PUBLIC/CHIP/FAST/24BIT
+	beq.s	pmt_nl
+
+	move.l	d5,-(sp)		;arg1: the mask as it came
+	move.l	ConsoleO(a4),d1
+	lea	fi_memraw(pc),a0
+	move.l	a0,d2
+	move.l	sp,d3
+	CALLDOS	VFPrintf
+	addq.l	#4,sp
+pmt_nl:
+	move.l	ConsoleO(a4),d1
+	lea	fi_meth_nl(pc),a0
+	move.l	a0,d2
+	moveq.l	#0,d3
+	CALLDOS	VFPrintf
+pmt_end:
+	movem.l	(sp)+,d0-d5/a0-a2
+	rts
+
 ;--- print ">4GiB methods:" capability summary -------------
 ; Reads DV_CmdFlags(a3) (a3 = SourceVec) and lists the advertised
 ; >4 GiB-capable commands, comma-separated, or "(none)".
@@ -2426,27 +2571,15 @@ PrintInspect:
 	addq.l	#4,sp
 
 	;buffer memory type the driver asks for (MEM= overrides it)
-	move.l	DriveGeometry+DG_BufMemType(a4),-(sp)
-	move.l	ConsoleO(a4),d1
-	lea	fi_memt(pc),a0
-	move.l	a0,d2
-	move.l	sp,d3
-	CALLDOS	VFPrintf
-	addq.l	#4,sp
+	move.l	DriveGeometry+DG_BufMemType(a4),d0
+	bsr.w	pi_memtype
 
-	;device type and geometry flags
-	moveq.l	#0,d0
-	move.b	DriveGeometry+DG_Flags(a4),d0
-	move.l	d0,-(sp)		;arg2: flags
+	;what the driver says the device is
 	moveq.l	#0,d0
 	move.b	DriveGeometry+DG_DeviceType(a4),d0
-	move.l	d0,-(sp)		;arg1: device type
-	move.l	ConsoleO(a4),d1
-	lea	fi_dtype(pc),a0
-	move.l	a0,d2
-	move.l	sp,d3
-	CALLDOS	VFPrintf
-	addq.l	#8,sp
+	moveq.l	#0,d1
+	move.b	DriveGeometry+DG_Flags(a4),d1
+	bsr.w	pi_devtype
 
 	;NSD present? if not, show nothing here: the "for >4 GiB:" line
 	;below still reveals the command dd would use.
@@ -2543,8 +2676,17 @@ fi_total:	dc.b	'  total sectors:  %ld',13,10,0
 fi_cyl:		dc.b	'  cylinders:      %ld',13,10,0
 fi_heads:	dc.b	'  heads:          %ld',13,10,0
 fi_spt:		dc.b	'  sec/track:      %ld',13,10,0
-fi_memt:	dc.b	'  buf mem type:   $%08lx',13,10,0
-fi_dtype:	dc.b	'  device type:    %ld, flags: $%02lx',13,10,0
+fi_dtlbl:	dc.b	'  device type:    ',0
+fi_dtnum:	dc.b	'%ld',0
+fi_dtraw:	dc.b	' ($%02lx)',0
+cn_dt_remove:	dc.b	'removable',0
+fi_memlbl:	dc.b	'  buf mem type:   ',0
+fi_memraw:	dc.b	' ($%08lx)',0
+cn_mem_pub:	dc.b	'PUBLIC',0
+cn_mem_chip:	dc.b	'CHIP',0
+cn_mem_fast:	dc.b	'FAST',0
+cn_mem_24bit:	dc.b	'24BIT',0
+cn_mem_any:	dc.b	'ANY',0
 fi_cmds:	dc.b	'  commands:',13,10,0
 fi_meth_lbl:	dc.b	'  >4GiB methods:  ',0
 fi_meth_t1:	dc.b	'%s',0

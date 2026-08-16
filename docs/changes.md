@@ -1,4 +1,4 @@
-## 20260730-dev
+## 20260816-dev
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
@@ -32,7 +32,7 @@ _Components in this release_:
 - New `MAXTRANSFER` (`MT=`) sets the bytes per device request (default 130560).
 - New `MEM` sets the buffer memory type (`ANY|PUBLIC|CHIP|FAST|24BIT`), instead of the type the driver reports.
 - Every transfer prints an `xfer:` line with the bytes per request in use.
-- `INSPECT` also reports buffer memory type, device type and geometry flags.
+- `INSPECT` also reports the buffer memory type and the device type.
 - A driver reporting fewer bytes moved than requested is reported once per transfer.
 - Fixed: a source file that is not a whole number of blocks lost its last partial block.
 - Fixed: a bad buffer when a device does not report its geometry.
