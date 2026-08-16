@@ -23,20 +23,18 @@ _Components in this release_:
 #### Tools
 
 - `ptable.library` and `lsptres` are now bundled in the archive, shared with the CompactFlash driver. `lsptres` lists `partition.resource`.
-
-#### dd 2.3
-
-- A 64-bit transfer command (`NSCMD_TD64`, or classic `TD64`) is now used whenever the driver advertises one, not only past 4 GiB.
-- New `CMDSRC` (`CS=`) and `CMDDST` (`CD=`) force the transfer command for one side only. `CMD` still sets both sides. Only a real `.device` side is affected.
-- A forced command the driver does not advertise is now reported before the transfer, together with the methods the device does offer. An I/O error `-3` points at `dd INSPECT`.
-- New `MAXTRANSFER` (`MT=`) sets the bytes per device request (default 130560).
-- New `MEM` sets the buffer memory type (`ANY|PUBLIC|CHIP|FAST|24BIT`), instead of the type the driver reports.
-- Every transfer prints an `xfer:` line with the bytes per request in use.
-- `INSPECT` also reports the buffer memory type and the device type.
-- A driver reporting fewer bytes moved than requested is reported once per transfer.
-- Fixed: a source file that is not a whole number of blocks lost its last partial block.
-- Fixed: a bad buffer when a device does not report its geometry.
-- Fixed: a hang when the block size exceeds one request.
+- **dd 2.3**
+  - A 64-bit transfer command (`NSCMD_TD64`, or classic `TD64`) is now used whenever the driver advertises one, not only past 4 GiB.
+  - New `CMDSRC` (`CS=`) and `CMDDST` (`CD=`) force the transfer command for one side only. `CMD` still sets both sides. Only a real `.device` side is affected.
+  - A forced command the driver does not advertise is now reported before the transfer, together with the methods the device does offer. An I/O error `-3` points at `dd INSPECT`.
+  - New `MAXTRANSFER` (`MT=`) sets the bytes per device request (default 130560).
+  - New `MEM` sets the buffer memory type (`ANY|PUBLIC|CHIP|FAST|24BIT`), instead of the type the driver reports.
+  - Every transfer prints an `xfer:` line with the bytes per request in use.
+  - `INSPECT` also reports the buffer memory type and the device type.
+  - A driver reporting fewer bytes moved than requested is reported once per transfer.
+  - Fixed: a source file that is not a whole number of blocks lost its last partial block.
+  - Fixed: a bad buffer when a device does not report its geometry.
+  - Fixed: a hang when the block size exceeds one request.
 
 ## 20260614
 
