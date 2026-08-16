@@ -52,8 +52,8 @@ scsi.device unit 0:
   cylinders:      31076
   heads:          4
   sec/track:      63
-  buf mem type:   $00000001
-  device type:    0, flags: $00
+  buf mem type:   PUBLIC
+  device type:    direct access
   >4GiB methods:  NSCMD_TD64, TD64, HD_SCSI
   commands:
                   $0002 (CMD_READ)
@@ -73,7 +73,8 @@ scsi.device unit 0:
 The output covers:
 
 - Sector size, total sectors, CHS geometry (cylinders/heads/sec-per-track).
-- `buf mem type:` is the memory type the driver asks its buffers to live in (`TD_GETGEOMETRY`'s `dg_BufMemType`), and `device type:` / `flags:` are the remaining geometry fields. `$00000001` is plain `MEMF_PUBLIC`, i.e. the driver states no DMA restriction. See [Transfer size and buffer memory](#transfer-size-and-buffer-memory).
+- `buf mem type:` is the memory the driver asks its buffers to live in, named the way `MEM=` takes it: `PUBLIC` for no restriction, `24BIT` when the buffer has to sit in the first 16 MB, `ANY` when the driver asks for nothing. See [Transfer size and buffer memory](#transfer-size-and-buffer-memory).
+- `device type:` is how the driver classifies the device: `direct access`, `CD-ROM`, `optical disk` and so on, followed by `removable` when the medium can be swapped. A class the driver invents prints as its number.
 - Transfer capabilities: a `>4GiB methods:` line summarises the large-transfer commands the device offers (`NSCMD_TD64`, `TD64`, `HD_SCSI`, or `(none)`), and with `VERBOSE` a `commands:` block lists its full command set. Each command is shown as its hex value and name, with `(unknown)` for any value dd doesn't recognise.
 - `read/write via:` is the command pair dd would use on this device. A 64-bit command the driver advertises is taken whatever the transfer size; when it advertises none, the line shows what a whole-device transfer would use. See [IO command selection](#io-command-selection).
 

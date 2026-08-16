@@ -42,8 +42,8 @@ dd 2.3:
 * New MAXTRANSFER (MT=) sets the bytes per device request (default
   130560), and MEM sets the buffer memory type
   (ANY|PUBLIC|CHIP|FAST|24BIT).
-* INSPECT also reports buffer memory type, device type and geometry
-  flags, and names the command dd would use.
+* INSPECT also reports the buffer memory type and the device type, and
+  names the command dd would use.
 * Fixed: a source file that is not a whole number of blocks lost its
   last partial block.
 * Fixed: a bad buffer when a device does not report its geometry, and a

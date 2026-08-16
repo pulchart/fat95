@@ -5,7 +5,7 @@
 
 # Release version: YYYYMMDD package date + optional in-progress suffix
 # (-dev, -rc1, ...). Empty suffix for a final release.
-RELEASE_DATE = 20260730
+RELEASE_DATE = 20260816
 VERSION_SUFFIX = -dev
 
 # fat95 filesystem handler version

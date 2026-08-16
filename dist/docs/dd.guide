@@ -119,8 +119,8 @@ Example output (@{fg shine}VERBOSE@{fg text}, so the command list is included):
     cylinders:      31076
     heads:          4
     sec/track:      63
-    buf mem type:   $00000001
-    device type:    0, flags: $00
+    buf mem type:   PUBLIC
+    device type:    direct access
     >4GiB methods:  NSCMD_TD64, TD64, HD_SCSI
     commands:
                     $0002 (CMD_READ)
@@ -140,10 +140,12 @@ Example output (@{fg shine}VERBOSE@{fg text}, so the command list is included):
 The output covers:
 
   * Sector size, total sectors, CHS geometry (cylinders/heads/sec-per-track).
-  * @{fg shine}buf mem type:@{fg text} is the memory type the driver asks its buffers to live in (
-    @{fg shine}TD_GETGEOMETRY@{fg text} 's @{fg shine}dg_BufMemType@{fg text} ), and @{fg shine}device type:@{fg text} / @{fg shine}flags:@{fg text} are the remaining
-    geometry fields. @{fg shine}$00000001@{fg text} is plain @{fg shine}MEMF_PUBLIC@{fg text} , i.e. the driver states no
-    DMA restriction. See @{"Transfer size and buffer memory" link transfer_size_and_buffer_memory} .
+  * @{fg shine}buf mem type:@{fg text} is the memory the driver asks its buffers to live in, named the
+    way @{fg shine}MEM=@{fg text} takes it: @{fg shine}PUBLIC@{fg text} for no restriction, @{fg shine}24BIT@{fg text} when the buffer has to sit
+    in the first 16 MB, @{fg shine}ANY@{fg text} when the driver asks for nothing. See @{"Transfer size and buffer memory" link transfer_size_and_buffer_memory} .
+  * @{fg shine}device type:@{fg text} is how the driver classifies the device: @{fg shine}direct access@{fg text} , @{fg shine}CD-ROM@{fg text} ,
+    @{fg shine}optical disk@{fg text} and so on, followed by @{fg shine}removable@{fg text} when the medium can be swapped.
+    A class the driver invents prints as its number.
   * Transfer capabilities: a @{fg shine}>4GiB methods:@{fg text} line summarises the large-transfer
     commands the device offers ( @{fg shine}NSCMD_TD64@{fg text} , @{fg shine}TD64@{fg text} , @{fg shine}HD_SCSI@{fg text} , or @{fg shine}(none)@{fg text} ), and
     with @{fg shine}VERBOSE@{fg text} a @{fg shine}commands:@{fg text} block lists its full command set. Each command is
