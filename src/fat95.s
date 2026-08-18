@@ -1863,6 +1863,7 @@ Action1026:
 	lsl.l	#2,d1
 	move.l	d1,a0			;&FileHandle
 	move.l	d0,FH_Arg1(a0)
+	addq.l	#1,NumLocks(a4)		;1 more lock (freed again by ACTION_END)
 	move.l	d2,-(sp)
 	bsr	FreeLock		;..free FileLock
 	addq.w	#4,sp
@@ -7306,6 +7307,7 @@ oxl_start:
 	bne.s	oxl_1
 
 	move.l	RootXLock(a4),d0
+	beq.s	oxl_nodisk		;no medium: there is no root dir
 	move.l	d0,a0
 oxl_1:
 	tst.w	XL_OpenCnt(a0)
@@ -7325,6 +7327,10 @@ oxl_open:
 
 oxl_force:				;open exclusive XLock..
 	subq.w	#1,XL_OpenCnt(a0)	;..multiple times internally
+	bra.s	oxl_end
+
+oxl_nodisk:				;d0 is the zero RootXLock
+	move.w	#226,ErrorNum(a4)	;no disk inserted
 	bra.s	oxl_end
 
 ;--- get parent dir XLock ----------------------------------
