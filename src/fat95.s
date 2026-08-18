@@ -1692,6 +1692,9 @@ Action31:
 	tst.l	DP_Arg1(a2)
 	beq.s	a31_unlock
 
+	tst.w	PleaseUnmount(a4)
+	bne.s	a31_nodisk		;shutting down: no new inhibit
+
 	addq.w	#1,InhibitNest(a4)
 	bsr	CloseDisk
 	move.l	#ID_BUSY,DiskType(a4)
@@ -1710,6 +1713,11 @@ a33_reset:
 	clr.w	InhibitNest(a4)
 a33_end:
 	moveq.l	#TRUE,d0
+	bra.w	s_return
+
+a31_nodisk:
+	move.w	#226,ErrorNum(a4)	;no disk inserted
+	moveq.l	#FALSE,d0
 	bra.w	s_return
 
 ;--- ACTION_SET_DATE ---------------------------------------
@@ -2030,6 +2038,9 @@ IntCode:
 
 NewLock:
 	move.l	a2,-(sp)
+	tst.w	PleaseUnmount(a4)
+	bne.s	nl_nodisk		;shutting down: no new locks
+
 	moveq.l	#FL_Sizeof,d0
 	bsr	AllocSegment
 	move.l	d0,a2			;&FileLock..
@@ -2062,6 +2073,13 @@ nl_error:
 	move.l	8(sp),a1
 	bsr	CloseXLock		;free object on error
 	move.w	#103,ErrorNum(a4)
+	bra.s	nl_end
+
+nl_nodisk:
+	sub.l	a2,a2			;no FileLock
+	move.l	8(sp),a1
+	bsr	CloseXLock		;give the object back
+	move.w	#226,ErrorNum(a4)	;no disk inserted
 	bra.s	nl_end
 
 ;--- remove FileLock from list and free --------------------
@@ -2399,7 +2417,10 @@ cd_sleep:
 ;--- read disk info ----------------------------------------
 
 IdentifyDisk:
-	clr.w	DiskChanged(a4)
+	clr.w	DiskChanged(a4)		;must stay first: we get called again
+	tst.w	PleaseUnmount(a4)
+	bne.s	idd_end			;shutting down: never mount again
+
 	moveq.l	#-2,d0			;maybe except "motor off"..
 	and.w	NewFlags(a4),d0
 	beq.s	idd_doit		;..everything was already done
