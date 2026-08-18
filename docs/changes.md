@@ -1,16 +1,16 @@
-## 20260816-dev
+## 20260818-dev
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
 
-- `fat95 4.0-dev (30.07.2026)` _(new)_
+- `fat95 4.0-dev (18.08.2026)` _(new)_
 - `install95 3.19 (25.01.2026)`
 - `dd 2.3 (16.08.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
 - `lsfsres 1.0 (16.05.2026)`
-- `ptable.library 2.0-dev (17.08.2026)` _(new)_
+- `ptable.library 2.0-dev (18.08.2026)` _(new)_
 - `lsptres 1.0-dev (30.07.2026)` _(new)_
 <!-- COMPONENTS:END -->
 
@@ -18,23 +18,24 @@ _Components in this release_:
 #### fat95 handler
 
 - **New `q` (quiet) option.** Control `"+q"` silences all fat95 error windows for a mount (errors go to the calling program instead). Unmounting a removed card now cancels any open window automatically.
-- **Shared partition scanning.** fat95 auto-detects its FAT partition (MBR, GPT, and flat whole-disk FAT) from the shared `partition.resource` published by `ptable.library`, the same scan used by `compactflash.device`, instead of scanning the partition table itself. The resolved mount Flags/CONTROL are reported and shown by `lsptres`. Auto-detect now requires `ptable.library` (bundled, install to `LIBS:`); explicit-geometry mountlist entries still mount without it. See [ptable.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/ptable.md) and [lsptres.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/lsptres.md).
+- **Shared partition scanning.** fat95 auto-detects its FAT partition (MBR, GPT, and flat whole-disk FAT) from the shared `partition.resource` published by `ptable.library`, the same scan used by `compactflash.device`, instead of scanning the partition table itself. The resolved mount Flags/CONTROL are reported and shown by `lsptres`. Auto-detect now requires `ptable.library` (bundled, install to `LIBS:`); explicit-geometry mountlist entries still mount without it. See [ptable.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/ptable.md) and [lsptres.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/lsptres.md). The `ptable.library` and `lsptres` are now bundled in the archive, shared with the CompactFlash driver. `lsptres` lists `partition.resource`.
+- Pulling a card while a Workbench window or an open file still holds the volume no longer stalls the driver: fat95 declines to quit at once and stays in service, so the partition is kept and the card mounts again when reinserted.
+- Fixed: duplicating the ZERO lock with no card inserted could crash.
 
 #### Tools
 
-- `ptable.library` and `lsptres` are now bundled in the archive, shared with the CompactFlash driver. `lsptres` lists `partition.resource`.
-- **dd 2.3**
-  - A 64-bit transfer command (`NSCMD_TD64`, or classic `TD64`) is now used whenever the driver advertises one, not only past 4 GiB.
-  - New `CMDSRC` (`CS=`) and `CMDDST` (`CD=`) force the transfer command for one side only. `CMD` still sets both sides. Only a real `.device` side is affected.
-  - A forced command the driver does not advertise is now reported before the transfer, together with the methods the device does offer. An I/O error `-3` points at `dd INSPECT`.
-  - New `MAXTRANSFER` (`MT=`) sets the bytes per device request (default 130560).
-  - New `MEM` sets the buffer memory type (`ANY|PUBLIC|CHIP|FAST|24BIT`), instead of the type the driver reports.
-  - Every transfer prints an `xfer:` line with the bytes per request in use.
-  - `INSPECT` also reports the buffer memory type and the device type.
-  - A driver reporting fewer bytes moved than requested is reported once per transfer.
-  - Fixed: a source file that is not a whole number of blocks lost its last partial block.
-  - Fixed: a bad buffer when a device does not report its geometry.
-  - Fixed: a hang when the block size exceeds one request.
+#### dd 2.3
+- A 64-bit transfer command (`NSCMD_TD64`, or classic `TD64`) is now used whenever the driver advertises one, not only past 4 GiB.
+- New `CMDSRC` (`CS=`) and `CMDDST` (`CD=`) force the transfer command for one side only. `CMD` still sets both sides. Only a real `.device` side is affected.
+- A forced command the driver does not advertise is now reported before the transfer, together with the methods the device does offer. An I/O error `-3` points at `dd INSPECT`.
+- New `MAXTRANSFER` (`MT=`) sets the bytes per device request (default 130560).
+- New `MEM` sets the buffer memory type (`ANY|PUBLIC|CHIP|FAST|24BIT`), instead of the type the driver reports.
+- Every transfer prints an `xfer:` line with the bytes per request in use.
+- `INSPECT` also reports the buffer memory type and the device type.
+- A driver reporting fewer bytes moved than requested is reported once per transfer.
+- Fixed: a source file that is not a whole number of blocks lost its last partial block.
+- Fixed: a bad buffer when a device does not report its geometry.
+- Fixed: a hang when the block size exceeds one request.
 
 ## 20260614
 

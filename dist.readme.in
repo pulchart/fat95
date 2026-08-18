@@ -30,6 +30,13 @@ fat95 handler:
   requires ptable.library (bundled, install to LIBS:); explicit-geometry
   mountlist entries still mount without it.
 
+* Pulling a card while a Workbench window or an open file still holds
+  the volume no longer stalls the driver: fat95 declines to quit at once
+  and stays in service, so the partition is kept and the card mounts
+  again when reinserted.
+
+* Fixed: duplicating the ZERO lock with no card inserted could crash.
+
 tools:
 
 dd 2.3:
