@@ -1264,15 +1264,21 @@ s_4:
 	tst.w	PleaseUnmount(a4)
 	beq.w	s_wait			;no unmount requested
 
-	tst.l	NumLocks(a4)
-	bne.w	s_wait			;we are still referenced
-
 	tst.w	PhysFlags(a4)
-	beq.s	s_5
+	beq.s	s_4a
 
+;-- detach the volume before waiting for the last lock: Workbench
+;   only drops the locks we are waiting for once the disk is gone
+;   from the DOS list and DISKREMOVED has been reported
 	bsr	CloseDisk		;unmount
 	bsr	DoTimer
 	bra.w	s_wait
+s_4a:
+	tst.l	NumLocks(a4)
+	beq.s	s_5			;nothing left: settle, then exit
+
+	bsr	DoTimer			;keep the settle window armed
+	bra.w	s_wait			;still referenced, keep serving
 s_5:
 	move.l	TimeRequest(a4),a1
 	CALLEXEC CheckIO
@@ -1393,7 +1399,24 @@ s_tab:
 ;--- ACTION_DIE --------------------------------------------
 
 Action5:
-	move.w	#1,PleaseUnmount(a4)
+	tst.w	PleaseUnmount(a4)
+	bne.s	a5_ack			;asked twice: the answer stands
+
+	tst.w	InhibitNest(a4)
+	bne.s	a5_busy			;somebody owns the raw device
+
+	tst.l	NumLocks(a4)
+	bne.s	a5_busy			;clients still hold the volume: we cannot
+					; give up its node, so we cannot leave
+
+	move.w	#1,PleaseUnmount(a4)	;enter the shutdown state
+a5_ack:
+	moveq.l	#TRUE,d0
+	move.l	d0,DP_Res2(a2)		;~0: termination is possible
+	bra.w	s_return
+
+a5_busy:
+	move.w	#202,ErrorNum(a4)	;object in use
 	moveq.l	#FALSE,d0
 	bra.w	s_return
 
