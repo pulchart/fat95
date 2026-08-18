@@ -189,6 +189,7 @@ Available options:
 | `q` | Quiet: never open error requesters (read/write/reinsert windows); errors are reported to the caller instead. Recommended for hot-plugged removable media | OFF |
 
 Regardless of `q`, no requester is opened once the handler has been asked to quit (`ACTION_DIE`), so an unmount can never stall behind a window.
+Asked to quit (`ACTION_DIE`), the handler declines while a lock or an open file still holds the volume, or while it is inhibited, and stays in service; a locked volume cannot be given up because its node has to stay in the DOS list for the lock to remain valid. With nothing holding it, it releases the volume and exits.
 
 ### Startup Options
 
