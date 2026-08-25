@@ -5703,7 +5703,7 @@ svp_pfail:
 ;      / DeviceNode set)
 ;===========================================================
 PublishViaPtable:
-	movem.l	d0-d4/a0-a3/a6,-(sp)	;save working registers
+	movem.l	d0-d5/a0-a3/a6,-(sp)	;save working registers
 	bsr	_OpenPtable		;open ptable.library (ROM bootstrap if needed)
 	move.l	d0,a3			;a3 = ptable.library base
 	beq.w	pvp_done
@@ -5732,13 +5732,14 @@ pvp_overlay:
 	move.l	DeviceFlags(a4),d3	;flags we opened the device with
 	move.l	EnvecBuf+DE_Control(a4),d4	;de_Control BPTR (0 = none)
 	lsl.l	#2,d4			;-> APTR to control BSTR
+	move.l	DosType(a4),d5		;the DosType this mount really carries
 	move.l	a3,a6			;a6 = ptable base (a3 kept for CloseLibrary)
 	jsr	_LVORegisterPartition(a6)
 pvp_close:
 	move.l	a3,a1
 	CALLEXEC CloseLibrary
 pvp_done:
-	movem.l	(sp)+,d0-d4/a0-a3/a6
+	movem.l	(sp)+,d0-d5/a0-a3/a6
 	rts
 
 ;===========================================================
