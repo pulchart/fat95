@@ -1,9 +1,9 @@
-## 20260818-dev
+## 20260825-dev
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
 
-- `fat95 4.0-dev (18.08.2026)` _(new)_
+- `fat95 4.0-dev (25.08.2026)` _(new)_
 - `install95 3.19 (25.01.2026)`
 - `dd 2.3 (16.08.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
@@ -18,7 +18,7 @@ _Components in this release_:
 #### fat95 handler
 
 - **New `q` (quiet) option.** Control `"+q"` silences all fat95 error windows for a mount (errors go to the calling program instead). Unmounting a removed card now cancels any open window automatically.
-- **Shared partition scanning.** fat95 auto-detects its FAT partition (MBR, GPT, and flat whole-disk FAT) from the shared `partition.resource` published by `ptable.library`, the same scan used by `compactflash.device`, instead of scanning the partition table itself. The resolved mount Flags/CONTROL are reported and shown by `lsptres`. Auto-detect now requires `ptable.library` (bundled, install to `LIBS:`); explicit-geometry mountlist entries still mount without it. See [ptable.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/ptable.md) and [lsptres.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/lsptres.md). The `ptable.library` and `lsptres` are now bundled in the archive, shared with the CompactFlash driver. `lsptres` lists `partition.resource`.
+- **Shared partition scanning.** fat95 auto-detects its FAT partition (MBR, GPT, and flat whole-disk FAT) from the shared `partition.resource` published by `ptable.library`, the same scan used by `compactflash.device`, instead of scanning the partition table itself. The resolved mount Flags/CONTROL and the DosType the mount carries are reported and shown by `lsptres`. Auto-detect now requires `ptable.library` (bundled, install to `LIBS:`); explicit-geometry mountlist entries still mount without it. See [ptable.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/ptable.md) and [lsptres.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/lsptres.md). The `ptable.library` and `lsptres` are now bundled in the archive, shared with the CompactFlash driver. `lsptres` lists `partition.resource`.
 - Pulling a card while a Workbench window or an open file still holds the volume no longer stalls the driver: fat95 declines to quit at once and stays in service, so the partition is kept and the card mounts again when reinserted.
 - Fixed: duplicating the ZERO lock with no card inserted could crash.
 
