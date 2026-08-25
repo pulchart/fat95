@@ -50,8 +50,8 @@
   * @{fg shine}SetFileSize 1.1 (25.01.2026)@{fg text}
   * @{fg shine}boot95 3.19 (25.01.2026)@{fg text}
   * @{fg shine}lsfsres 1.0 (16.05.2026)@{fg text}
-  * @{fg shine}ptable.library 2.0-dev (18.08.2026)@{fg text} @{i}(new)@{ui}
-  * @{fg shine}lsptres 1.0-dev (30.07.2026)@{fg text} @{i}(new)@{ui}
+  * @{fg shine}ptable.library 2.0-dev (25.08.2026)@{fg text} @{i}(new)@{ui}
+  * @{fg shine}lsptres 1.0-dev (25.08.2026)@{fg text} @{i}(new)@{ui}
 
 @{b}fat95 handler@{ub}
 
