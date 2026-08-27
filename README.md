@@ -229,8 +229,8 @@ The partition selector is the last byte of the DosType. The device name can be a
 | FAT\2 | 0x46415402 | Second FAT partition |
 | FAT\3 | 0x46415403 | Third FAT partition |
 | FAT\4 | 0x46415404 | Fourth FAT partition |
-| FAT\5 | 0x46415405 | First logical drive (extended partition) |
-| FAT\6 | 0x46415406 | Second logical drive, etc. |
+| FAT\5 | 0x46415405 | Fifth FAT partition (GPT only; MBR yields at most four) |
+| FAT\6 | 0x46415406 | Sixth FAT partition, etc. |
 
 *Option B: device name suffix*
 
@@ -261,7 +261,7 @@ For MBR disks, fat95 recognizes these partition types:
 | 0x0B | FAT32 |
 | 0x0C | FAT32, LBA |
 | 0x0E | FAT16, LBA |
-| 0x05, 0x0F | Extended partition (for logical partitions) |
+| 0x05, 0x0F | Extended partitions are not followed; logical drives inside them are not found |
 
 For GPT disks, fat95 considers only partition entries whose **type GUID** is one of the following:
 
