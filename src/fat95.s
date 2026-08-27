@@ -5757,20 +5757,17 @@ svp_passend:
 ;   The gate is overridden two ways, both at the user's own risk
 ;   (concurrent writes corrupt the FAT): an entry stamped PEB_MOUNTUSED
 ;   (the mount consumer's policy), or this mountlist's own "m" Control
-;   option. PartClaimed = 2 then skips the RegisterPartition overlay,
-;   so the resource keeps the owner's registration intact.
+;   option. Such a claim registers normally; ptable records it as an
+;   extra-mount row of its own, never overlaying the owner's row.
 	btst	#PEB_MOUNTED,PENT_Flags(a5)
 	beq.s	svp_free
 	move.l	PENT_DevNode(a5),d0
 	cmp.l	DeviceNode(a4),d0
 	beq.s	svp_free
 	btst	#PEB_MOUNTUSED,PENT_Flags(a5)
-	bne.s	svp_used
+	bne.s	svp_free
 	btst	#5,CmdFlags(a4)		;word bit 13 = "m" option
-	beq.s	svp_deny
-svp_used:
-	move.w	#2,PartClaimed(a4)
-	bra.s	svp_free
+	bne.s	svp_free
 svp_deny:
 	move.w	#1,PartClaimed(a4)
 	bra.s	svp_pfail2
@@ -5816,12 +5813,9 @@ PublishViaPtable:
 	move.l	UnitNumber(a4),d0
 	jsr	_LVOScanPartitions(a6)
 pvp_overlay:
-;-- a claim through PEB_MOUNTUSED does not overlay the owner's
-;   registration: the resource keeps the original handler's identity
-;   (ptable would refuse the overlay anyway)
-	cmp.w	#2,PartClaimed(a4)
-	beq.s	pvp_close
 ;-- overlay the served volume with its real DOS name + mounted state
+;   (a claim over another handler's partition gets its own extra-mount
+;   row from ptable, the owner's row is never overlaid)
 	move.l	DeviceNode(a4),d0	;our DOS DeviceNode
 	beq.s	pvp_close		;no node -> skip
 	move.l	d0,a2			;a2 = devNode

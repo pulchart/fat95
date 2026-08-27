@@ -408,7 +408,8 @@ A partition another handler already serves is refused on the auto-detect
 path: the mount fails and accesses report @{fg shine}object is in use@{fg text} (error 202)
 instead of starting a second handler on the same volume, which corrupts
 it on write. The @{fg shine}m@{fg text} option overrides the refusal for its own mountlist;
-@{fg shine}partition.resource@{fg text} keeps the original handler's registration either way.
+the extra mount is then listed as its own @{fg shine}partition.resource@{fg text} row next to
+the owner's.
 
 Regardless of @{fg shine}q@{fg text} , no requester is opened once the handler has been asked
 to quit ( @{fg shine}ACTION_DIE@{fg text} ), so an unmount can never stall behind a window.
