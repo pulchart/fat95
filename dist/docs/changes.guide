@@ -80,6 +80,13 @@
     work, a write corrupts the volume.
   * The @{fg shine}d@{fg text} (datestamps as file comments) and @{fg shine}D@{fg text} (record last-accessed date) Control
     options now default to off. @{fg shine}Control = "+d+D"@{fg text} restores the previous behaviour.
+  * An accepted @{fg shine}ACTION_DIE@{fg text} (e.g. @{fg shine}MOUNT <dev>: SHUTDOWN@{fg text} ) unhooks the device node
+    before replying and carries no error code; @{fg shine}C:Mount@{fg text} , which verifies the
+    shutdown by re-reading the node, no longer prints a misleading @{fg shine}object in use@{fg text}
+    for a successful one.
+  * On a voluntary exit the handler unregisters its mount from @{fg shine}partition.resource@{fg text}
+    , so the partition is free again (for the automount, or a fresh @{fg shine}Mount@{fg text} )
+    instead of staying claimed by a dead handler.
   * Fixed: duplicating the ZERO lock with no card inserted could crash.
 
 @{b}Tools@{ub}

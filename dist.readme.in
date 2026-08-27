@@ -47,6 +47,12 @@ fat95 handler:
   date) options now default to off; Control "+d+D" restores the
   previous behaviour.
 
+* An accepted ACTION_DIE (e.g. MOUNT <dev>: SHUTDOWN) unhooks the
+  device node before replying, so C:Mount no longer prints a misleading
+  "object in use" for a successful shutdown; the handler also
+  unregisters its mount from partition.resource on the way out, so the
+  partition is free again instead of staying claimed by a dead handler.
+
 * Fixed: duplicating the ZERO lock with no card inserted could crash.
 
 tools:
