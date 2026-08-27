@@ -45,7 +45,7 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 * User definable language and code page
 * Date range Jan 1st, 1980 through Dec 31st, 2107
 * Extended datestamp support: creation date and time, last accessed date
-  (written automatically, readable as file comment text)
+  (readable as file comment text; off by default, Control `"+d+D"` enables)
 * Volume serial number as name for unnamed volumes
 * Automatic directory optimization
 * Written entirely in assembly language
@@ -182,8 +182,8 @@ Available options:
 | `+` | Turn ON the following options | - |
 | `-` | Turn OFF the following options | - |
 | `s` | Force direct SCSI reads/writes (for >4GB disks) | OFF |
-| `d` | Display extra datestamp info as file comments | ON |
-| `D` | Record "last accessed" date on file reads | ON |
+| `d` | Display extra datestamp info as file comments | OFF |
+| `D` | Record "last accessed" date on file reads | OFF |
 | `l` | Show 8.3 filenames lowercase (e.g., "test.txt") | OFF |
 | `L` | Show 8.3 filenames with uppercase initial (e.g., "Test.txt") | OFF |
 | `q` | Quiet: never open error requesters (read/write/reinsert windows); errors are reported to the caller instead. Recommended for hot-plugged removable media | OFF |

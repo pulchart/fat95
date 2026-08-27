@@ -41,6 +41,10 @@ fat95 handler:
   fails with "object in use" instead of putting two handlers on one
   volume, which corrupted it on write.
 
+* The "d" (datestamps as file comments) and "D" (record last-accessed
+  date) options now default to off; Control "+d+D" restores the
+  previous behaviour.
+
 * Fixed: duplicating the ZERO lock with no card inserted could crash.
 
 tools:
@@ -103,7 +107,7 @@ See fat95.guide for full documentation.
 * User definable language and code page
 * Date range Jan 1st, 1980 through Dec 31st, 2107
 * Extended datestamp support: creation date and time, last accessed date
-  (written automatically, readable as file comment text)
+  (readable as file comment text; off by default, Control "+d+D" enables)
 * Volume serial number as name for unnamed volumes
 * Automatic directory optimization
 * Written entirely in assembly language

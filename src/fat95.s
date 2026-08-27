@@ -3298,7 +3298,9 @@ OpenAll:
 	tst.b	PartitionSelector(a4)
 	seq	d0
 	and.w	#1,d0			;selector 0 (whole disk) = "use ETD"
-	or.w	#$0308,d0		;enable date features and TD_UPDATE
+	or.w	#$0008,d0		;enable TD_UPDATE; the date options
+					;(d/D) default off, Control "+d+D"
+					;turns them on
 	move.w	d0,CmdFlags(a4)
 	move.l	EnvecBuf+DE_Control(a4),d0
 	lsl.l	#2,d0

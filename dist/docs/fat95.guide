@@ -156,7 +156,7 @@ on Ko-fi (https://ko-fi.com/jaroslavpulchart).
   * User definable language and code page
   * Date range Jan 1st, 1980 through Dec 31st, 2107
   * Extended datestamp support: creation date and time, last accessed date
-  (written automatically, readable as file comment text)
+(readable as file comment text; off by default, Control @{fg shine}"+d+D"@{fg text} enables)
   * Volume serial number as name for unnamed volumes
   * Automatic directory optimization
   * Written entirely in assembly language
@@ -374,9 +374,9 @@ Available options:
   @{fg shine}s@{fg text}       Force direct SCSI         OFF      
           reads/writes (for >4GB             
           disks)                             
-  @{fg shine}d@{fg text}       Display extra datestamp   ON       
+  @{fg shine}d@{fg text}       Display extra datestamp   OFF      
           info as file comments              
-  @{fg shine}D@{fg text}       Record "last accessed"    ON       
+  @{fg shine}D@{fg text}       Record "last accessed"    OFF      
           date on file reads                 
   @{fg shine}l@{fg text}       Show 8.3 filenames        OFF      
           lowercase (e.g.,                   
