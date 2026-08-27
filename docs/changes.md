@@ -10,8 +10,8 @@ _Components in this release_:
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
 - `lsfsres 1.0 (16.05.2026)`
-- `ptable.library 2.0-dev (25.08.2026)` _(new)_
-- `lsptres 1.0-dev (25.08.2026)` _(new)_
+- `ptable.library 2.0-dev (27.08.2026)` _(new)_
+- `lsptres 1.0-dev (27.08.2026)` _(new)_
 <!-- COMPONENTS:END -->
 
 
