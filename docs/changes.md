@@ -22,6 +22,8 @@ _Components in this release_:
 - Pulling a card while a Workbench window or an open file still holds the volume no longer stalls the driver: fat95 declines to quit at once and stays in service, so the partition is kept and the card mounts again when reinserted.
 - A FAT partition already mounted by another handler is no longer claimed: mounting a second `DOSDrivers` entry over an automounted (or otherwise served) partition fails with `object in use` instead of putting two handlers on one volume, which corrupted it on write. A persistent handler reattaching to its own partition after a card swap is unaffected. The new `m` Control option overrides the refusal for its own mountlist, at your own risk: reads mostly work, a write corrupts the volume.
 - The `d` (datestamps as file comments) and `D` (record last-accessed date) Control options now default to off. `Control = "+d+D"` restores the previous behaviour.
+- An accepted `ACTION_DIE` (e.g. `MOUNT <dev>: SHUTDOWN`) unhooks the device node before replying and carries no error code; `C:Mount`, which verifies the shutdown by re-reading the node, no longer prints a misleading `object in use` for a successful one.
+- On a voluntary exit the handler unregisters its mount from `partition.resource`, so the partition is free again (for the automount, or a fresh `Mount`) instead of staying claimed by a dead handler.
 - Fixed: duplicating the ZERO lock with no card inserted could crash.
 
 #### Tools

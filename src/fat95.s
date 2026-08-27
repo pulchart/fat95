@@ -1300,11 +1300,16 @@ s_5:
 	bsr	_Permit			;we are not done...
 	bra.w	s_getmsg
 s_6:
+	tst.w	PleaseUnmount(a4)	;a DIE accept already unhooked the
+	bne.s	s_6p			;node (and a teardown may have freed
+					;an automount-built one by now)
 	move.l	DeviceNode(a4),a0
 	clr.l	DOL_Task(a0)		;unregister MsgPort
+s_6p:
 	bsr	_Permit
 	bsr	DiskRemChInt
 	bsr	CloseAll
+	bsr	UnregisterViaPtable	;voluntary exit: clear our mount overlay
 s_exit:
 	move.l	DosBase(a4),a1
 	CALLEXEC CloseLibrary
@@ -1414,9 +1419,21 @@ Action5:
 					; give up its node, so we cannot leave
 
 	move.w	#1,PleaseUnmount(a4)	;enter the shutdown state
+;-- unhook the node BEFORE replying: C:Mount SHUTDOWN verifies the
+;   shutdown by re-reading dol_Task right after the reply and reports
+;   "object in use" while the handler is still hooked (the FFS clears
+;   it on accept too). Packets already sent keep draining until the
+;   real exit; a new reference through the node starts a fresh handler,
+;   which is the intended restart-on-reference behaviour.
+	bsr	_Forbid
+	move.l	DeviceNode(a4),a0
+	clr.l	DOL_Task(a0)
+	bsr	_Permit
 a5_ack:
-	moveq.l	#TRUE,d0
-	move.l	d0,DP_Res2(a2)		;~0: termination is possible
+	moveq.l	#TRUE,d0		;Res1 = DOSTRUE; Res2 stays 0 (the
+					;packet default set at s_domsg) -
+					;callers read Res2 as an error code,
+					;C:Mount SHUTDOWN prints a nonzero one
 	bra.w	s_return
 
 a5_busy:
@@ -5592,6 +5609,7 @@ ibb_error:
 _LVOScanPartitions    = -36
 _LVORegisterPartition = -54
 _LVOMarkAbsent        = -60
+_LVOUnregisterPartition = -66
 
 ;-- partition.resource / PartEntry offsets, mirror of ptable_pub.i,
 ;   The resource ABI is append-only, fields are only ever added at the
@@ -5845,6 +5863,38 @@ MarkAbsentViaPtable:
 	move.l	a3,a1
 	CALLEXEC CloseLibrary
 mav_done:
+	movem.l	(sp)+,d0-d2/a0-a3/a6
+	rts
+
+;===========================================================
+; UnregisterViaPtable - on a voluntary exit (ACTION_DIE accepted),
+; clear this handler's mounted overlay in partition.resource so the
+; entry returns to published-only and the partition is the automount's
+; again. The library side only attempts the resource lock, so a
+; ptable-driven teardown (which frees the entry itself) is skipped,
+; never deadlocked. Silent no-op without ptable.library, without the
+; LVO (older library), or when we never registered.
+;===========================================================
+UnregisterViaPtable:
+	movem.l	d0-d2/a0-a3/a6,-(sp)
+	bsr	_OpenPtable		;open ptable.library (ROM bootstrap if needed)
+	move.l	d0,a3			;a3 = ptable.library base
+	tst.l	d0
+	beq.s	uvp_done
+	move.l	d0,a6
+	cmp.w	#-_LVOUnregisterPartition,16(a6)	;LIB_NegSize covers the LVO?
+	blo.s	uvp_close
+	move.l	DeviceNode(a4),d0
+	beq.s	uvp_close		;no node -> nothing registered
+	move.l	d0,a2			;devNode (the registrant identity)
+	move.l	DevName(a4),a1
+	move.l	UnitNumber(a4),d0
+	move.l	FirstBlock(a4),d1
+	jsr	_LVOUnregisterPartition(a6)
+uvp_close:
+	move.l	a3,a1
+	CALLEXEC CloseLibrary
+uvp_done:
 	movem.l	(sp)+,d0-d2/a0-a3/a6
 	rts
 
