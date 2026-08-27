@@ -110,7 +110,8 @@ ZCLRB	macro				;clear byte at \1; \2 = zero reg (ignored on 020+)
 ; When fat95 is baked into a Kickstart ROM, InitCode registers one
 ; FileSysEntry per FAT\<n> partition selector in FileSystem.resource so
 ; MountList entries with any of those DOS types match the ROM handler.
-; 0 = floppy, 1..4 = MBR primaries, 5..8 = logical/extended drives.
+; 0 = whole disk/floppy, 1..8 = Nth FAT partition on the medium
+; (ranked by partition.resource index; MBR yields at most four).
 FAT_MAX_REG_VARIANT	equ	8
 
 ; Device-name-suffix scheme. One DosType for every FAT mount; the
@@ -2420,6 +2421,9 @@ IdentifyDisk:
 	clr.w	DiskChanged(a4)		;must stay first: we get called again
 	tst.w	PleaseUnmount(a4)
 	bne.s	idd_end			;shutting down: never mount again
+	bsr	_sreq_diepend		;ACTION_DIE queued but not processed yet?
+	tst.w	d0			;mounting now would grab ptr_Lock, which
+	bne.s	idd_end			;the teardown sending the DIE holds
 
 	moveq.l	#-2,d0			;maybe except "motor off"..
 	and.w	NewFlags(a4),d0
@@ -3480,7 +3484,7 @@ SetPartSelector:
 	movem.l	d2-d4,-(sp)
 	move.l	DosType(a4),d0
 	cmp.l	#DEVICE_DOSTYPE_MARKER,d0
-	bne.s	sps_byte
+	bne.w	sps_byte
 
 	;device-name scheme: scan trailing decimal digits of the name
 	move.l	DeviceNode(a4),a0
@@ -3489,6 +3493,29 @@ SetPartSelector:
 	move.l	d0,a0			;&BSTR (length byte first)
 	moveq.l	#0,d1
 	move.b	(a0)+,d1		;d1 = name length
+;-- a register-time dedup suffix ".n" (name-clash uniquification) is not a
+;   partition selector: strip a trailing dot-digits group before scanning,
+;   or CFa0.1 would select the second partition instead of the first
+	moveq.l	#0,d4			;d4 = trailing digit count
+	lea	(a0,d1.l),a1		;a1 = one past the last char
+sps_sufscan:
+	cmp.l	d1,d4
+	bhs.s	sps_sufdone		;all digits -> no suffix
+	move.b	-(a1),d0
+	sub.b	#'0',d0
+	bcs.s	sps_sufchk
+	cmp.b	#9,d0
+	bhi.s	sps_sufchk
+	addq.l	#1,d4
+	bra.s	sps_sufscan
+sps_sufchk:
+	tst.l	d4
+	beq.s	sps_sufdone		;no digits at the end
+	cmp.b	#'.',(a1)
+	bne.s	sps_sufdone		;digits not preceded by a dot
+	sub.l	d4,d1			;drop ".<digits>"
+	subq.l	#1,d1
+sps_sufdone:
 	moveq.l	#0,d2			;accumulated trailing value
 	moveq.l	#0,d3			;1 once a digit has been seen
 sps_scan:
@@ -5631,6 +5658,10 @@ svp_layok:
 	bne.s	svp_haveS
 	moveq.l	#1,d2
 svp_haveS:
+;-- ptable's writers rewrite the list under ptr_Lock; a reader must walk it
+;   under Forbid (or take the lock), or a concurrent unmount frees entries
+;   under this walk. The winner's fields are copied before the Permit.
+	CALLEXEC Forbid
 ;-- pick the d2-th match (by pe_PartIndex ascending) for DevName+Unit
 	moveq.l	#-1,d3			;d3 = prevIdx
 	move.l	d2,d4			;d4 = passes remaining
@@ -5674,7 +5705,7 @@ svp_wnext:
 	bra.s	svp_walk
 svp_passend:
 	move.l	a5,d0
-	beq.s	svp_pfail		;fewer than d2 matches -> not found
+	beq.s	svp_pfail2		;fewer than d2 matches -> not found
 	move.l	d6,d3			;prevIdx = best idx
 	subq.l	#1,d4
 	bne.s	svp_kpass
@@ -5684,9 +5715,12 @@ svp_passend:
 	clr.l	HiddenBlocks(a4)
 	move.w	#2,FATType(a4)		;auto width (refined from the boot block)
 	move.w	d2,PartitionNum(a4)
+	CALLEXEC Permit
 	moveq.l	#1,d0
 	movem.l	(sp)+,d2-d6/a0-a3/a5-a6
 	rts
+svp_pfail2:
+	CALLEXEC Permit
 svp_pfail:
 	moveq.l	#0,d0
 	movem.l	(sp)+,d2-d6/a0-a3/a5-a6
@@ -5804,7 +5838,7 @@ PartResName2:
 
 GetDiskParams:
 	link.w	a5,#0			;no stack locals
-	movem.l	d2-d7/a2,-(sp)		;GPT path uses d5/d6/d7 too
+	movem.l	d2-d7/a2,-(sp)
 
 ;- - general check - - - - - - - - - - - - - - - - - - - - -
 
@@ -5897,9 +5931,8 @@ gdp_chkpart:
 	bsr	Test64
 	tst.l	d0
 	beq.w	gdp_none		;partition exceeds 4 Gbyte
-	bra.w	gdp_readboot
 
-gdp_readboot:				;shared entry point for GPT
+gdp_readboot:				;read the selected partition's boot block
 	addq.b	#1,SearchCount(a4)
 	moveq.l	#0,d0
 	bsr	ReadSingle		;read Boot block
@@ -6458,7 +6491,7 @@ SafeDoIO:
 ;-- ProbeTD64: some drivers accept NSCMD_TD_READ64 but do not advertise it
 ;   via NSCMD_DEVICEQUERY. When a >4GB device has not flagged TD64, try a
 ;   single NSCMD_TD_READ64 read of block 0; if the device accepts it,
-;   mark TD64 available so the >4GB path uses it instead of fallinclaude g back
+;   mark TD64 available so the >4GB path uses it instead of falling back
 ;   to HD_SCSICMD (which IDE rejects).
 ;   Preserves d2 (the command being built in DiskGeometry) and a4.
 ProbeTD64:
