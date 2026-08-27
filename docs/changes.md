@@ -1,9 +1,9 @@
-## 20260825-dev
+## 20260827-dev
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
 
-- `fat95 4.0-dev (25.08.2026)` _(new)_
+- `fat95 4.0-dev (27.08.2026)` _(new)_
 - `install95 3.19 (25.01.2026)`
 - `dd 2.3 (16.08.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
@@ -21,6 +21,7 @@ _Components in this release_:
 - **Shared partition scanning.** fat95 auto-detects its FAT partition (MBR and GPT) from the shared `partition.resource` published by `ptable.library`, the same scan used by `compactflash.device`, instead of scanning the partition table itself; a flat whole-disk volume is still detected from its boot block and registered back into the resource. The resolved mount Flags/CONTROL and the DosType the mount carries are reported and shown by `lsptres`. Auto-detect now requires `ptable.library` (bundled, install to `LIBS:`); explicit-geometry mountlist entries still mount without it. See [ptable.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/ptable.md) and [lsptres.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/lsptres.md). The `ptable.library` and `lsptres` are now bundled in the archive, shared with the CompactFlash driver. `lsptres` lists `partition.resource`.
 - Pulling a card while a Workbench window or an open file still holds the volume no longer stalls the driver: fat95 declines to quit at once and stays in service, so the partition is kept and the card mounts again when reinserted.
 - A FAT partition already mounted by another handler is no longer claimed: mounting a second `DOSDrivers` entry over an automounted (or otherwise served) partition fails with `object in use` instead of putting two handlers on one volume, which corrupted it on write. A persistent handler reattaching to its own partition after a card swap is unaffected.
+- The `d` (datestamps as file comments) and `D` (record last-accessed date) Control options now default to off. `Control = "+d+D"` restores the previous behaviour.
 - Fixed: duplicating the ZERO lock with no card inserted could crash.
 
 #### Tools
