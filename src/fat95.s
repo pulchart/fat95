@@ -851,6 +851,8 @@ QueryResult	=  80		;embedded struct NSDeviceQueryResult
 ;$0400	convert short names to lowercase
 ;$0800	dito, including initial
 ;$1000	quiet: suppress error requesters ("q" option)
+;$2000	mount used: claim a partition another handler already serves
+;	("m" option; the user's own risk, writes corrupt the volume)
 
 ;logical partition layout
 BlockSize	=  96
@@ -5734,17 +5736,21 @@ svp_passend:
 ;   stays positional: a taken partition FAILS the mount instead of
 ;   shifting the selection to another partition; accesses then report
 ;   ERROR 202 (object in use) via PartClaimed = 1.
-;   An entry stamped PEB_MOUNTUSED (the mount consumer's policy) is
-;   taken anyway, at the user's own risk (concurrent writes corrupt the
-;   FAT); PartClaimed = 2 then skips the RegisterPartition overlay, so
-;   the resource keeps the owner's registration intact.
+;   The gate is overridden two ways, both at the user's own risk
+;   (concurrent writes corrupt the FAT): an entry stamped PEB_MOUNTUSED
+;   (the mount consumer's policy), or this mountlist's own "m" Control
+;   option. PartClaimed = 2 then skips the RegisterPartition overlay,
+;   so the resource keeps the owner's registration intact.
 	btst	#PEB_MOUNTED,PENT_Flags(a5)
 	beq.s	svp_free
 	move.l	PENT_DevNode(a5),d0
 	cmp.l	DeviceNode(a4),d0
 	beq.s	svp_free
 	btst	#PEB_MOUNTUSED,PENT_Flags(a5)
+	bne.s	svp_used
+	btst	#5,CmdFlags(a4)		;word bit 13 = "m" option
 	beq.s	svp_deny
+svp_used:
 	move.w	#2,PartClaimed(a4)
 	bra.s	svp_free
 svp_deny:
@@ -11506,6 +11512,7 @@ so_tab:
 	dc.b	10,"L"
 	dc.b	11,"l"
 	dc.b	12,"q"
+	dc.b	13,"m"
 	dc.w	0
 
 ;--- local vars for ScanDisk() and SecurityErase() ---------
