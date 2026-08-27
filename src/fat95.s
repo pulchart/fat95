@@ -3495,7 +3495,7 @@ SetPartSelector:
 	move.b	(a0)+,d1		;d1 = name length
 ;-- a register-time dedup suffix ".n" (name-clash uniquification) is not a
 ;   partition selector: strip a trailing dot-digits group before scanning,
-;   or CFa0.1 would select the second partition instead of the first
+;   or CF0.1 would select the second partition instead of the first
 	moveq.l	#0,d4			;d4 = trailing digit count
 	lea	(a0,d1.l),a1		;a1 = one past the last char
 sps_sufscan:
