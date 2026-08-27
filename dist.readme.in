@@ -39,7 +39,9 @@ fat95 handler:
 * A FAT partition already mounted by another handler is no longer
   claimed: mounting a second DOSDrivers entry over a served partition
   fails with "object in use" instead of putting two handlers on one
-  volume, which corrupted it on write.
+  volume, which corrupted it on write. The new "m" Control option
+  overrides the refusal for its own mountlist, at your own risk:
+  reads mostly work, a write corrupts the volume.
 
 * The "d" (datestamps as file comments) and "D" (record last-accessed
   date) options now default to off; Control "+d+D" restores the
