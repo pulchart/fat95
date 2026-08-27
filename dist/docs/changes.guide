@@ -71,6 +71,11 @@
   * Pulling a card while a Workbench window or an open file still holds the volume
     no longer stalls the driver: fat95 declines to quit at once and stays in
     service, so the partition is kept and the card mounts again when reinserted.
+  * A FAT partition already mounted by another handler is no longer claimed:
+    mounting a second @{fg shine}DOSDrivers@{fg text} entry over an automounted (or otherwise served)
+    partition fails with @{fg shine}object in use@{fg text} instead of putting two handlers on one
+    volume, which corrupted it on write. A persistent handler reattaching to its
+    own partition after a card swap is unaffected.
   * Fixed: duplicating the ZERO lock with no card inserted could crash.
 
 @{b}Tools@{ub}

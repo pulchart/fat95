@@ -36,6 +36,11 @@ fat95 handler:
   and stays in service, so the partition is kept and the card mounts
   again when reinserted.
 
+* A FAT partition already mounted by another handler is no longer
+  claimed: mounting a second DOSDrivers entry over a served partition
+  fails with "object in use" instead of putting two handlers on one
+  volume, which corrupted it on write.
+
 * Fixed: duplicating the ZERO lock with no card inserted could crash.
 
 tools:

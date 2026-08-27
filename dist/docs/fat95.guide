@@ -393,6 +393,11 @@ Available options:
           hot-plugged removable              
           media                              
 
+A partition another handler already serves is refused on the auto-detect
+path: the mount fails and accesses report @{fg shine}object is in use@{fg text} (error 202)
+instead of starting a second handler on the same volume, which corrupts
+it on write.
+
 Regardless of @{fg shine}q@{fg text} , no requester is opened once the handler has been asked
 to quit ( @{fg shine}ACTION_DIE@{fg text} ), so an unmount can never stall behind a window.
 Asked to quit ( @{fg shine}ACTION_DIE@{fg text} ), the handler declines while a lock or an

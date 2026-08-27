@@ -900,7 +900,8 @@ FATBufSize	= 204		;in bytes and in..
 FATBNum		= 208		;..blocks (per segment for FAT32)
 FATFlags	= 212
 FATType		= 216		;0 = 12 bit, 1 = 16 bit, -1 = 32 bit, 2 = auto
-;218.w unused
+PartClaimed	= 218		;.w 1 = our partition is mounted by another
+				;handler (access errors map to 202 "in use")
 FAT32List	= 220		;embedded struct List
 
 ;Block buffer
@@ -2419,6 +2420,9 @@ cd_sleep:
 
 IdentifyDisk:
 	clr.w	DiskChanged(a4)		;must stay first: we get called again
+	clr.w	PartClaimed(a4)		;a refusal holds only until the next
+					;identify (card pull must report 226,
+					;not a stale 202)
 	tst.w	PleaseUnmount(a4)
 	bne.s	idd_end			;shutting down: never mount again
 	bsr	_sreq_diepend		;ACTION_DIE queued but not processed yet?
@@ -2639,9 +2643,13 @@ o2r_notmounted:
 	bra.s	o2r_error
 o2r_nodisk:
 	move.w	#226,d0
-	bra.s	o2r_error
+	bra.s	o2r_claim
 o2r_nodos:
 	move.w	#225,d0
+o2r_claim:				;refused partition (mounted by another
+	cmp.w	#1,PartClaimed(a4)	;handler, PEB_MOUNTUSED clear): report
+	bne.s	o2r_error		;"object in use" instead of a misleading
+	move.w	#202,d0			;no-disk / not-a-DOS-disk
 o2r_error:
 	move.w	d0,ErrorNum(a4)
 	moveq.l	#0,d0
@@ -5597,10 +5605,17 @@ PENT_Flags	= 27
 PENT_StartLBA	= 32
 PENT_BlockCount	= 36
 PENT_DosType	= 40
+PENT_DevNode	= 44
 PEB_PRESENT	= 0			;pe_Flags bit: entry valid/present
+PEB_MOUNTED	= 3			;pe_Flags bit: a DeviceNode serves the entry
+PEB_MOUNTUSED	= 6			;pe_Flags bit: policy stamped by the mount
+					;consumer (ptable_pub.i): a hand mountlist
+					;may claim the entry although another
+					;handler serves it
 
 ScanViaPtable:
 	movem.l	d1-d7/a0-a3/a5-a6,-(sp)
+	clr.w	PartClaimed(a4)		;fresh detect: forget a previous refusal
 ;-- resource-first: if our partition is already published (cfd automount
 ;   already ran), use it directly - no device re-read, no scan.
 	bsr	svp_pick
@@ -5710,6 +5725,30 @@ svp_passend:
 	subq.l	#1,d4
 	bne.s	svp_kpass
 ;-- a5 = selected partition entry
+;-- ownership gate: a partition another handler already serves is not
+;   eligible - two auto-detect handlers on one FAT volume corrupt it.
+;   Our own mount passes (a persistent handler rebinding after a card
+;   swap finds its entry MOUNTED by its own DeviceNode). The selector
+;   stays positional: a taken partition FAILS the mount instead of
+;   shifting the selection to another partition; accesses then report
+;   ERROR 202 (object in use) via PartClaimed = 1.
+;   An entry stamped PEB_MOUNTUSED (the mount consumer's policy) is
+;   taken anyway, at the user's own risk (concurrent writes corrupt the
+;   FAT); PartClaimed = 2 then skips the RegisterPartition overlay, so
+;   the resource keeps the owner's registration intact.
+	btst	#PEB_MOUNTED,PENT_Flags(a5)
+	beq.s	svp_free
+	move.l	PENT_DevNode(a5),d0
+	cmp.l	DeviceNode(a4),d0
+	beq.s	svp_free
+	btst	#PEB_MOUNTUSED,PENT_Flags(a5)
+	beq.s	svp_deny
+	move.w	#2,PartClaimed(a4)
+	bra.s	svp_free
+svp_deny:
+	move.w	#1,PartClaimed(a4)
+	bra.s	svp_pfail2
+svp_free:
 	move.l	PENT_StartLBA(a5),FirstBlock(a4)
 	move.l	PENT_BlockCount(a5),TotalBlocks(a4)
 	clr.l	HiddenBlocks(a4)
@@ -5751,6 +5790,11 @@ PublishViaPtable:
 	move.l	UnitNumber(a4),d0
 	jsr	_LVOScanPartitions(a6)
 pvp_overlay:
+;-- a claim through PEB_MOUNTUSED does not overlay the owner's
+;   registration: the resource keeps the original handler's identity
+;   (ptable would refuse the overlay anyway)
+	cmp.w	#2,PartClaimed(a4)
+	beq.s	pvp_close
 ;-- overlay the served volume with its real DOS name + mounted state
 	move.l	DeviceNode(a4),d0	;our DOS DeviceNode
 	beq.s	pvp_close		;no node -> skip

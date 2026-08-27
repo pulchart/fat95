@@ -188,6 +188,8 @@ Available options:
 | `L` | Show 8.3 filenames with uppercase initial (e.g., "Test.txt") | OFF |
 | `q` | Quiet: never open error requesters (read/write/reinsert windows); errors are reported to the caller instead. Recommended for hot-plugged removable media | OFF |
 
+A partition another handler already serves is refused on the auto-detect path: the mount fails and accesses report `object is in use` (error 202) instead of starting a second handler on the same volume, which corrupts it on write.
+
 Regardless of `q`, no requester is opened once the handler has been asked to quit (`ACTION_DIE`), so an unmount can never stall behind a window.
 Asked to quit (`ACTION_DIE`), the handler declines while a lock or an open file still holds the volume, or while it is inhibited, and stays in service; a locked volume cannot be given up because its node has to stay in the DOS list for the lock to remain valid. With nothing holding it, it releases the volume and exits.
 
