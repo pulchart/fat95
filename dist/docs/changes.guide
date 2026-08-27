@@ -77,7 +77,8 @@
     volume, which corrupted it on write. A persistent handler reattaching to its
     own partition after a card swap is unaffected. The new @{fg shine}m@{fg text} Control option
     overrides the refusal for its own mountlist, at your own risk: reads mostly
-    work, a write corrupts the volume.
+    work, a write corrupts the volume; the extra mount is listed as its own
+    @{fg shine}partition.resource@{fg text} row.
   * The @{fg shine}d@{fg text} (datestamps as file comments) and @{fg shine}D@{fg text} (record last-accessed date) Control
     options now default to off. @{fg shine}Control = "+d+D"@{fg text} restores the previous behaviour.
   * An accepted @{fg shine}ACTION_DIE@{fg text} (e.g. @{fg shine}MOUNT <dev>: SHUTDOWN@{fg text} ) unhooks the device node
