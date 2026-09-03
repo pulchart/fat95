@@ -3948,9 +3948,15 @@ ReverseW	macro			;reverse word
 		endm
 
 ReverseL	macro			;reverse longword
+		ifd	__68080__
+		machine	68080
+		perm	#@3210,\1,\1	;080: byte reverse in one instruction
+		machine	68020
+		else
 		rol.w	#8,\1
 		swap	\1
 		rol.w	#8,\1
+		endif
 		endm
 
 ;--- read a little-endian word from possibly-unaligned memory ---
