@@ -97,13 +97,17 @@ LSPTRES_TARGET     = dist/c/lsptres
 # CPU tiers for the handler fan-out (tools stay single-tier).
 CPUS = 68020 68000
 
+# Archive drawer per artifact kind; the handler lives in l/, the library in libs/.
+_drawer_handler = l
+_drawer_library = libs
+
 # Per-component "name:target:version:date" entries; handler fans out over $(CPUS).
+# A fanned-out artifact is named by its archive-relative path, so two tiers of the
+# same file never share a line in the readme CHECKSUMS block.
 define _artifact_entries
 $(if $(filter tool,$($(1)_KIND)),\
 $($(1)_NAME):$($(1)_TARGET):$($(1)_VERSION):$($(1)_DATE),\
-$(if $(filter library,$($(1)_KIND)),\
-$(foreach c,$(CPUS),$($(1)_NAME)_$(c):dist/libs/$(c)/$($(1)_NAME):$($(1)_VERSION):$($(1)_DATE)),\
-$(foreach c,$(CPUS),$($(1)_NAME)_$(c):$(OUTDIR)/$(c)/$($(1)_NAME):$($(1)_VERSION):$($(1)_DATE))))
+$(foreach c,$(CPUS),$(_drawer_$($(1)_KIND))/$(c)/$($(1)_NAME):$(DISTDIR)/$(_drawer_$($(1)_KIND))/$(c)/$($(1)_NAME):$($(1)_VERSION):$($(1)_DATE)))
 endef
 
 # "PREFIX|name|version|date" per component, fed to tools/components.sh
@@ -152,7 +156,8 @@ VASMCPU_000 = -m68000
 
 # Directories
 SRCDIR = src
-OUTDIR = dist/l
+DISTDIR = dist
+OUTDIR = $(DISTDIR)/l
 OUTDIR_020 = $(OUTDIR)/68020
 OUTDIR_000 = $(OUTDIR)/68000
 
@@ -390,10 +395,10 @@ $(README_NAME): $(README_TEMPLATE) $(TOOLS_TARGETS)
 	@# Generate checksum sections for all tools
 	@tool_checksums=""; \
 	for tool_info in $(TOOLS); do \
-		tool_name=$$(echo $$tool_info | cut -d: -f1); \
-		tool_target=$$(echo $$tool_info | cut -d: -f2); \
-		tool_version=$$(echo $$tool_info | cut -d: -f3); \
-		tool_date=$$(echo $$tool_info | cut -d: -f4); \
+		tool_name=$$(echo "$$tool_info" | cut -d: -f1); \
+		tool_target=$$(echo "$$tool_info" | cut -d: -f2); \
+		tool_version=$$(echo "$$tool_info" | cut -d: -f3); \
+		tool_date=$$(echo "$$tool_info" | cut -d: -f4); \
 		if [ -f "$$tool_target" ]; then \
 			tool_size=$$(stat -c%s "$$tool_target" 2>/dev/null || echo 0); \
 			tool_md5=$$(md5sum "$$tool_target" 2>/dev/null | cut -d' ' -f1 || echo "N/A"); \

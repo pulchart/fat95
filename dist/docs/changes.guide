@@ -53,6 +53,9 @@
   * @{fg shine}ptable.library 2.0-dev (27.08.2026)@{fg text} @{i}(new)@{ui}
   * @{fg shine}lsptres 1.0-dev (27.08.2026)@{fg text} @{i}(new)@{ui}
 
+New major version: fat95 4.0. @{fg shine}ptable.library@{fg text} 2.0 now manages the
+partition layout.
+
 @{b}fat95 handler@{ub}
 
   * @{b}New @{fg shine}q@{fg text} (quiet) option.@{ub} Control @{fg shine}"+q"@{fg text} silences all fat95 error windows for a
