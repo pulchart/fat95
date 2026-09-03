@@ -106,6 +106,25 @@ ZCLRB	macro				;clear byte at \1; \2 = zero reg (ignored on 020+)
 	endif
 	endm
 
+; --- 68080 quad clear ------------------------------------------
+; clr.q zeroes 8 bytes per instruction.
+
+CLRQ	macro				;clear 8 bytes at \1; \2 = zero reg, 020/000 only
+	ifd	APOLLOON
+	machine	68080
+	clr.q	\1
+	machine	68020
+	else
+	ifd	__68020__
+	clr.l	\1
+	clr.l	\1
+	else
+	move.l	\2,\1
+	move.l	\2,\1
+	endif
+	endif
+	endm
+
 ; --- ROM-resident InitCode tunables ----------------------------
 ; When fat95 is baked into a Kickstart ROM, InitCode registers one
 ; FileSysEntry per FAT\<n> partition selector in FileSystem.resource so
@@ -1002,6 +1021,9 @@ s_resident:
 	dc.l	InitCode
 	dc.l	UIModule-Start		;extra info for Install95
 s_start:
+	ifd	APOLLOON
+	ori.w	#$800,sr		;apollo bit: enables the LineA opcodes
+	endif				;(user-mode write, 68080 only)
 	link.w	a5,#S_GLOBALS
 	movem.l	d2/a2-a4,-(sp)
 
@@ -1073,8 +1095,14 @@ s_uidone:
 	moveq.l	#19,d1
 	move.l	d1,(a1)+		;DE_TableSize
 s_envfill:
+	ifd	APOLLOON
+	machine	68080
+	movs.b	(a0)+,d0		;080: load and sign-extend in one
+	machine	68020
+	else
 	move.b	(a0)+,d0
 	EXTBL	d0
+	endif
 	move.l	d0,(a1)+
 	subq.w	#1,d1
 	bgt.s	s_envfill
@@ -7414,18 +7442,10 @@ lob_ktentry:
 lob_ktclear:
 	moveq.l	#1,d4			;"Block changed"..
 	moveq.l	#MSDE_Sizeof/8-1,d0
-	ifd	__68020__
+	ZCLRL_INIT d1			;68000 only: zero reg for CLRQ
 lob_ktloop:
-	clr.l	(a0)+			;020+: write-only, no RMW penalty
-	clr.l	(a0)+			;..because entry now deleted
+	CLRQ	(a0)+,d1		;..because entry now deleted
 	dbf	d0,lob_ktloop
-	else
-	moveq.l	#0,d1			;68000: cheaper than clr.l (an)+,
-lob_ktloop:				;which read-modify-writes
-	move.l	d1,(a0)+
-	move.l	d1,(a0)+		;..because entry now deleted
-	dbf	d0,lob_ktloop
-	endif
 
 	bsr	NextMSDE
 	tst.w	d3
@@ -8359,20 +8379,11 @@ xtd_loop:
 	bsr	BlockChanged
 	move.l	a2,a0
 	move.w	BlockSize(a4),d1
-	ifd	__68020__
+	ZCLRL_INIT d2			;68000 only: zero reg for CLRQ
 xtd_clear:
-	clr.l	(a0)+			;020+: clr.l writes only, no RMW
-	clr.l	(a0)+			;..zero filled
+	CLRQ	(a0)+,d2		;..zero filled
 	subq.w	#8,d1
 	bgt.s	xtd_clear
-	else
-	moveq.l	#0,d2			;68000: clr.l (an)+ is read-modify-
-xtd_clear:				;write; cheaper to splash a Dn=0
-	move.l	d2,(a0)+		;through the loop instead.
-	move.l	d2,(a0)+		;..zero filled
-	subq.w	#8,d1
-	bgt.s	xtd_clear
-	endif
 
 	tst.l	EXD_CLUSTER(a5)
 	beq.s	xtd_init		;1. Block of new dir
