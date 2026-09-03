@@ -14,6 +14,7 @@ _Components in this release_:
 - `lsptres 1.0-dev (27.08.2026)` _(new)_
 <!-- COMPONENTS:END -->
 
+New major version: fat95 4.0. `ptable.library` 2.0 now manages the partition layout.
 
 #### fat95 handler
 

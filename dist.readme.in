@@ -3,6 +3,7 @@ Uploader:     jaroslav.pulchart@gmail.com (Jaroslav Pulchart)
 Author:       jaroslav.pulchart@gmail.com (Jaroslav Pulchart), based on work by Torsten Jager
 Type:         disk/misc
 Version:      @VERSION@
+Requires:     AmigaOS 1.3+ (2.0+ for full functionality), a block device such as compactflash.device, ptable.library for auto-detect
 Architecture: m68k-amigaos
 Replaces:     disk/misc/fat95.v20260614.lha
 Kurz:         Win95/98-kompatibles Dateisystem
@@ -15,6 +16,9 @@ COMPONENTS IN THIS RELEASE
 
 WHAT'S NEW (@DATE@)
 =======================
+
+New major version: fat95 4.0. ptable.library 2.0 now manages the
+partition layout.
 
 fat95 handler:
 
