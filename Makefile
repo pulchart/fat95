@@ -154,6 +154,14 @@ VASMFLAGS = -Fhunkexe -nosym $(DEFINITIONS)
 # -D__68080__=1 adds the Apollo 68080 paths on top of the 020+ ones,
 # so the 080 tier sets both.
 VASMCPU_080 = -m68020 -D__68080__=1 -D__68020__=1
+# APOLLOON=1 adds the LineA opcodes (clr.q, movs.b) and the SR write that
+# enables them. Off by default: they take a line-A exception on an
+# IceDrake V4. Must stay undefined when off, not defined as 0, because
+# vasm's ifd tests definedness only.
+APOLLOON ?= 0
+ifeq ($(APOLLOON),1)
+VASMCPU_080 += -DAPOLLOON=1
+endif
 VASMCPU_020 = -m68020 -D__68020__=1
 VASMCPU_000 = -m68000
 
