@@ -55,7 +55,6 @@
 
 @{b}New major version of fat95 4.0 filesystem handler@{ub}
 
-  * @{b}New Apollo 68080 tier.@{ub} For boards with an Apollo core 68080.
   * @{b}Shared partition scanning.@{ub} fat95 auto-detects its FAT partition (MBR, GPT, and
     flat whole-disk FAT) from the shared @{fg shine}partition.resource@{fg text} published by
     @{fg shine}ptable.library@{fg text} ; a flat whole-disk volume is still detected from its boot
@@ -86,6 +85,9 @@
     instead of reporting @{fg shine}no disk@{fg text} .
   * Fixed: turning a lock into a file handle lost count of it, so the handler
     could believe nothing was using the volume while files were still open.
+  * @{b}New Apollo 68080 tier.@{ub} For boards with an Apollo core 68080.
+  * @{b}Faster FAT32 validation.@{ub} The free-space scan of a freshly mounted FAT32 volume
+    is more efficient and finishes a little sooner.
 
 @{b}Tools 'dd 2.3'@{ub}
   * A 64-bit transfer command ( @{fg shine}NSCMD_TD64@{fg text} , or classic @{fg shine}TD64@{fg text} ) is now used

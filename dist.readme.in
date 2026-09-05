@@ -19,9 +19,6 @@ WHAT'S NEW (@DATE@)
 
 New major version of fat95 4.0 filesystem handler:
 
-* New Apollo 68080 tier: speeds up directory-heavy work, such as
-  listing a large drawer or locating a file in one.
-
 * Shared partition scanning: fat95 auto-detects its FAT partition (MBR,
   GPT, and flat whole-disk FAT) from the shared partition.resource
   published by ptable.library. The resolved mount Flags/CONTROL and the
@@ -59,6 +56,11 @@ New major version of fat95 4.0 filesystem handler:
 * Fixed: turning a lock into a file handle lost count of it, so the
   handler could believe nothing was using the volume while files were
   still open.
+
+* New Apollo 68080 tier for boards with an Apollo core 68080.
+
+* The free-space scan of a freshly mounted FAT32 volume is more
+  efficient and finishes a little sooner.
 
 Tools 'dd 2.3':
 

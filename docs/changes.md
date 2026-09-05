@@ -16,7 +16,6 @@ _Components in this release_:
 
 #### New major version of fat95 4.0 filesystem handler
 
-- **New Apollo 68080 tier.** For boards with an Apollo core 68080.
 - **Shared partition scanning.** fat95 auto-detects its FAT partition (MBR, GPT, and flat whole-disk FAT) from the shared `partition.resource` published by `ptable.library`; a flat whole-disk volume is still detected from its boot block and registered back into the resource. The resolved mount Flags/CONTROL and the DosType the mount carries are reported and shown by `lsptres`. Partition auto-detection now requires `ptable.library`. Explicit-geometry mountlist entries still mount without it. See [ptable.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/ptable.md) and [lsptres.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/lsptres.md).
 - Pulling a card while a Workbench window or an open file still holds the volume no longer stalls the driver: fat95 declines to quit at once and stays in service, so the partition is kept and the card mounts again when reinserted.
 - A FAT partition already mounted by another handler is no longer claimed. Mounting a second `DOSDrivers` entry over an already mounted partition fails with `object in use` instead of putting two handlers on one volume. A persistent handler reattaching to its own partition after a card swap is unaffected. The new `m` Control option overrides the refusal (reads mostly work, a write corrupts the volume). The extra mount is listed as its own `partition.resource` row.
@@ -25,6 +24,8 @@ _Components in this release_:
 - An accepted `ACTION_DIE` (e.g. `MOUNT <dev>: SHUTDOWN`) unhooks the device node before replying, so `C:Mount` no longer prints a misleading `object in use` for a successful shutdown. The handler also unregisters its mount, so the partition is free again instead of staying claimed.
 - Fixed: with no card inserted, opening the volume's root directory crashed instead of reporting `no disk`.
 - Fixed: turning a lock into a file handle lost count of it, so the handler could believe nothing was using the volume while files were still open.
+- **New Apollo 68080 tier.** For boards with an Apollo core 68080.
+- **Faster FAT32 validation.** The free-space scan of a freshly mounted FAT32 volume is more efficient and finishes a little sooner.
 
 #### Tools 'dd 2.3'
 - A 64-bit transfer command (`NSCMD_TD64`, or classic `TD64`) is now used whenever the driver advertises one, not only past 4 GiB.

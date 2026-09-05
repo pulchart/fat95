@@ -9408,37 +9408,58 @@ ScanFAT32:
 	sub.l	d2,d5			;# entries to go
 sf32_block:
 	tst.w	DiskChanged(a4)		;card gone/swapped..
-	bne.s	sf32_abort		;..abandon the scan, dont read
+	bne.w	sf32_abort		;..abandon the scan, dont read
 	tst.w	PleaseUnmount(a4)	;unmount latched..
-	bne.s	sf32_abort		;..abandon the scan
+	bne.w	sf32_abort		;..abandon the scan
 	move.l	d2,d0
 	moveq.l	#0,d1
 	bsr	MoveFATWindow
 	tst.l	d0
-	beq.s	sf32_finished		;read error, stop
+	beq.w	sf32_finished		;read error, stop
 
 	move.l	d0,a0			;&FAT window
 	move.l	#$ffffff0f,d1
 	move.l	#(F32B_Sizeof-F32B_Data)/4,d6
 	sub.l	d6,d5
-	bcc.s	sf32_entry		;scan to end of window..
+	bcc.s	sf32_pre		;scan to end of window..
 
 	add.l	d5,d6			;..or FAT
 	moveq.l	#0,d5
+sf32_pre:
+	subq.l	#1,d6			;dbf counts down through -1
+	bmi.s	sf32_wdone		;defensive: empty window
+	tst.l	d4
+	bne.s	sf32_seen		;first free cluster already known
+
+; scan until the first free cluster is known, then switch to sf32_seen
 sf32_entry:
 	move.l	(a0)+,d0
 	and.l	d1,d0			;mask out Flags
 	bne.s	sf32_next
 
 	addq.l	#1,d3			;1 more free Cluster..
-	tst.l	d4
-	bne.s	sf32_next
-
 	move.l	d2,d4			;..and also the first free one
+	beq.s	sf32_next		;index 0 still reads as "not found"
+
+	addq.l	#1,d2
+	dbf	d6,sf32_seen
+	bra.s	sf32_wdone
 sf32_next:
 	addq.l	#1,d2
-	subq.l	#1,d6
-	bgt.s	sf32_entry
+	dbf	d6,sf32_entry
+	bra.s	sf32_wdone
+
+; first free cluster known: count only
+sf32_seen:
+	move.l	(a0)+,d0
+	and.l	d1,d0
+	bne.s	sf32_snext
+
+	addq.l	#1,d3
+sf32_snext:
+	addq.l	#1,d2
+	dbf	d6,sf32_seen
+sf32_wdone:
 
 	tst.l	d5
 	ble.s	sf32_finished		;all done!!!
@@ -9452,7 +9473,7 @@ sf32_next:
 	add.w	#MP_MsgList,a0
 	move.l	(a0)+,d0
 	cmp.l	d0,a0
-	beq.s	sf32_block		;..incoming order interrupt here
+	beq.w	sf32_block		;..incoming order interrupt here
 sf32_end:
 	move.l	d2,BackgroundData(a4)
 	move.l	d3,FreeClusters(a4)
