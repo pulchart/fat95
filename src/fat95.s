@@ -1000,8 +1000,14 @@ InvOemPage	= 612
 ;SCSI Sense data
 SenseBuffer	= 616
 
+;nonzero once the FAT32 clean flag has been cleared on the card this session
+CleanBitClear	= 874
+
+;nonzero when the volume arrived with its FAT32 clean flag set
+MountedClean	= 876
+
 ;total size
-VarsSizeof	= 874
+VarsSizeof	= 878
 
 ;*** Here we go!! ******************************************
 
@@ -2432,10 +2438,18 @@ cd_noabsent:
 	clr.l	DOL_Task(a0)			;detach from File system
 	move.l	pr_MsgPort(a4),DOL_Unused(a0)	;safe re-recognition
 	tst.w	NewFlags(a4)
-	beq.s	cd_free			;perform deferred actions..
+	beq.s	cd_clean		;perform deferred actions..
 
 	moveq.l	#TRUE,d0
 	bsr	UpdateDisk		;..now
+;-- put the clean flag back if we were the ones who cleared it
+cd_clean:
+	tst.w	MountedClean(a4)
+	beq.s	cd_free
+
+	clr.w	CleanBitClear(a4)
+	moveq.l	#1,d0
+	bsr	SetFATClean
 cd_free:
 	clr.l	BackgroundJob(a4)	;abort background activity
 	bsr	TouchVolumeNode
@@ -2486,6 +2500,7 @@ IdentifyDisk:
 	tst.w	d0
 	bne.s	idd_end			;..and go on with old disk
 idd_doit:
+	clr.w	MountedClean(a4)	;media changed: the flag is not ours to write
 	bsr	CloseDisk
 	bsr	OpenDisk
 idd_end:
@@ -4801,9 +4816,145 @@ ud_end:
 	moveq.l	#TRUE,d0
 	rts
 
+;--- FAT[1] clean-shutdown flag ----------------------------
+; Bit 27 of FAT entry 1, at bytes 4..7 of the FAT's first block.  Set
+; means the FSInfo free count still describes the volume.  The block is
+; read and written on its own, not through the FAT window.
+
+CLEAN_BIT	= 27
+
+;-- IsFATClean -> d0 = nonzero when the flag is set
+IsFATClean:
+	movem.l	d1/a0-a1,-(sp)
+	tst.w	FATType(a4)
+	bpl.s	ifc_no			;FAT12/16: no such flag
+
+	moveq.l	#0,d0
+	move.w	FATStartBlock(a4),d0
+	bsr	ReadSingle
+	tst.l	d0
+	beq.s	ifc_no			;unreadable: assume dirty
+
+	move.l	d0,a1
+	move.l	4(a1),d1		;FAT[1], little endian
+	ReverseL d1
+	btst	#CLEAN_BIT,d1
+	beq.s	ifc_no
+
+	moveq.l	#1,d0
+	bra.s	ifc_end
+ifc_no:
+	moveq.l	#0,d0
+ifc_end:
+	movem.l	(sp)+,d1/a0-a1
+	rts
+
+;-- SetFATClean: d0 = 0 marks the volume dirty, nonzero marks it clean
+;-- MarkVolumeDirty: clear the flag once, before modified metadata is
+; written.  CleanBitClear is set first because SetFATClean writes, and
+; that write must not come back in here.
+MarkVolumeDirty:
+	tst.w	CleanBitClear(a4)
+	bne.s	mvd_end
+
+	move.w	#1,CleanBitClear(a4)
+	movem.l	d0-d3/a0-a3,-(sp)
+	moveq.l	#0,d0
+	bsr	SetFATClean
+	movem.l	(sp)+,d0-d3/a0-a3
+mvd_end:
+	rts
+
+SetFATClean:
+	movem.l	d0-d3/a0-a1,-(sp)
+	tst.w	FATType(a4)
+	bpl.s	sfc_end			;FAT12/16: no such flag
+
+	move.l	d0,d3			;wanted state
+	moveq.l	#0,d0
+	move.w	FATStartBlock(a4),d0
+	bsr	ReadSingle
+	tst.l	d0
+	beq.s	sfc_end			;unreadable: nothing we can do
+
+	move.l	d0,a1			;&data; d0 and a0 stay for BlockChanged
+	move.l	4(a1),d1		;FAT[1], little endian
+	ReverseL d1
+	move.l	d1,d2			;remember it
+	tst.l	d3
+	beq.s	sfc_dirty
+
+	bset	#CLEAN_BIT,d1
+	bra.s	sfc_cmp
+sfc_dirty:
+	bclr	#CLEAN_BIT,d1
+sfc_cmp:
+	cmp.l	d2,d1
+	beq.s	sfc_end			;already in that state
+
+	ReverseL d1
+	move.l	d1,4(a1)
+	bsr	BlockChanged
+	bsr	WriteBBuf
+sfc_end:
+	movem.l	(sp)+,d0-d3/a0-a1
+	rts
+
+;--- read FileSysInfoBlock ---------------------------------
+; Layout: "RRaA" at 0, "rrAa" at 484, free count at 488, first-free hint
+; at 492, $55aa at 510.
+;
+; -> d0 = free clusters, d1 = first free cluster, or d0 = -1
+
+ReadFSInfo:
+	movem.l	d2-d3/a0,-(sp)
+	move.l	FSInfoBlock(a4),d0
+	beq.s	rfsi_bad		;FAT12/16, or no block recorded
+
+	bsr	ReadSingle
+	tst.l	d0
+	beq.s	rfsi_bad		;unreadable
+
+	move.l	d0,a0
+	cmp.l	#"RRaA",(a0)
+	bne.s	rfsi_bad
+	cmp.l	#"rrAa",484(a0)
+	bne.s	rfsi_bad
+	cmp.w	#$55aa,510(a0)
+	bne.s	rfsi_bad
+
+	move.l	488(a0),d2		;free count, little endian
+	ReverseL d2
+	moveq.l	#-1,d0
+	cmp.l	d0,d2
+	beq.s	rfsi_bad		;"unknown"
+
+	move.l	LastCluster(a4),d0
+	cmp.l	d0,d2
+	bhi.s	rfsi_bad		;more free than the volume holds
+
+	move.l	492(a0),d3		;first free hint, little endian
+	ReverseL d3
+	moveq.l	#2,d1
+	cmp.l	d1,d3
+	bcs.s	rfsi_hint		;below the first data cluster
+	cmp.l	d0,d3
+	bhi.s	rfsi_hint		;past the end
+	move.l	d3,d1
+rfsi_hint:
+	move.l	d2,d0
+	bra.s	rfsi_end
+
+rfsi_bad:
+	moveq.l	#-1,d0
+rfsi_end:
+	movem.l	(sp)+,d2-d3/a0
+	rts
+
 ;--- update FileSysInfoBlock -------------------------------
 
 UpdateFSInfo:
+	move.l	d2,-(sp)
 	move.l	FSInfoBlock(a4),d0
 	beq.s	ufsi_end		;no Info-Block..
 
@@ -4815,13 +4966,21 @@ UpdateFSInfo:
 	add.w	#488,a1
 	move.l	FreeClusters(a4),d1
 	ReverseL d1
+	move.l	NextFreeCluster(a4),d2
+	ReverseL d2
 	cmp.l	(a1),d1
+	bne.s	ufsi_store
+
+	cmp.l	4(a1),d2
 	beq.s	ufsi_end		;no change
 
-	move.l	d1,(a1)
+ufsi_store:
+	move.l	d1,(a1)			;free count
+	move.l	d2,4(a1)		;first free hint
 	bsr	BlockChanged
 	bsr	WriteBBuf
 ufsi_end:
+	move.l	(sp)+,d2
 	rts
 
 ;*** Timing control ****************************************
@@ -5425,6 +5584,8 @@ WriteBBuf:
 	move.l	a0,a2			;&BlockBuffer
 	move.l	BB_Blocks(a2),d3
 	ble.s	wbb_end			;nothing to do
+
+	bsr	MarkVolumeDirty		;every single-block write passes here
 
 	moveq.l	#-1,d2
 	moveq.l	#0,d4			;Block Offset
@@ -9387,11 +9548,41 @@ rf_32iloop:
 	subq.w	#1,d2
 	bgt.s	rf_32iloop
 
-	moveq.l	#ID_VALIDATING,d0
-	move.l	d0,DiskState(a4)	;do scan huge 32bit FAT..
 	clr.l	FreeClusters(a4)
 	clr.l	NextFreeCluster(a4)
 	clr.l	BackgroundData(a4)
+	clr.w	CleanBitClear(a4)	;nothing written yet this session
+	clr.w	MountedClean(a4)
+
+;-- clean flag set and FSInfo usable: take the count and skip the scan
+	bsr	IsFATClean
+	tst.l	d0
+	beq.s	rf_32scan
+
+	move.w	#1,MountedClean(a4)
+	bsr	ReadFSInfo
+	tst.l	d0
+	bmi.s	rf_32scan		;no usable cache
+
+	move.l	d0,FreeClusters(a4)
+	move.l	d1,NextFreeCluster(a4)
+	moveq.l	#ID_WRITE_PROT,d0
+	btst	#1,PhysFlags+1(a4)	;if allowed..
+	beq.s	rf_32state
+
+	tst.w	SoftLocked(a4)
+	bne.s	rf_32state
+
+	moveq.l	#ID_VALIDATED,d0
+rf_32state:
+	move.l	d0,DiskState(a4)	;..ready at once, no scan
+	bra.w	rf_end
+
+rf_32scan:
+	moveq.l	#ID_VALIDATING,d0
+	move.l	d0,DiskState(a4)	;scan the huge 32bit FAT..
+	clr.l	FreeClusters(a4)
+	clr.l	NextFreeCluster(a4)
 	lea	ScanFAT32(pc),a0
 	move.l	a0,BackgroundJob(a4)	;..when idle
 	bra.w	rf_end
@@ -9516,6 +9707,8 @@ WriteFAT:
 	movem.l	d2-d7/a2-a3,-(sp)
 	tst.l	FATBuffer(a4)
 	beq.s	wf_end			;??
+
+	bsr	MarkVolumeDirty		;also reached from MoveFATWindow
 
 	tst.w	FATType(a4)
 	bmi.w	wf_32bit
@@ -12233,8 +12426,12 @@ sd_freebuf:
 	CALLEXEC FreeMem
 sd_nomem:
 	move.l	SD_ERRORS(a5),d0
-	bgt.s	sd_end
+	bgt.s	sd_end			;errors found: the volume stays dirty
 
+;-- a pass with no errors is the only thing that may set the flag
+	move.w	#1,MountedClean(a4)
+	moveq.l	#1,d0
+	bsr	SetFATClean
 	moveq.l	#TRUE,d0
 sd_end:
 	movem.l	(sp)+,d2-d7/a2-a3
