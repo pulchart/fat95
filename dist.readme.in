@@ -60,7 +60,8 @@ New major version of fat95 4.0 filesystem handler:
 * New Apollo 68080 tier for boards with an Apollo core 68080.
 
 * The free-space scan of a freshly mounted FAT32 volume is more
-  efficient and finishes a little sooner.
+  efficient and finishes a little sooner. A volume that was unmounted
+  properly skips the scan and is ready at once.
 
 Tools 'dd 2.3':
 
