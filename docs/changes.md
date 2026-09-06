@@ -1,9 +1,9 @@
-## 20260827-dev
+## 20260906-dev
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
 
-- `fat95 4.0-dev (27.08.2026)` _(new)_
+- `fat95 4.0-dev (06.09.2026)` _(new)_
 - `install95 3.19 (25.01.2026)`
 - `dd 2.3 (16.08.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
@@ -14,21 +14,20 @@ _Components in this release_:
 - `lsptres 1.0-dev (27.08.2026)` _(new)_
 <!-- COMPONENTS:END -->
 
+#### New major version of fat95 4.0 filesystem handler
 
-#### fat95 handler
-
-- **New `q` (quiet) option.** Control `"+q"` silences all fat95 error windows for a mount (errors go to the calling program instead). Unmounting a removed card now cancels any open window automatically.
-- **Shared partition scanning.** fat95 auto-detects its FAT partition (MBR and GPT) from the shared `partition.resource` published by `ptable.library`, the same scan used by `compactflash.device`, instead of scanning the partition table itself; a flat whole-disk volume is still detected from its boot block and registered back into the resource. The resolved mount Flags/CONTROL and the DosType the mount carries are reported and shown by `lsptres`. Auto-detect now requires `ptable.library` (bundled, install to `LIBS:`); explicit-geometry mountlist entries still mount without it. See [ptable.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/ptable.md) and [lsptres.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/lsptres.md). The `ptable.library` and `lsptres` are now bundled in the archive, shared with the CompactFlash driver. `lsptres` lists `partition.resource`.
+- **Shared partition scanning.** fat95 auto-detects its FAT partition (MBR, GPT, and flat whole-disk FAT) from the shared `partition.resource` published by `ptable.library`; a flat whole-disk volume is still detected from its boot block and registered back into the resource. The resolved mount Flags/CONTROL and the DosType the mount carries are reported and shown by `lsptres`. Partition auto-detection now requires `ptable.library`. Explicit-geometry mountlist entries still mount without it. See [ptable.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/ptable.md) and [lsptres.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/lsptres.md).
 - Pulling a card while a Workbench window or an open file still holds the volume no longer stalls the driver: fat95 declines to quit at once and stays in service, so the partition is kept and the card mounts again when reinserted.
-- A FAT partition already mounted by another handler is no longer claimed: mounting a second `DOSDrivers` entry over an automounted (or otherwise served) partition fails with `object in use` instead of putting two handlers on one volume, which corrupted it on write. A persistent handler reattaching to its own partition after a card swap is unaffected. The new `m` Control option overrides the refusal for its own mountlist, at your own risk: reads mostly work, a write corrupts the volume; the extra mount is listed as its own `partition.resource` row.
+- A FAT partition already mounted by another handler is no longer claimed. Mounting a second `DOSDrivers` entry over an already mounted partition fails with `object in use` instead of putting two handlers on one volume. A persistent handler reattaching to its own partition after a card swap is unaffected. The new `m` Control option overrides the refusal (reads mostly work, a write corrupts the volume). The extra mount is listed as its own `partition.resource` row.
+- **New `q` (quiet) option.** Control `"+q"` silences all fat95 error windows for a mount (errors go to the calling program instead). Unmounting a removed card cancels any open window automatically.
 - The `d` (datestamps as file comments) and `D` (record last-accessed date) Control options now default to off. `Control = "+d+D"` restores the previous behaviour.
-- An accepted `ACTION_DIE` (e.g. `MOUNT <dev>: SHUTDOWN`) unhooks the device node before replying and carries no error code; `C:Mount`, which verifies the shutdown by re-reading the node, no longer prints a misleading `object in use` for a successful one.
-- On a voluntary exit the handler unregisters its mount from `partition.resource`, so the partition is free again (for the automount, or a fresh `Mount`) instead of staying claimed by a dead handler.
-- Fixed: duplicating the ZERO lock with no card inserted could crash.
+- An accepted `ACTION_DIE` (e.g. `MOUNT <dev>: SHUTDOWN`) unhooks the device node before replying, so `C:Mount` no longer prints a misleading `object in use` for a successful shutdown. The handler also unregisters its mount, so the partition is free again instead of staying claimed.
+- Fixed: with no card inserted, opening the volume's root directory crashed instead of reporting `no disk`.
+- Fixed: turning a lock into a file handle lost count of it, so the handler could believe nothing was using the volume while files were still open.
+- **New Apollo 68080 tier.** For boards with an Apollo core 68080.
+- **Faster FAT32 validation.** The free-space scan of a freshly mounted FAT32 volume is more efficient and finishes a little sooner. A volume that was unmounted properly skips the scan and is ready at once.
 
-#### Tools
-
-#### dd 2.3
+#### Tools 'dd 2.3'
 - A 64-bit transfer command (`NSCMD_TD64`, or classic `TD64`) is now used whenever the driver advertises one, not only past 4 GiB.
 - New `CMDSRC` (`CS=`) and `CMDDST` (`CD=`) force the transfer command for one side only. `CMD` still sets both sides. Only a real `.device` side is affected.
 - A forced command the driver does not advertise is now reported before the transfer, together with the methods the device does offer. An I/O error `-3` points at `dd INSPECT`.
@@ -40,6 +39,10 @@ _Components in this release_:
 - Fixed: a source file that is not a whole number of blocks lost its last partial block.
 - Fixed: a bad buffer when a device does not report its geometry.
 - Fixed: a hang when the block size exceeds one request.
+
+#### Bundled
+
+- `ptable.library` and `lsptres` are included in the archive, shared with the CompactFlash driver (https://github.com/pulchart/amigaos-ptable). `lsptres` lists `partition.resource`.
 
 ## 20260614
 

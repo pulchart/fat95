@@ -213,6 +213,9 @@ file that tells AmigaOS how to mount the drive.
   1. Pick the CPU tier that matches your machine (see @{"CPU tiers" link cpu_tiers} ) and copy the matching
      @{fg shine}l/<tier>/fat95@{fg text} to @{fg shine}L:fat95@{fg text} :
    ```
+   # Any board with an Apollo core 68080
+   Copy fat95/l/68080/fat95 L:fat95
+
    # A1200 stock or any 68020+/030/040/060 accelerator
    Copy fat95/l/68020/fat95 L:fat95
 
@@ -239,28 +242,32 @@ file that tells AmigaOS how to mount the drive.
 @node CPU_tiers "CPU tiers"
 @{i}CPU tiers@{ui}
 
-fat95 3.21+ ships as two CPU tiers. Copy the one that matches your CPU
+fat95 4.0+ ships as three CPU tiers. Copy the one that matches your CPU
 to @{fg shine}L:fat95@{fg text} :
 
   @{b}Tier@{ub}    @{b}File@{ub}           @{b}Target@{ub}                     
   ------  -------------  -------------------------  
+  68080   @{fg shine}l/68080/fat95@{fg text}  any board with an Apollo   
+                         core 68080                 
   68020+  @{fg shine}l/68020/fat95@{fg text}  A1200 stock + any 68020 /  
                          030 / 040 / 060            
                          accelerator                
   68000   @{fg shine}l/68000/fat95@{fg text}  stock A500 / A600 / A1000  
                          / A2000 / CDTV             
 
-The two tiers are functionally identical. The 68020+ tier is slightly
+All three tiers are functionally identical. The 68020+ tier is slightly
 smaller and uses native 32-bit @{fg shine}mulu.l@{fg text} / @{fg shine}divul.l@{fg text} / @{fg shine}bfffo@{fg text} ; the 68000 tier
 falls back to library routines and is the only version that is safe to
 run on a plain 68000.
+
+The 68080 tier runs only on an Apollo core 68080.
 
 You can confirm which tier you have loaded by reading the @{fg shine}$VER:@{fg text} string:
 
 @{fg highlight}
   version fat95 full
-  fat95 3.21 (17.04.2026)
-  [68020]
+  fat95 4.0 (17.04.2026)
+  [68080]
 @{fg text}
 
 ----------------------------------------

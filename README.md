@@ -76,6 +76,9 @@ These two components are connected via a **mountlist** - a configuration file th
 
 1. Pick the CPU tier that matches your machine (see [CPU tiers](#cpu-tiers)) and copy the matching `l/<tier>/fat95` to `L:fat95`:
    ```
+   # Any board with an Apollo core 68080
+   Copy fat95/l/68080/fat95 L:fat95
+
    # A1200 stock or any 68020+/030/040/060 accelerator
    Copy fat95/l/68020/fat95 L:fat95
 
@@ -94,21 +97,24 @@ These two components are connected via a **mountlist** - a configuration file th
 
 ### CPU tiers
 
-fat95 3.21+ ships as two CPU tiers. Copy the one that matches your CPU to `L:fat95`:
+fat95 4.0+ ships as three CPU tiers. Copy the one that matches your CPU to `L:fat95`:
 
 | Tier | File | Target |
 |------|------|--------|
+| 68080 | `l/68080/fat95` | any board with an Apollo core 68080 |
 | 68020+ | `l/68020/fat95` | A1200 stock + any 68020 / 030 / 040 / 060 accelerator |
 | 68000  | `l/68000/fat95` | stock A500 / A600 / A1000 / A2000 / CDTV |
 
-The two tiers are functionally identical. The 68020+ tier is slightly smaller and uses native 32-bit `mulu.l` / `divul.l` / `bfffo`; the 68000 tier falls back to library routines and is the only version that is safe to run on a plain 68000.
+All three tiers are functionally identical. The 68020+ tier is slightly smaller and uses native 32-bit `mulu.l` / `divul.l` / `bfffo`; the 68000 tier falls back to library routines and is the only version that is safe to run on a plain 68000.
+
+The 68080 tier runs only on an Apollo core 68080.
 
 You can confirm which tier you have loaded by reading the `$VER:` string:
 
 ```
 version fat95 full
-fat95 3.21 (17.04.2026)
-[68020]
+fat95 4.0 (17.04.2026)
+[68080]
 ```
 
 ## Mountlist Configuration
