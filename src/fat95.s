@@ -4801,6 +4801,90 @@ ud_end:
 	moveq.l	#TRUE,d0
 	rts
 
+;--- read-only FAT32 fast-mount metadata -------------------
+
+CLEAN_BIT = 27
+
+; -> d0 = nonzero only if every managed FAT copy is clean. Read only.
+IsFATClean:
+	movem.l	d1-d3/a0-a1,-(sp)
+	tst.w	FATType(a4)
+	bpl.s	ifc_no
+	moveq.l	#0,d2
+	move.w	FATStartBlock(a4),d2
+	moveq.l	#0,d3
+	move.b	NumFATCopies(a4),d3
+	beq.s	ifc_no
+ifc_copy:
+	move.l	d2,d0
+	bsr	ReadSingle
+	tst.l	d0
+	beq.s	ifc_no
+	move.l	d0,a1
+	btst	#CLEAN_BIT-24,7(a1)
+	beq.s	ifc_no
+	add.l	BlocksPerFAT(a4),d2
+	subq.w	#1,d3
+	bne.s	ifc_copy
+	moveq.l	#1,d0
+	bra.s	ifc_end
+ifc_no:
+	moveq.l	#0,d0
+ifc_end:
+	movem.l	(sp)+,d1-d3/a0-a1
+	rts
+
+;--- read FileSysInfoBlock ---------------------------------
+; Layout: "RRaA" at 0, "rrAa" at 484, free count at 488, first-free hint
+; at 492, $55aa at 510.
+;
+; -> d0 = free clusters, d1 = first free cluster, or d0 = -1
+
+ReadFSInfo:
+	movem.l	d2-d3/a0,-(sp)
+	move.l	FSInfoBlock(a4),d0
+	beq.s	rfsi_bad		;FAT12/16, or no block recorded
+
+	bsr	ReadSingle
+	tst.l	d0
+	beq.s	rfsi_bad		;unreadable
+
+	move.l	d0,a0
+	cmp.l	#"RRaA",(a0)
+	bne.s	rfsi_bad
+	cmp.l	#"rrAa",484(a0)
+	bne.s	rfsi_bad
+	cmp.w	#$55aa,510(a0)
+	bne.s	rfsi_bad
+
+	move.l	488(a0),d2		;free count, little endian
+	ReverseL d2
+	moveq.l	#-1,d0
+	cmp.l	d0,d2
+	beq.s	rfsi_bad		;"unknown"
+
+	move.l	LastCluster(a4),d0
+	cmp.l	d0,d2
+	bhi.s	rfsi_bad		;more free than the volume holds
+
+	move.l	492(a0),d3		;first free hint, little endian
+	ReverseL d3
+	moveq.l	#2,d1
+	cmp.l	d1,d3
+	bcs.s	rfsi_hint		;below the first data cluster
+	cmp.l	d0,d3
+	bhi.s	rfsi_hint		;past the end
+	move.l	d3,d1
+rfsi_hint:
+	move.l	d2,d0
+	bra.s	rfsi_end
+
+rfsi_bad:
+	moveq.l	#-1,d0
+rfsi_end:
+	movem.l	(sp)+,d2-d3/a0
+	rts
+
 ;--- update FileSysInfoBlock -------------------------------
 
 UpdateFSInfo:
@@ -9387,11 +9471,38 @@ rf_32iloop:
 	subq.w	#1,d2
 	bgt.s	rf_32iloop
 
-	moveq.l	#ID_VALIDATING,d0
-	move.l	d0,DiskState(a4)	;do scan huge 32bit FAT..
 	clr.l	FreeClusters(a4)
 	clr.l	NextFreeCluster(a4)
 	clr.l	BackgroundData(a4)
+
+;-- clean flag set and FSInfo usable: take the count and skip the scan
+	bsr	IsFATClean
+	tst.l	d0
+	beq.s	rf_32scan
+
+	bsr	ReadFSInfo
+	tst.l	d0
+	bmi.s	rf_32scan		;no usable cache
+
+	move.l	d0,FreeClusters(a4)
+	move.l	d1,NextFreeCluster(a4)
+	moveq.l	#ID_WRITE_PROT,d0
+	btst	#1,PhysFlags+1(a4)	;if allowed..
+	beq.s	rf_32state
+
+	tst.w	SoftLocked(a4)
+	bne.s	rf_32state
+
+	moveq.l	#ID_VALIDATED,d0
+rf_32state:
+	move.l	d0,DiskState(a4)	;..ready at once, no scan
+	bra.w	rf_end
+
+rf_32scan:
+	moveq.l	#ID_VALIDATING,d0
+	move.l	d0,DiskState(a4)	;scan the huge 32bit FAT..
+	clr.l	FreeClusters(a4)
+	clr.l	NextFreeCluster(a4)
 	lea	ScanFAT32(pc),a0
 	move.l	a0,BackgroundJob(a4)	;..when idle
 	bra.w	rf_end
