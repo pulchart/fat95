@@ -1,9 +1,9 @@
-## 20260906-dev
+## 20260908-dev
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
 
-- `fat95 4.0-dev (06.09.2026)` _(new)_
+- `fat95 4.0-dev (08.09.2026)` _(new)_
 - `install95 3.19 (25.01.2026)`
 - `dd 2.3 (16.08.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
@@ -26,6 +26,7 @@ _Components in this release_:
 - Fixed: turning a lock into a file handle lost count of it, so the handler could believe nothing was using the volume while files were still open.
 - **New Apollo 68080 tier.** For boards with an Apollo core 68080.
 - **Faster FAT32 validation.** The free-space scan of a freshly mounted FAT32 volume is more efficient and finishes a little sooner. A volume that was unmounted properly skips the scan and is ready at once.
+- Safer handling of write errors and card changes.
 
 #### Tools 'dd 2.3'
 - A 64-bit transfer command (`NSCMD_TD64`, or classic `TD64`) is now used whenever the driver advertises one, not only past 4 GiB.
