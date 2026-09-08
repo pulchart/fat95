@@ -1000,8 +1000,19 @@ InvOemPage	= 612
 ;SCSI Sense data
 SenseBuffer	= 616
 
+;FSInfo publication and per-insertion I/O state
+FSInfoUnknown   = 874		;trusted marker or recursion guard
+FSInfoDirty     = 876
+MediaGeneration = 878
+MountGeneration = 882
+WriteFault      = 886
+DiscardBuffers  = 888
+ReadFailures    = 890
+CheckComplete   = 894
+ScanActive      = 896
+
 ;total size
-VarsSizeof	= 874
+VarsSizeof      = 898
 
 ;*** Here we go!! ******************************************
 
@@ -1885,6 +1896,17 @@ Action1023:
 	tst.w	SoftLocked(a4)
 	bne.s	a1023_end		;already locked
 
+	moveq.l	#14,d0
+	and.w	NewFlags(a4),d0
+	beq.s	a1023_set
+	move.l	d1,-(sp)		;preserve the requested key
+	moveq.l	#TRUE,d0
+	bsr	UpdateDisk		;finish accepted writes before locking
+	move.l	(sp)+,d1
+	tst.l	d0
+	bne.s	a1023_set
+	bra.w	s_return		;failed flush: do not claim a successful lock
+a1023_set:
 	move.w	#-1,SoftLocked(a4)	;"lock active"
 	move.l	d1,PassKey(a4)
 	moveq.l	#ID_VALIDATED,d0
@@ -1902,6 +1924,8 @@ a1023_unlock:
 	bne.s	a1023_wrongkey
 a1023_free:
 	clr.w	SoftLocked(a4)		;"lock released"
+	tst.w	WriteFault(a4)
+	bne.s	a1023_end		;I/O failure still blocks writes
 	btst	#1,PhysFlags+1(a4)
 	beq.s	a1023_end
 
@@ -2068,6 +2092,7 @@ Action4202:
 IntCode:
 	move.l	a6,-(sp)
 	move.l	ExecBase(a1),a6
+	addq.l	#1,MediaGeneration(a1)
 	move.w	#1,DiskChanged(a1)
 	move.l	pr_MsgPort(a1),a0
 	moveq.l	#0,d0
@@ -2261,7 +2286,7 @@ gdvn_n2:
 	move.w	#$2028,(a1)+		;MSDE_Ext[2], MSDE_Flags
 	moveq.l	#XMSDE_FullName+1-12,d0
 gdvn_sloop:
-	clr.l	(a1)+
+	ZCLRL	(a1)+,d2		;serial loop left d2 zero
 	subq.w	#4,d0
 	bgt.s	gdvn_sloop
 
@@ -2410,8 +2435,13 @@ umv_error:
 ; -> BOOL ok;
 
 CloseDisk:
+	bsr	CheckMedia
+	beq.s	cd_current
+	clr.w	CheckComplete(a4)
+	move.w	#1,DiscardBuffers(a4)
+cd_current:
 	tst.w	PhysFlags(a4)
-	beq.s	cd_ok			;nothing inserted
+	beq.w	cd_orphan		;nothing inserted
 
 ;-- never call into ptable while dying: UnmountPartitions holds the
 ;   partition.resource lock across the ACTION_DIE it sent us, so
@@ -2426,17 +2456,17 @@ CloseDisk:
 	bsr	MarkAbsentViaPtable	;media gone: clear PRESENT in partition.resource
 cd_noabsent:
 	move.l	VolumeNode(a4),d0
-	beq.s	cd_report		;disk was invalid
+	beq.w	cd_orphan		;disk was invalid
 
 	move.l	d0,a0
 	clr.l	DOL_Task(a0)			;detach from File system
 	move.l	pr_MsgPort(a4),DOL_Unused(a0)	;safe re-recognition
-	tst.w	NewFlags(a4)
-	beq.s	cd_free			;perform deferred actions..
-
+	tst.w	DiscardBuffers(a4)
+	bne.w	cd_free
 	moveq.l	#TRUE,d0
-	bsr	UpdateDisk		;..now
+	bsr	UpdateDisk		;flush metadata before publishing counts
 cd_free:
+	move.w	#1,DiscardBuffers(a4)	;never flush during teardown
 	clr.l	BackgroundJob(a4)	;abort background activity
 	bsr	TouchVolumeNode
 	bsr	FreeFATBuf		;free all block buffers
@@ -2446,12 +2476,27 @@ cd_free:
 	clr.l	RootXLock(a4)
 	tst.l	VolumeNode(a4)
 	bne.s	cd_sleep
+	bra.s	cd_report
+cd_orphan:
+	; Failed mounts can own buffers without a DOS volume node.
+	move.w	#1,DiscardBuffers(a4)
+	clr.l	BackgroundJob(a4)
+	bsr	FreeFATBuf
+	bsr	CacheFree
+	tst.w	PhysFlags(a4)
+	beq.s	cd_ok
 cd_report:
 	clr.w	PhysFlags(a4)
 	bsr	ChangeReport
 cd_ok:
 	moveq.l	#-1,d0			;..and all other dirs, or..
 cd_end:
+	ZCLRL_INIT d1
+	ZCLRW	NewFlags(a4),d1
+	ZCLRL	BackgroundJob(a4),d1
+	ZCLRW	DiscardBuffers(a4),d1
+	ZCLRW	FSInfoUnknown(a4),d1
+	ZCLRW	CheckComplete(a4),d1
 	moveq.l	#ID_NONE,d1
 	move.l	d1,DiskType(a4)
 	rts
@@ -2476,6 +2521,8 @@ IdentifyDisk:
 	tst.w	d0			;mounting now would grab ptr_Lock, which
 	bne.s	idd_end			;the teardown sending the DIE holds
 
+	bsr	CheckMedia
+	beq.s	idd_close		;manual DiskChange: flush the same card
 	moveq.l	#-2,d0			;maybe except "motor off"..
 	and.w	NewFlags(a4),d0
 	beq.s	idd_doit		;..everything was already done
@@ -2483,9 +2530,13 @@ IdentifyDisk:
 	pea	(TDERR_DISKCHANGED).w
 	bsr	DoRequest		;otherwise show warning..
 	addq.l	#4,sp
-	tst.w	d0
-	bne.s	idd_end			;..and go on with old disk
+	; A reinserted card starts a new mount, even after "repeat".
 idd_doit:
+	clr.w	FSInfoUnknown(a4)
+	move.w	#1,DiscardBuffers(a4)
+	clr.w	CheckComplete(a4)
+	clr.w	FSInfoDirty(a4)	;old counts do not belong to this card
+idd_close:
 	bsr	CloseDisk
 	bsr	OpenDisk
 idd_end:
@@ -2501,6 +2552,21 @@ OD_DOSDATE	= -36
 OD_MSDEBUF	= -36-XMSDE_Sizeof
 
 OpenDisk:
+	ZCLRL_INIT d0
+	ZCLRL	BackgroundJob(a4),d0
+	ZCLRL	BackgroundData(a4),d0
+	ZCLRL	FreeClusters(a4),d0
+	ZCLRL	NextFreeCluster(a4),d0
+	ZCLRW	NewFlags(a4),d0
+	ZCLRW	FSInfoUnknown(a4),d0
+	ZCLRW	CheckComplete(a4),d0
+	ZCLRW	WriteFault(a4),d0
+	ZCLRW	FSInfoDirty(a4),d0
+	ZCLRW	ScanActive(a4),d0
+	ZCLRW	DiscardBuffers(a4),d0
+	ZCLRL	ReadFailures(a4),d0
+	ZCLRL	FSInfoBlock(a4),d0
+	move.l	MediaGeneration(a4),MountGeneration(a4)
 	link.w	a5,#OD_MSDEBUF
 	move.l	a2,-(sp)
 
@@ -2726,6 +2792,10 @@ o2w_lock:
 
 	move.l	FL_Key(a0),d0
 o2w_end:
+	bsr	CheckMedia
+	bne.w	o2r_notmounted
+	tst.w	WriteFault(a4)
+	bne.w	o2r_readonly
 	moveq.l	#ID_VALIDATED,d1
 	cmp.l	DiskState(a4),d1
 	bne.s	o2r_readonly
@@ -3192,9 +3262,10 @@ gdi_end:
 	rts
 
 gdi_ndos:
-	clr.l	ID_NumBlocks(a0)
-	clr.l	ID_BlocksUsed(a0)
-	clr.l	ID_BytesPerBlock(a0)
+	ZCLRL_INIT d0
+	ZCLRL	ID_NumBlocks(a0),d0
+	ZCLRL	ID_BlocksUsed(a0),d0
+	ZCLRL	ID_BytesPerBlock(a0),d0
 	bra.s	gdi_end
 
 ;--- copy DOS environment vector ---------------------------
@@ -4661,7 +4732,9 @@ CacheFree:
 	beq.s	cafr_single		;thats all
 
 	bsr	FreeBlockBuf
-	bra.s	CacheFree
+	tst.l	d0
+	bne.s	CacheFree
+	rts
 cafr_single:
 	move.l	SingleBuf(a4),d0
 	beq.s	CacheInit
@@ -4688,18 +4761,24 @@ CacheInit:
 FreeBlockBuf:
 	move.l	a2,-(sp)
 	move.l	a0,a2
-	move.l	a2,a1
-	bsr	MyRemove
+	tst.w	DiscardBuffers(a4)
+	bne.s	fbb_1
 	tst.w	BB_OpenCnt(a2)
 	bpl.s	fbb_1			;block unchanged
 
 	move.l	a2,a0
 	bsr	WriteBBuf		;write back
+	tst.l	d0
+	beq.s	fbb_end
 fbb_1:
+	move.l	a2,a1
+	bsr	MyRemove
 	moveq.l	#BB_Data,d0
 	add.l	ClusterSize(a4),d0
 	move.l	a2,a1
 	CALLEXEC FreeMem
+	moveq.l	#-1,d0
+fbb_end:
 	move.l	(sp)+,a2
 	rts
 
@@ -4715,6 +4794,8 @@ CacheFlush:
 	bpl.s	cafl_again
 
 	bsr	WriteBBuf
+	tst.l	d0
+	beq.s	cafl_fail
 cafl_again:
 	moveq.l	#-1,d1
 	move.l	BufList(a4),d0
@@ -4740,8 +4821,12 @@ cafl_check:
 
 	move.l	a1,a0
 	bsr	WriteBBuf		;..to write back
+	tst.l	d0
+	beq.s	cafl_fail
 	bra.s	cafl_again
 cafl_end:
+	moveq.l	#-1,d0
+cafl_fail:
 	move.l	(sp)+,d2
 	rts
 
@@ -4750,60 +4835,77 @@ cafl_end:
 ; -> BOOL success;
 
 UpdateDisk:
-	movem.l	d0/d2,-(sp)		;save arg (d0) and caller's d2
+	movem.l	d2-d3,-(sp)
+	move.l	d0,d3			;immediate
+	bsr	CheckMedia
+	bne.w	ud_fail
+	tst.w	WriteFault(a4)
+	bne.w	ud_fail
 	btst	#3,NewFlags+1(a4)
 	beq.s	ud_blocks
-
-	bsr	UpdateFSInfo
 	bsr	WriteFAT
+	tst.l	d0
+	beq.s	ud_fail
 ud_blocks:
 	btst	#2,NewFlags+1(a4)
-	beq.s	ud_check		;no changed blocks
-
+	beq.s	ud_check
 	bsr	CacheFlush
+	tst.l	d0
+	beq.s	ud_fail
 ud_check:
-	tst.l	(sp)			;arg "immediate" still on stack
+	tst.l	d3
 	bne.s	ud_now
-
 	moveq.l	#12,d0
 	and.w	NewFlags(a4),d0
 	beq.s	ud_now
-
 	and.w	#~12,NewFlags(a4)
 	bsr	DoTimer
-	bra.s	ud_end
-
+	bra.s	ud_ok
 ud_now:
 	btst	#1,NewFlags+1(a4)
-	beq.s	ud_stop
-ud_update:
+	beq.s	ud_publish
 	bsr	DiskUpdate
-	tst.w	d0
-	beq.s	ud_stop			;writing successful
-
-	move.l	UIText+6*4(a4),-(sp)
-	move.l	d0,-(sp)
-	bsr	DoRequest		;report error
-	addq.l	#8,sp
-	tst.w	d0
-	bne.s	ud_update		;"repeat"
-
+	tst.l	d0
+	bne.s	ud_fail
+ud_publish:
+	bsr	UpdateFSInfo		;metadata and its flush precede the count
+	tst.l	d0
+	beq.s	ud_fail
 ud_stop:
 	btst	#0,NewFlags+1(a4)
 	beq.s	ud_done
-
 	bsr	DiskMotorOff
 ud_done:
 	clr.w	NewFlags(a4)
-
-ud_end:
-	movem.l	(sp)+,d0/d2		;restore d2 and discard arg slot
+ud_ok:
 	moveq.l	#TRUE,d0
+	bra.s	ud_end
+ud_fail:
+	bsr	LatchWriteFault
+	bsr	CheckMedia
+	bne.s	ud_failed
+	btst	#0,NewFlags+1(a4)
+	beq.s	ud_failed
+	bsr	DiskMotorOff
+ud_failed:
+	clr.w	NewFlags(a4)		;stop idle retries; buffers stay dirty
+	moveq.l	#0,d0
+ud_end:
+	movem.l	(sp)+,d2-d3
 	rts
 
-;--- read-only FAT32 fast-mount metadata -------------------
+;--- media identity and read-only FAT[1] clean flag ---------
 
 CLEAN_BIT = 27
+
+; All block transfers belong to MountGeneration, even if a requester
+; clears DiskChanged. Preserve arguments; Z means the medium is current.
+CheckMedia:
+	move.l	d1,-(sp)
+	move.l	MediaGeneration(a4),d1
+	cmp.l	MountGeneration(a4),d1
+	movem.l	(sp)+,d1
+	rts
 
 ; -> d0 = nonzero only if every managed FAT copy is clean. Read only.
 IsFATClean:
@@ -4832,6 +4934,59 @@ ifc_no:
 	moveq.l	#0,d0
 ifc_end:
 	movem.l	(sp)+,d1-d3/a0-a1
+	rts
+
+; -> BOOL. Invalidate the cached count before writing allocation metadata.
+; SingleBuf can evict boot/FSInfo sectors here, never FAT windows or directories.
+MarkFSInfoUnknown:
+	movem.l	d1-d3/a0-a3,-(sp)
+	bsr	CheckMedia
+	bne.s	mfu_fail
+	tst.w	WriteFault(a4)
+	bne.s	mfu_fail
+	tst.w	FATType(a4)
+	bpl.s	mfu_ok
+	tst.w	FSInfoUnknown(a4)
+	bne.s	mfu_ok
+	tst.l	FSInfoBlock(a4)
+	beq.s	mfu_ok
+	btst	#1,PhysFlags+1(a4)
+	beq.s	mfu_fail
+	tst.w	SoftLocked(a4)
+	bne.s	mfu_fail
+	move.w	#1,FSInfoUnknown(a4) ;recursion guard, rolled back on failure
+	move.w	#1,FSInfoDirty(a4)
+	move.l	FSInfoBlock(a4),d0
+	bsr	ReadSingle
+	tst.l	d0
+	beq.s	mfu_fail
+	move.l	d0,a1
+	moveq.l	#-1,d1
+	move.l	d1,488(a1)
+	bsr	BlockChanged
+	bsr	WriteBBuf
+	tst.l	d0
+	beq.s	mfu_fail
+	bsr	DiskUpdate
+	tst.l	d0
+	bne.s	mfu_fail
+mfu_ok:
+	moveq.l	#-1,d0
+	bra.s	mfu_end
+mfu_fail:
+	clr.w	FSInfoUnknown(a4)
+	bsr	LatchWriteFault
+	moveq.l	#0,d0
+mfu_end:
+	movem.l	(sp)+,d1-d3/a0-a3
+	rts
+
+; Fail closed until the next mount. Preserve I/O return registers.
+LatchWriteFault:
+	move.w	#1,WriteFault(a4)
+	clr.w	CheckComplete(a4)
+	move.l	#ID_WRITE_PROT,DiskState(a4)
+	move.w	#225,ErrorNum(a4)
 	rts
 
 ;--- read FileSysInfoBlock ---------------------------------
@@ -4888,24 +5043,51 @@ rfsi_end:
 ;--- update FileSysInfoBlock -------------------------------
 
 UpdateFSInfo:
+	movem.l	d1-d3/a0-a3,-(sp)
+	bsr	CheckMedia
+	bne.w	ufsi_fail
+	tst.w	WriteFault(a4)
+	bne.w	ufsi_fail
+	tst.w	FSInfoDirty(a4)
+	beq.w	ufsi_ok
+	tst.w	ScanActive(a4)
+	bne.w	ufsi_ok
+	cmp.l	#ID_VALIDATED,DiskState(a4)
+	bne.w	ufsi_ok
+	btst	#1,PhysFlags+1(a4)
+	beq.w	ufsi_ok
+	tst.w	SoftLocked(a4)
+	bne.w	ufsi_ok
 	move.l	FSInfoBlock(a4),d0
-	beq.s	ufsi_end		;no Info-Block..
-
+	beq.w	ufsi_ok
 	bsr	ReadSingle
 	tst.l	d0
-	beq.s	ufsi_end		;..or unreadable
-
+	beq.s	ufsi_fail
 	move.l	d0,a1
-	add.w	#488,a1
 	move.l	FreeClusters(a4),d1
 	ReverseL d1
-	cmp.l	(a1),d1
-	beq.s	ufsi_end		;no change
-
-	move.l	d1,(a1)
+	move.l	NextFreeCluster(a4),d2
+	ReverseL d2
+	move.l	d1,488(a1)
+	move.l	d2,492(a1)
+	move.w	#1,FSInfoUnknown(a4) ;publication must not invalidate itself
 	bsr	BlockChanged
 	bsr	WriteBBuf
+	clr.w	FSInfoUnknown(a4)
+	tst.l	d0
+	beq.s	ufsi_fail
+	bsr	DiskUpdate
+	tst.l	d0
+	bne.s	ufsi_fail
+	clr.w	FSInfoDirty(a4)
+ufsi_ok:
+	moveq.l	#-1,d0
+	bra.s	ufsi_end
+ufsi_fail:
+	bsr	LatchWriteFault
+	moveq.l	#0,d0
 ufsi_end:
+	movem.l	(sp)+,d1-d3/a0-a3
 	rts
 
 ;*** Timing control ****************************************
@@ -4979,6 +5161,8 @@ _Read:
 	move.l	a1,a3
 	move.l	DiskRequest(a4),a2
 _r_group:
+	bsr	CheckMedia
+	bne.w	_r_giveup
 	move.l	EnvecBuf+DE_MaxTransfer(a4),d0
 	move.w	BlockShift(a4),d1
 	lsr.l	d1,d0
@@ -5003,7 +5187,8 @@ _r_1:
 	move.l	d1,IO_Actual(a2)	;TD64: HighOffset
 	eor.l	d1,d0
 	move.l	d0,IO_Offset(a2)	;Byte-Offset
-	clr.l	IO_SecLabel(a2)		;no sector label
+	ZCLRL_INIT d0			;offset stored; d0 is scratch
+	ZCLRL	IO_SecLabel(a2),d0	;no sector label
 	move.l	a2,a1
 	bsr	SafeDoIO
 	bra.s	_r_check
@@ -5019,9 +5204,16 @@ _r_scsi_go:
 	moveq.l	#SCSIF_READ,d1
 	bsr	Do10byteScsi
 _r_check:
+	bsr	CheckMedia
+	bne.w	_r_giveup
 	bsr	DiskSense
 	move.b	d0,LastReadError(a4)
 	bne.s	_r_error
+	cmp.l	IO_Actual(a2),d6
+	beq.s	_r_gnext
+	moveq.l	#IOERR_BADLENGTH,d0
+	move.b	d0,LastReadError(a4)
+	bra.s	_r_error
 _r_gnext:
 	add.l	d6,a3			;bump &target
 	add.l	d3,d2			;bump Block #
@@ -5050,6 +5242,8 @@ _r_error:
 	bne.s	_r_giveup		;abort: layout we cached is stale
 	bra.w	_r_group		;"repeat"
 _r_giveup:
+	moveq.l	#0,d5
+	addq.l	#1,ReadFailures(a4)
 	move.w	#225,ErrorNum(a4)
 	bra.s	_r_end
 
@@ -5076,6 +5270,12 @@ _Write:
 	move.l	a0,a3
 	move.l	DiskRequest(a4),a2
 _w_group:
+	bsr	CheckMedia
+	bne.w	_w_giveup
+	tst.w	WriteFault(a4)
+	bne.w	_w_giveup
+	tst.w	DiscardBuffers(a4)
+	bne.w	_w_giveup
 	move.l	EnvecBuf+DE_MaxTransfer(a4),d0
 	move.w	BlockShift(a4),d1
 	lsr.l	d1,d0
@@ -5100,7 +5300,8 @@ _w_1:
 	move.l	d1,IO_Actual(a2)	;TD64: HighOffset
 	eor.l	d1,d0
 	move.l	d0,IO_Offset(a2)	;Byte-Offset
-	clr.l	IO_SecLabel(a2)		;no sector label
+	ZCLRL_INIT d0			;offset stored; d0 is scratch
+	ZCLRL	IO_SecLabel(a2),d0	;no sector label
 	move.l	a2,a1
 	bsr	SafeDoIO
 	bra.s	_w_check
@@ -5116,9 +5317,15 @@ _w_scsi_go:
 	moveq.l	#SCSIF_WRITE,d1
 	bsr	Do10byteScsi
 _w_check:
+	bsr	CheckMedia
+	bne.w	_w_giveup
 	bsr	DiskSense
 	tst.b	d0
 	bne.s	_w_error
+	cmp.l	IO_Actual(a2),d6
+	beq.s	_w_gnext
+	moveq.l	#IOERR_BADLENGTH,d0
+	bra.s	_w_error
 _w_gnext:
 	add.l	d6,a3			;bump &target
 	add.l	d3,d2			;bump Block #
@@ -5147,6 +5354,8 @@ _w_error:
 	bne.s	_w_giveup		;abort: layout we cached is stale
 	bra.w	_w_group		;"repeat"
 _w_giveup:
+	moveq.l	#0,d5
+	bsr	LatchWriteFault
 	move.w	#225,ErrorNum(a4)
 	bra.s	_w_end
 
@@ -5213,6 +5422,8 @@ ReadSingle:
 
 	move.l	a2,a0
 	bsr	WriteBBuf
+	tst.l	d0
+	beq.s	rs_end
 	bra.s	rs_read
 rs_new:
 	move.w	#4096,d1
@@ -5231,8 +5442,10 @@ rs_alloc:
 	move.l	d0,SingleBuf(a4)
 	beq.s	rs_end
 rs_read:
-	clr.w	BB_OpenCnt(a2)
-	clr.l	BB_DirtyFlags(a2)
+	move.l	#-1,BB_BlockNum(a2)
+	ZCLRL_INIT d0
+	ZCLRW	BB_OpenCnt(a2),d0
+	ZCLRL	BB_DirtyFlags(a2),d0
 	move.l	d3,d0
 	moveq.l	#1,d1
 	move.l	d1,BB_Blocks(a2)
@@ -5386,27 +5599,37 @@ rbn_rsearch:
 	roxr.w	#2,d0
 	bcc.s	rbn_rok			;keep protection
 
-	moveq.l	#1,d1
 	btst	#1,d4
-	bne.s	rbn_fdswitch		;file -> dir
+	bne.s	rbn_rok			;file -> dir
 
 	move.w	DirBufsMin(a4),d0
 	cmp.w	DirBufsUsed(a4),d0
 	bcc.s	rbn_rsearch		;keep a minimum count of dir buffers
 
-	moveq.l	#-1,d1			;dir -> file
-rbn_fdswitch:
-	eor.w	#%010,BB_Flags(a2)
-	add.w	d1,DirBufsUsed(a4)
 rbn_rok:
-	move.l	a2,a1
-	bsr	MyRemove
 	tst.w	BB_OpenCnt(a2)
 	bpl.s	rbn_nowfree		;reuse buffer
 
 	move.l	a2,a0
 	bsr	WriteBBuf
+	tst.l	d0
+	beq.w	rbn_end
 rbn_nowfree:
+	; Reclassify only after write-back; failure keeps the old buffer intact.
+	move.w	BB_Flags(a2),d0
+	eor.w	d4,d0
+	btst	#1,d0
+	beq.s	rbn_unlink
+	eor.w	#%010,BB_Flags(a2)
+	moveq.l	#1,d1
+	btst	#1,d4
+	bne.s	rbn_class
+	neg.w	d1
+rbn_class:
+	add.w	d1,DirBufsUsed(a4)
+rbn_unlink:
+	move.l	a2,a1
+	bsr	MyRemove
 	move.w	2(a3),d0
 	cmp.w	(a3),d0
 	bcc.s	rbn_setup		;too many buffers,..
@@ -5419,7 +5642,7 @@ rbn_free:
 	move.l	a2,a0
 	bsr	FreeBlockBuf		;..free one and search on
 	subq.w	#1,(a3)			;one less
-	bra.s	rbn_reuse
+	bra.w	rbn_reuse
 
 rbn_rnotfound:				;worst case..
 	moveq.l	#BB_Data,d0
@@ -5508,7 +5731,12 @@ WriteBBuf:
 	movem.l	d2-d5/a2-a3,-(sp)
 	move.l	a0,a2			;&BlockBuffer
 	move.l	BB_Blocks(a2),d3
-	ble.s	wbb_end			;nothing to do
+	ble.w	wbb_ok			;nothing to do
+	tst.w	BB_OpenCnt(a2)
+	bpl.w	wbb_ok
+	bsr	MarkFSInfoUnknown
+	tst.l	d0
+	beq.w	wbb_end
 
 	moveq.l	#-1,d2
 	moveq.l	#0,d4			;Block Offset
@@ -5518,8 +5746,7 @@ wbb_block:
 	and.l	d4,d0
 	bne.s	wbb_test
 
-	move.l	(a3),d5
-	clr.l	(a3)+
+	move.l	(a3)+,d5
 wbb_test:
 	add.l	d5,d5
 	bcc.s	wbb_no
@@ -5541,7 +5768,10 @@ wbb_no:
 	add.l	BB_BlockNum(a2),d0
 	move.l	d4,d1
 	sub.l	d2,d1
+	move.l	d1,-(sp)
 	bsr	_Write
+	cmp.l	(sp)+,d0
+	bne.s	wbb_fail
 	moveq.l	#-1,d2
 wbb_next:
 	addq.l	#1,d4
@@ -5549,7 +5779,16 @@ wbb_next:
 	bgt.s	wbb_block
 	beq.s	wbb_no
 wbb_ok:
+	ZCLRL_INIT d0
+	ZCLRL	BB_DirtyFlags(a2),d0
+	ZCLRL	BB_DirtyFlags+4(a2),d0
+	ZCLRL	BB_DirtyFlags+8(a2),d0
+	ZCLRL	BB_DirtyFlags+12(a2),d0
 	and.w	#$7fff,BB_OpenCnt(a2)
+	moveq.l	#-1,d0
+	bra.s	wbb_end
+wbb_fail:
+	moveq.l	#0,d0
 wbb_end:
 	movem.l	(sp)+,d2-d5/a2-a3
 	rts
@@ -6062,11 +6301,12 @@ GetDiskParams:
 	;detection cannot leak stale FirstBlock/TotalBlocks/PartitionNum
 	;/FATType values from a previous successful mount into gdp_ndos
 	;(which reads them) or into the next probe cycle.
-	clr.l	FirstBlock(a4)
-	clr.l	TotalBlocks(a4)
-	clr.l	HiddenBlocks(a4)
-	clr.w	PartitionNum(a4)
-	clr.w	FATType(a4)
+	ZCLRL_INIT d0
+	ZCLRL	FirstBlock(a4),d0
+	ZCLRL	TotalBlocks(a4),d0
+	ZCLRL	HiddenBlocks(a4),d0
+	ZCLRW	PartitionNum(a4),d0
+	ZCLRW	FATType(a4),d0
 	bsr	DiskStatus
 	move.w	d0,d3
 	beq.w	gdp_none		;no disk
@@ -6679,12 +6919,16 @@ dst_none:
 	moveq.l	#0,d0
 	bra.s	dst_end			;no Disk
 dst_ok:
+	bset	#1,PhysFlags+1(a4)	;refresh hardware state before overrides
 	moveq.l	#3,d0
 	moveq.l	#ID_VALIDATED,d1
+	tst.w	WriteFault(a4)
+	bne.s	dst_p2
 	tst.w	SoftLocked(a4)
 	bne.s	dst_p2			;soft write protection
 	bra.s	dst_state
 dst_prot:
+	bclr	#1,PhysFlags+1(a4)
 	moveq.l	#1,d0
 dst_p2:
 	moveq.l	#ID_WRITE_PROT,d1
@@ -6718,9 +6962,10 @@ ProbeTD64:
 	move.l	d0,a2			;a2 = scratch buffer
 	move.l	DiskRequest(a4),a1
 	move.w	#NSCMD_TD_READ64,IO_Command(a1)
-	clr.b	IO_Error(a1)
-	clr.l	IO_Actual(a1)		;high 32 bits = 0
-	clr.l	IO_Offset(a1)		;low  32 bits = 0 (block 0)
+	ZCLRL_INIT d0
+	ZCLRB	IO_Error(a1),d0
+	ZCLRL	IO_Actual(a1),d0	;high 32 bits = 0
+	ZCLRL	IO_Offset(a1),d0	;low  32 bits = 0 (block 0)
 	move.l	#512,IO_Length(a1)
 	move.l	a2,IO_Data(a1)
 	bsr	SafeDoIO		;a1 = IO request
@@ -6763,12 +7008,18 @@ DiskClear:
 	bra.w	SafeDoIO
 
 DiskUpdate:
+	bsr	CheckMedia
+	bne.s	du_stale
+	tst.w	WriteFault(a4)
+	bne.s	du_stale
 	btst	#3,CmdFlags+1(a4)
 	beq.s	du_ok			;unsupported, omit
 
 	move.l	DiskRequest(a4),a1
 	move.w	UpdateCmd(a4),IO_Command(a1)
 	bsr	SafeDoIO
+	bsr	CheckMedia
+	bne.s	du_stale
 	bsr	DiskSense
 	cmp.b	#45,d0
 	beq.s	du_off
@@ -6780,6 +7031,14 @@ du_off:
 du_ok:
 	moveq.l	#0,d0
 du_end:
+	tst.l	d0
+	beq.s	du_return
+	bsr	LatchWriteFault
+du_return:
+	rts
+du_stale:
+	bsr	LatchWriteFault
+	moveq.l	#TDERR_DISKCHANGED,d0
 	rts
 
 DiskSense:
@@ -7433,10 +7692,11 @@ lob_copy:
 	move.l	(a0)+,(a1)+
 	move.l	(a0)+,(a1)+
 	move.l	(a0)+,(a1)+		;copy short name
-	clr.w	(a1)			;MSDE_unused1 and MSDE_CMilSecs
-	clr.w	MSDE_1H(a2)
-	clr.w	MSDE_1L(a2)
-	clr.l	MSDE_FSize(a2)
+	ZCLRL_INIT d0
+	ZCLRW	(a1),d0	;MSDE_unused1 and MSDE_CMilSecs
+	ZCLRW	MSDE_1H(a2),d0
+	ZCLRW	MSDE_1L(a2),d0
+	ZCLRL	MSDE_FSize(a2),d0
 
 	moveq.l	#-1,d0
 	move.l	d0,XMSDE_ExtKey(a2) ;"extended entry" for CheckDirSpace()
@@ -8909,7 +9169,8 @@ exa_entry:
 	sub.l	d0,d2
 	bcs.w	exa_overrun		;no space for ExAllData
 
-	clr.l	(a2)			;ED_Next
+	ZCLRL_INIT d1
+	ZCLRL	(a2),d1			;ED_Next
 	move.l	a2,a3
 	add.w	d0,a3			;&target for Strings
 
@@ -8946,7 +9207,11 @@ exa_2:
 exa_3:
 	move.l	d1,ED_Type(a2)
 	cmp.w	#2,d4
+	ifd	__68020__
 	bcs.s	exa_match
+	else
+	bcs.w	exa_match		;68000 zero-register setup extends the span
+	endif
 
 ;- - file length - - - - - - - - - - - - - - - - - - - - - -
 
@@ -9008,14 +9273,16 @@ exa_7:
 	addq.l	#8,sp
 	bra.s	exa_8
 exa_nocomment:
-	clr.l	ED_Comment(a2)
+	ZCLRL_INIT d0
+	ZCLRL	ED_Comment(a2),d0
 exa_8:
 	cmp.w	#6,d4
 	bcs.s	exa_match
 
 ;- - owner Info  - - - - - - - - - - - - - - - - - - - - - -
 
-	clr.l	ED_OwnerUID(a2)
+	ZCLRL_INIT d0
+	ZCLRL	ED_OwnerUID(a2),d0
 
 ;- - entry complete  - - - - - - - - - - - - - - - - - - - -
 
@@ -9460,20 +9727,23 @@ rf_32init:
 	lsr.l	d1,d0
 	move.l	d0,FATBNum(a4)
 	moveq.l	#8,d2
+	ZCLRL_INIT d1			;MyAddHead preserves d1
 rf_32iloop:
 	lea	FAT32List(a4),a0
 	move.l	a2,a1
 	bsr	MyAddHead		;add Segments to list
 	moveq.l	#-1,d0
 	move.l	d0,F32B_Start(a2)	;"empty"
-	clr.l	F32B_Flags(a2)
+	ZCLRL	F32B_Flags(a2),d1
 	add.w	#F32B_Sizeof,a2
 	subq.w	#1,d2
 	bgt.s	rf_32iloop
 
-	clr.l	FreeClusters(a4)
-	clr.l	NextFreeCluster(a4)
-	clr.l	BackgroundData(a4)
+	ZCLRL	FreeClusters(a4),d1
+	ZCLRL	NextFreeCluster(a4),d1
+	ZCLRL	BackgroundData(a4),d1
+	clr.w	FSInfoUnknown(a4)	;nothing written yet this session
+	clr.w	FSInfoDirty(a4)
 
 ;-- clean flag set and FSInfo usable: take the count and skip the scan
 	bsr	IsFATClean
@@ -9495,6 +9765,8 @@ rf_32iloop:
 
 	moveq.l	#ID_VALIDATED,d0
 rf_32state:
+	bsr	CheckMedia
+	bne.s	rf_32scan
 	move.l	d0,DiskState(a4)	;..ready at once, no scan
 	bra.w	rf_end
 
@@ -9518,6 +9790,8 @@ ScanFAT32:
 	addq.l	#1,d5
 	sub.l	d2,d5			;# entries to go
 sf32_block:
+	bsr	CheckMedia
+	bne.w	sf32_abort
 	tst.w	DiskChanged(a4)		;card gone/swapped..
 	bne.w	sf32_abort		;..abandon the scan, dont read
 	tst.w	PleaseUnmount(a4)	;unmount latched..
@@ -9526,7 +9800,7 @@ sf32_block:
 	moveq.l	#0,d1
 	bsr	MoveFATWindow
 	tst.l	d0
-	beq.w	sf32_finished		;read error, stop
+	beq.w	sf32_abort		;failed read never validates
 
 	move.l	d0,a0			;&FAT window
 	move.l	#$ffffff0f,d1
@@ -9586,6 +9860,8 @@ sf32_wdone:
 	cmp.l	d0,a0
 	beq.w	sf32_block		;..incoming order interrupt here
 sf32_end:
+	bsr	CheckMedia
+	bne.s	sf32_abort
 	move.l	d2,BackgroundData(a4)
 	move.l	d3,FreeClusters(a4)
 	move.l	d4,NextFreeCluster(a4)
@@ -9602,7 +9878,11 @@ sf32_abort:
 	rts
 
 sf32_finished:
+	bsr	CheckMedia
+	bne.s	sf32_abort
 	clr.l	BackgroundJob(a4)	;work done.
+	move.w	#1,FSInfoDirty(a4)
+	or.w	#2,NewFlags(a4)	;publish only a complete count
 	moveq.l	#ID_WRITE_PROT,d0
 	btst	#1,PhysFlags+1(a4)	;if allowed..
 	beq.s	sf32_2
@@ -9626,7 +9906,13 @@ WF32_TABLE	= -9*4
 WriteFAT:
 	movem.l	d2-d7/a2-a3,-(sp)
 	tst.l	FATBuffer(a4)
-	beq.s	wf_end			;??
+	beq.w	wf_end			;??
+
+	btst	#3,NewFlags+1(a4)
+	beq.w	wf_end
+	bsr	MarkFSInfoUnknown		;also reached from MoveFATWindow
+	tst.l	d0
+	beq.w	wf_fail
 
 	tst.w	FATType(a4)
 	bmi.w	wf_32bit
@@ -9636,10 +9922,10 @@ WriteFAT:
 	add.l	FirstBlock(a4),d2
 	move.l	d2,a2			;Start Block #
 	move.b	NumFATCopies(a4),d3
-	beq.s	wf_end			;???!!
+	beq.w	wf_end			;???!!
 
 	move.l	FATBNum(a4),d4
-	beq.s	wf_end			;!!!!!
+	beq.w	wf_end			;!!!!!
 
 	tst.l	FATFlags(a4)
 	bne.s	wf_select
@@ -9648,7 +9934,9 @@ wf_all:
 	move.l	d2,d0
 	move.l	d4,d1
 	move.l	FATBuffer(a4),a0
-	bsr	_Write			;write whole window at once
+	bsr	WriteBlocksChecked	;write whole window at once
+	tst.l	d0
+	beq.w	wf_fail
 	add.l	BlocksPerFAT(a4),d2
 	subq.b	#1,d3
 	bgt.s	wf_all
@@ -9690,6 +9978,11 @@ wf_clearflags:
 	bgt.s	wf_clearflags
 wf_end:
 	and.w	#~8,NewFlags(a4)	;"FAT now unchanged"
+	moveq.l	#-1,d0
+	bra.s	wf_return
+wf_fail:
+	moveq.l	#0,d0
+wf_return:
 	movem.l	(sp)+,d2-d7/a2-a3
 	rts
 
@@ -9717,7 +10010,9 @@ wf_sflush:
 	move.l	(sp)+,d1
 	move.l	d2,d0
 	add.l	d1,d2
-	bsr	_Write			;..written at once
+	bsr	WriteBlocksChecked			;..written at once
+	tst.l	d0
+	beq.w	wf_fail
 	moveq.l	#0,d1
 	addq.l	#1,d2
 	bra.s	wf_sskip3
@@ -9800,7 +10095,9 @@ wf32_count:
 	add.l	d4,d0
 	add.l	d7,d0
 	move.l	d3,d1
-	bsr	_Write			;..and write at once
+	bsr	WriteBlocksChecked
+	tst.l	d0
+	beq.w	wf32_fail
 	add.l	d3,d7
 	addq.l	#1,d7
 	bra.s	wf32_skip
@@ -9810,16 +10107,32 @@ wf32_fnext:
 	bgt.s	wf32_fat
 wf32_done:
 	lea	WF32_TABLE(a5),a0
+	ZCLRL_INIT d1
 wf32_clear:
 	move.l	(a0)+,d0
 	beq.s	wf32_end
 
 	move.l	d0,a1
-	clr.l	F32B_Flags(a1)		;"unchanged"
+	ZCLRL	F32B_Flags(a1),d1	;"unchanged"
 	bra.s	wf32_clear
 wf32_end:
 	unlk	a5
 	bra.w	wf_end
+
+wf32_fail:
+	unlk	a5
+	bra.w	wf_fail
+
+; d0 = block, d1 = count, a0 = data; -> BOOL, preserving d1.
+WriteBlocksChecked:
+	move.l	d1,-(sp)
+	bsr	_Write
+	move.l	(sp)+,d1
+	cmp.l	d1,d0
+	seq	d0
+	ext.w	d0
+	ext.l	d0
+	rts
 
 ;--- free --------------------------------------------------
 
@@ -9847,6 +10160,8 @@ MFW_MASK	= (F32B_Sizeof-F32B_Data)/4-1
 
 MoveFATWindow:
 	movem.l	d2-d5/a2,-(sp)
+	bsr	CheckMedia
+	bne.w	mfw_fail
 	move.l	d0,d2			;Index
 	move.l	d1,d3			;mode
 	and.w	#~MFW_MASK,d0
@@ -9871,6 +10186,8 @@ mfw_snext:
 	beq.s	mfw_read
 
 	bsr	WriteFAT
+	tst.l	d0
+	beq.w	mfw_fail
 mfw_read:
 	move.l	d5,F32B_Start(a2)
 	move.w	BlockShift(a4),d1
@@ -9902,13 +10219,9 @@ mfw_rtry:
 	subq.b	#1,d3
 	bgt.s	mfw_rtry		;in the worst case..
 mfw_rfill:
-	lea	F32B_Data(a2),a1
-	move.w	#(F32B_Sizeof-F32B_Data)/4,d0
-	move.l	#$ffffff0f,d1
-mfw_rf1:
-	move.l	d1,(a1)+		;..assume "everything full"
-	subq.w	#1,d0
-	bgt.s	mfw_rf1
+	bsr	LatchWriteFault		;never modify a guessed FAT segment
+	move.l	#-1,F32B_Start(a2)
+	bra.w	mfw_fail
 mfw_found:
 	move.l	a2,a1
 	bsr	MyRemove
@@ -9930,6 +10243,10 @@ mfw_ok:
 	moveq.l	#F32B_Data,d0
 	add.l	d2,d0
 	add.l	a2,d0
+	bra.s	mfw_end
+mfw_fail:
+	moveq.l	#0,d0
+mfw_end:
 	movem.l	(sp)+,d2-d5/a2
 	rts
 
@@ -9951,6 +10268,8 @@ GetFATEntry:
 	move.l	d1,d0
 	moveq.l	#0,d1
 	bsr	MoveFATWindow		;32bit entries
+	tst.l	d0
+	beq.w	gfe_error
 	move.l	d0,a0
 	move.l	(a0),d0
 	and.b	#$0f,d0			;only 28bit are actually used
@@ -10005,7 +10324,7 @@ PutFATEntry:
 	move.l	d1,d2			;new contents
 	move.l	d0,d1			;FAT Index
 	move.l	FATBuffer(a4),d0
-	beq.s	pfe_end
+	beq.w	pfe_end
 
 	move.l	d0,a0			;&FAT
 	tst.w	FATType(a4)
@@ -10015,6 +10334,8 @@ PutFATEntry:
 	move.l	d1,d0
 	moveq.l	#-1,d1
 	bsr	MoveFATWindow		;32bit entries
+	tst.l	d0
+	beq.w	pfe_end
 	move.l	d0,a0
 	ReverseL d2
 	and.b	#$0f,d2			;only 28bit are actually used
@@ -11915,25 +12236,32 @@ se_end:
 ;	3 = "Cluster claimed by a file or dir"
 
 ScanDisk:
+	ZCLRL_INIT d0
+	ZCLRL	ReadFailures(a4),d0	;this check owns its read-error result
+	move.w	#1,ScanActive(a4)
+	ZCLRW	CheckComplete(a4),d0
 	link.w	a5,#SD_STRINGBUF
 	movem.l	d2-d7/a2-a3,-(sp)
 	lea	SD_ERRORS(a5),a1
-	clr.l	(a1)
-	clr.l	-(a1)
-	clr.l	-(a1)
-	clr.l	-(a1)
-	clr.l	-(a1)
-	clr.l	-(a1)
+	ZCLRL	(a1),d0
+	ZCLRL	-(a1),d0
+	ZCLRL	-(a1),d0
+	ZCLRL	-(a1),d0
+	ZCLRL	-(a1),d0
+	ZCLRL	-(a1),d0
 	move.l	LastCluster(a4),d3
 	addq.l	#1,d3
 	move.l	d3,SD_CLUSTERS(a5)
-	clr.l	SD_DONE(a5)
+	ZCLRL	SD_DONE(a5),d0
 	move.l	d3,d0
 	move.l	#MEMF_CLEAR,d1
 	CALLEXEC AllocMem
 	move.l	d0,a3
 	tst.l	d0
 	beq.w	sd_nomem
+	bsr	MarkFSInfoUnknown
+	tst.l	d0
+	beq.w	sd_freebuf
 
 ;- - open progresss window - - - - - - - - - - - - - - - - -
 
@@ -11973,7 +12301,7 @@ sd_tblock:
 
 	bsr	ReadDirBlock
 	tst.l	d0
-	beq.w	sd_tup			;read error
+	beq.w	sd_tabort		;unreadable directory: incomplete check
 
 	move.l	d0,a2
 	add.l	d4,a2			;&dir entry
@@ -12028,7 +12356,8 @@ sd_tuserdir:				;turn subdirs..
 	cmp.l	d3,d0			;..too large cluster #..
 	bcs.w	sd_tdown
 sd_tudfix:
-	clr.l	MSDE_FSize(a2)		;..into empty..
+	ZCLRL_INIT d1
+	ZCLRL	MSDE_FSize(a2),d1	;..into empty..
 	and.b	#$ef,MSDE_Flags(a2)	;..files
 	moveq.l	#0,d1
 	bra.s	sd_tsetchain
@@ -12100,7 +12429,8 @@ sd_tdown:
 	tst.l	MSDE_FSize(a2)		;dirs should have..
 	beq.s	sd_td1
 
-	clr.l	MSDE_FSize(a2)		;..no file length
+	ZCLRL_INIT d1
+	ZCLRL	MSDE_FSize(a2),d1	;..no file length
 	move.l	SD_BLOCKBUF(a5),a0
 	move.l	a2,d0
 	bsr	BlockChanged
@@ -12299,6 +12629,7 @@ sd_lsnext:
 	bcs.w	sd_lostsearch
 sd_lsbreak:
 	add.w	#20,sp
+	move.w	#1,CheckComplete(a4)	;all phases completed
 
 ;- - all done! - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -12342,11 +12673,25 @@ sd_freebuf:
 	move.l	d3,d0
 	move.l	a3,a1
 	CALLEXEC FreeMem
-sd_nomem:
 	move.l	SD_ERRORS(a5),d0
-	bgt.s	sd_end
-
+	bgt.s	sd_failed
+	bsr	CheckMedia
+	bne.s	sd_nomem
+	tst.w	WriteFault(a4)
+	bne.s	sd_nomem
+	tst.l	ReadFailures(a4)
+	bne.s	sd_nomem
+	tst.w	CheckComplete(a4)
+	beq.s	sd_nomem
+	clr.w	ScanActive(a4)
+	move.w	#1,FSInfoDirty(a4)
+	or.w	#2,NewFlags(a4)	;publish the verified count on flush
 	moveq.l	#TRUE,d0
+	bra.s	sd_end
+sd_nomem:
+	moveq.l	#-1,d0		;incomplete, not a zero-error pass
+sd_failed:
+	clr.w	CheckComplete(a4)
 sd_end:
 	movem.l	(sp)+,d2-d7/a2-a3
 	unlk	a5
@@ -12998,12 +13343,13 @@ dreq_r1:
 	move.l	UIText+2*4(a4),DREQ_POSTEXT+IT_String(a5)
 	lea	DREQ_TEXT2(a5),a1
 	moveq.l	#4,d1
+	ZCLRL_INIT d0
 dreq_r2:
 	move.l	#$00010100,(a1)+
 	addq.l	#4,a1
-	clr.l	(a1)+
+	ZCLRL	(a1)+,d0
 	addq.l	#4,a1
-	clr.l	(a1)+
+	ZCLRL	(a1)+,d0
 	subq.w	#1,d1
 	bgt.s	dreq_r2
 

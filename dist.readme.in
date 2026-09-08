@@ -63,6 +63,8 @@ New major version of fat95 4.0 filesystem handler:
   efficient and finishes a little sooner. A volume that was unmounted
   properly skips the scan and is ready at once.
 
+* Safer handling of write errors and card changes.
+
 Tools 'dd 2.3':
 
 * A 64-bit transfer command (NSCMD_TD64 or TD64) is now used whenever
