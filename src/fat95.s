@@ -1012,7 +1012,11 @@ CheckComplete   = 894
 ScanActive      = 896
 
 ;total size
-VarsSizeof      = 898
+DirtyReady      = 898
+DirtyEligible   = 900
+DirtyCycle      = 902
+DirtyIO         = 904
+VarsSizeof      = 906
 
 ;*** Here we go!! ******************************************
 
@@ -2497,6 +2501,10 @@ cd_end:
 	ZCLRW	DiscardBuffers(a4),d1
 	ZCLRW	FSInfoUnknown(a4),d1
 	ZCLRW	CheckComplete(a4),d1
+	ZCLRW	DirtyReady(a4),d1
+	ZCLRW	DirtyEligible(a4),d1
+	ZCLRW	DirtyCycle(a4),d1
+	ZCLRW	DirtyIO(a4),d1
 	moveq.l	#ID_NONE,d1
 	move.l	d1,DiskType(a4)
 	rts
@@ -2564,6 +2572,10 @@ OpenDisk:
 	ZCLRW	FSInfoDirty(a4),d0
 	ZCLRW	ScanActive(a4),d0
 	ZCLRW	DiscardBuffers(a4),d0
+	ZCLRW	DirtyReady(a4),d0
+	ZCLRW	DirtyEligible(a4),d0
+	ZCLRW	DirtyCycle(a4),d0
+	ZCLRW	DirtyIO(a4),d0
 	ZCLRL	ReadFailures(a4),d0
 	ZCLRL	FSInfoBlock(a4),d0
 	move.l	MediaGeneration(a4),MountGeneration(a4)
@@ -4837,9 +4849,7 @@ cafl_fail:
 UpdateDisk:
 	movem.l	d2-d3,-(sp)
 	move.l	d0,d3			;immediate
-	bsr	CheckMedia
-	bne.w	ud_fail
-	tst.w	WriteFault(a4)
+	bsr	CheckWriteMedia
 	bne.w	ud_fail
 	btst	#3,NewFlags+1(a4)
 	beq.s	ud_blocks
@@ -4871,6 +4881,9 @@ ud_publish:
 	bsr	UpdateFSInfo		;metadata and its flush precede the count
 	tst.l	d0
 	beq.s	ud_fail
+	bsr	FinishDirtyCycle
+	tst.l	d0
+	beq.s	ud_fail
 ud_stop:
 	btst	#0,NewFlags+1(a4)
 	beq.s	ud_done
@@ -4894,9 +4907,12 @@ ud_end:
 	movem.l	(sp)+,d2-d3
 	rts
 
-;--- media identity and read-only FAT[1] clean flag ---------
+;--- media identity and FAT[1] clean state -----------------
 
-CLEAN_BIT = 27
+; Z means current medium with no latched write fault. Preserve arguments.
+CheckWriteMedia:
+	tst.w	WriteFault(a4)
+	bne.s	cm_end			;otherwise continue with the media check
 
 ; All block transfers belong to MountGeneration, even if a requester
 ; clears DiskChanged. Preserve arguments; Z means the medium is current.
@@ -4905,44 +4921,14 @@ CheckMedia:
 	move.l	MediaGeneration(a4),d1
 	cmp.l	MountGeneration(a4),d1
 	movem.l	(sp)+,d1
-	rts
-
-; -> d0 = nonzero only if every managed FAT copy is clean. Read only.
-IsFATClean:
-	movem.l	d1-d3/a0-a1,-(sp)
-	tst.w	FATType(a4)
-	bpl.s	ifc_no
-	moveq.l	#0,d2
-	move.w	FATStartBlock(a4),d2
-	moveq.l	#0,d3
-	move.b	NumFATCopies(a4),d3
-	beq.s	ifc_no
-ifc_copy:
-	move.l	d2,d0
-	bsr	ReadSingle
-	tst.l	d0
-	beq.s	ifc_no
-	move.l	d0,a1
-	btst	#CLEAN_BIT-24,7(a1)
-	beq.s	ifc_no
-	add.l	BlocksPerFAT(a4),d2
-	subq.w	#1,d3
-	bne.s	ifc_copy
-	moveq.l	#1,d0
-	bra.s	ifc_end
-ifc_no:
-	moveq.l	#0,d0
-ifc_end:
-	movem.l	(sp)+,d1-d3/a0-a1
+cm_end:
 	rts
 
 ; -> BOOL. Invalidate the cached count before writing allocation metadata.
 ; SingleBuf can evict boot/FSInfo sectors here, never FAT windows or directories.
 MarkFSInfoUnknown:
 	movem.l	d1-d3/a0-a3,-(sp)
-	bsr	CheckMedia
-	bne.s	mfu_fail
-	tst.w	WriteFault(a4)
+	bsr	CheckWriteMedia
 	bne.s	mfu_fail
 	tst.w	FATType(a4)
 	bpl.s	mfu_ok
@@ -4987,6 +4973,247 @@ LatchWriteFault:
 	clr.w	CheckComplete(a4)
 	move.l	#ID_WRITE_PROT,DiskState(a4)
 	move.w	#225,ErrorNum(a4)
+	rts
+
+; Dirty state belongs to one mount. Probe every managed copy before writes.
+InitDirtyState:
+	ZCLRL_INIT d0
+	ZCLRW	DirtyReady(a4),d0
+	ZCLRW	DirtyEligible(a4),d0
+	ZCLRW	DirtyCycle(a4),d0
+	ZCLRW	DirtyIO(a4),d0
+	tst.w	FATType(a4)
+	beq.s	ids_ok
+	moveq.l	#-1,d0			;probe only
+	bsr	DirtySectors
+	tst.l	d0
+	beq.s	ids_end
+	move.w	#1,DirtyReady(a4)
+ids_ok:
+	moveq.l	#-1,d0
+ids_end:
+	rts
+
+; Called by _Write, including direct data writes. Internal marker I/O bypasses it.
+BeginDirtyCycle:
+	tst.w	DirtyCycle(a4)
+	bne.s	bdc_skip
+	tst.w	DirtyReady(a4)
+	beq.s	bdc_skip
+	tst.w	DirtyIO(a4)
+	bne.s	bdc_skip
+	movem.l	d1-d7/a0-a3/a6,-(sp)
+	btst	#1,PhysFlags+1(a4)
+	beq.s	bdc_fail
+	tst.w	SoftLocked(a4)
+	bne.s	bdc_fail
+	move.w	#1,DirtyIO(a4)
+	moveq.l	#0,d0			;clear clean bit
+	bsr	DirtySectors
+	tst.l	d0
+	beq.s	bdc_fail
+	bsr	DiskUpdate
+	tst.l	d0
+	bne.s	bdc_fail
+	move.w	#1,DirtyCycle(a4)
+	clr.w	DirtyIO(a4)
+	moveq.l	#-1,d0
+	bra.s	bdc_end
+bdc_fail:
+	clr.w	DirtyIO(a4)
+	bsr	LatchWriteFault
+	moveq.l	#0,d0
+bdc_end:
+	movem.l	(sp)+,d1-d7/a0-a3/a6
+	rts
+
+bdc_skip:
+	moveq.l	#-1,d0
+	rts
+
+; Metadata must already be flushed. 2 means clean writes await their barrier.
+RestoreCleanBit:
+	bsr	CheckWriteMedia
+	bne.s	rcb_fail
+	tst.w	DirtyEligible(a4)
+	beq.s	rcb_ok
+	cmp.w	#1,DirtyCycle(a4)
+	bne.s	rcb_ok
+	tst.l	ReadFailures(a4)
+	bne.s	rcb_ok
+	tst.w	ScanActive(a4)
+	bne.s	rcb_ok
+	tst.l	BackgroundJob(a4)
+	bne.s	rcb_ok
+	cmp.l	#ID_VALIDATED,DiskState(a4)
+	bne.s	rcb_ok
+	btst	#1,PhysFlags+1(a4)
+	beq.s	rcb_ok
+	tst.w	SoftLocked(a4)
+	bne.s	rcb_ok
+	move.w	#1,DirtyIO(a4)
+	moveq.l	#1,d0
+	bsr	DirtySectors
+	clr.w	DirtyIO(a4)
+	tst.l	d0
+	beq.s	rcb_fail
+	move.w	#2,DirtyCycle(a4)
+rcb_ok:
+	moveq.l	#-1,d0
+	bra.s	rcb_end
+rcb_fail:
+	bsr	LatchWriteFault
+	moveq.l	#0,d0
+rcb_end:
+	rts
+
+FinishDirtyCycle:
+	bsr	RestoreCleanBit
+	tst.l	d0
+	beq.s	fdc_end
+	cmp.w	#2,DirtyCycle(a4)
+	bne.s	fdc_ok
+
+; Flush published metadata; commit a restored clean bit only after success.
+; Also called when FSInfo needs a barrier without a pending clean transition.
+FlushDirtyCycle:
+	bsr	DiskUpdate
+	tst.l	d0
+	bne.s	fdc_fail
+	cmp.w	#2,DirtyCycle(a4)
+	bne.s	fdc_ok
+	clr.w	DirtyCycle(a4)
+fdc_ok:
+	moveq.l	#-1,d0
+fdc_end:
+	rts
+fdc_fail:
+	moveq.l	#0,d0
+	rts
+
+; d0=-1 probe, 0 dirty, 1 clean. Fresh on-disk sector per copy; no cache eviction.
+; Only the clean bit changes. Cache copies receive the same bit, never the sector.
+DirtySectors:
+	movem.l	d1-d7/a0-a3/a6,-(sp)
+	move.l	d0,d4
+	moveq.l	#0,d0
+	move.w	BlockSize(a4),d0
+	move.l	BufMemType(a4),d1
+	CALLEXEC AllocMem
+	move.l	d0,a3
+	tst.l	d0
+	beq.w	dsct_fail
+	moveq.l	#0,d2
+	move.w	FATStartBlock(a4),d2
+	add.l	FirstBlock(a4),d2
+	moveq.l	#0,d3
+	move.b	NumFATCopies(a4),d3
+	beq.w	dsct_freefail
+	moveq.l	#1,d7			;all copies clean until disproved
+	moveq.l	#3,d5			;FAT16: byte 3, bit 7
+	moveq.l	#7,d6
+	tst.w	FATType(a4)
+	bpl.s	dsct_loop
+	exg	d5,d6			;FAT32: byte 7, bit 3
+dsct_loop:
+	move.l	d2,d0
+	moveq.l	#1,d1
+	move.l	a3,a1
+	bsr	_Read
+	cmp.l	#1,d0
+	bne.w	dsct_freefail
+	move.l	a3,a0
+	add.l	d5,a0
+	tst.l	d4
+	bpl.s	dsct_change
+	btst	d6,(a0)
+	bne.s	dsct_next
+	moveq.l	#0,d7
+	bra.s	dsct_next
+dsct_change:
+	bsr	SetCleanByte
+	move.l	d2,d0
+	moveq.l	#1,d1
+	move.l	a3,a0
+	bsr	_Write
+	cmp.l	#1,d0
+	bne.s	dsct_freefail
+	bsr	SyncCleanCache
+dsct_next:
+	add.l	BlocksPerFAT(a4),d2
+	subq.w	#1,d3
+	bne.s	dsct_loop
+	tst.l	d4
+	bpl.s	dsct_success
+	move.w	d7,DirtyEligible(a4)
+dsct_success:
+	moveq.l	#-1,d7
+	bra.s	dsct_free
+dsct_freefail:
+	moveq.l	#0,d7
+dsct_free:
+	moveq.l	#0,d0
+	move.w	BlockSize(a4),d0
+	move.l	a3,a1
+	CALLEXEC FreeMem
+	move.l	d7,d0
+	bne.s	dsct_end
+dsct_fail:
+	tst.l	d4
+	bpl.s	dsct_fault
+	bsr	CheckMedia
+	bne.s	dsct_fault
+	moveq.l	#-1,d0			;unknown initial state: allow mount, never clean
+	bra.s	dsct_end
+dsct_fault:
+	bsr	LatchWriteFault
+	moveq.l	#0,d0
+dsct_end:
+	movem.l	(sp)+,d1-d7/a0-a3/a6
+	rts
+
+; a0 -> flag byte, d6 -> bit, d4 -> desired clean state.
+SetCleanByte:
+	tst.l	d4
+	beq.s	scb_dirty
+	bset	d6,(a0)
+	rts
+scb_dirty:
+	bclr	d6,(a0)
+	rts
+
+; Preserve pending allocation changes and dirty flags in every resident copy.
+SyncCleanCache:
+	move.l	SingleBuf(a4),d0
+	beq.s	scc_fat
+	move.l	d0,a1
+	cmp.l	BB_BlockNum(a1),d2
+	bne.s	scc_fat
+	lea	BB_Data(a1),a0
+	add.l	d5,a0
+	bsr	SetCleanByte
+scc_fat:
+	move.l	FATBuffer(a4),d0
+	beq.s	scc_end
+	tst.w	FATType(a4)
+	bmi.s	scc_windows
+	move.l	d0,a0
+	add.l	d5,a0
+	bra.s	SetCleanByte
+scc_windows:
+	move.l	FAT32List(a4),a1
+scc_loop:
+	tst.l	(a1)
+	beq.s	scc_end
+	tst.l	F32B_Start(a1)
+	bne.s	scc_next
+	lea	F32B_Data(a1),a0
+	add.l	d5,a0
+	bsr	SetCleanByte
+scc_next:
+	move.l	(a1),a1
+	bra.s	scc_loop
+scc_end:
 	rts
 
 ;--- read FileSysInfoBlock ---------------------------------
@@ -5044,9 +5271,7 @@ rfsi_end:
 
 UpdateFSInfo:
 	movem.l	d1-d3/a0-a3,-(sp)
-	bsr	CheckMedia
-	bne.w	ufsi_fail
-	tst.w	WriteFault(a4)
+	bsr	CheckWriteMedia
 	bne.w	ufsi_fail
 	tst.w	FSInfoDirty(a4)
 	beq.w	ufsi_ok
@@ -5076,9 +5301,12 @@ UpdateFSInfo:
 	clr.w	FSInfoUnknown(a4)
 	tst.l	d0
 	beq.s	ufsi_fail
-	bsr	DiskUpdate
+	bsr	RestoreCleanBit
 	tst.l	d0
-	bne.s	ufsi_fail
+	beq.s	ufsi_fail
+	bsr	FlushDirtyCycle
+	tst.l	d0
+	beq.s	ufsi_fail
 	clr.w	FSInfoDirty(a4)
 ufsi_ok:
 	moveq.l	#-1,d0
@@ -5270,12 +5498,13 @@ _Write:
 	move.l	a0,a3
 	move.l	DiskRequest(a4),a2
 _w_group:
-	bsr	CheckMedia
-	bne.w	_w_giveup
-	tst.w	WriteFault(a4)
+	bsr	CheckWriteMedia
 	bne.w	_w_giveup
 	tst.w	DiscardBuffers(a4)
 	bne.w	_w_giveup
+	bsr	BeginDirtyCycle
+	tst.l	d0
+	beq.w	_w_giveup
 	move.l	EnvecBuf+DE_MaxTransfer(a4),d0
 	move.w	BlockShift(a4),d1
 	lsr.l	d1,d0
@@ -7008,9 +7237,7 @@ DiskClear:
 	bra.w	SafeDoIO
 
 DiskUpdate:
-	bsr	CheckMedia
-	bne.s	du_stale
-	tst.w	WriteFault(a4)
+	bsr	CheckWriteMedia
 	bne.s	du_stale
 	btst	#3,CmdFlags+1(a4)
 	beq.s	du_ok			;unsupported, omit
@@ -7029,6 +7256,19 @@ DiskUpdate:
 du_off:
 	and.w	#~8,CmdFlags(a4)
 du_ok:
+	tst.w	DirtyReady(a4)
+	beq.s	du_supported
+	tst.w	DirtyIO(a4)
+	bne.s	du_required
+	tst.w	DirtyCycle(a4)
+	beq.s	du_supported
+du_required:
+	btst	#3,CmdFlags+1(a4)
+	bne.s	du_supported
+	moveq.l	#IOERR_NOCMD,d0
+	bsr	LatchWriteFault
+	rts
+du_supported:
 	moveq.l	#0,d0
 du_end:
 	tst.l	d0
@@ -9527,6 +9767,12 @@ nff_end:
 
 ReadFAT:
 	movem.l	d2-d4/a2,-(sp)
+	bsr	InitDirtyState
+	tst.l	d0
+	bne.s	rf_ready
+	movem.l	(sp)+,d2-d4/a2
+	rts
+rf_ready:
 	tst.w	FATType(a4)		;buffer huge 32bit FATs..
 	bmi.w	rf_32bit		;..windowed
 
@@ -9746,8 +9992,7 @@ rf_32iloop:
 	clr.w	FSInfoDirty(a4)
 
 ;-- clean flag set and FSInfo usable: take the count and skip the scan
-	bsr	IsFATClean
-	tst.l	d0
+	tst.w	DirtyEligible(a4)
 	beq.s	rf_32scan
 
 	bsr	ReadFSInfo
@@ -12675,9 +12920,7 @@ sd_freebuf:
 	CALLEXEC FreeMem
 	move.l	SD_ERRORS(a5),d0
 	bgt.s	sd_failed
-	bsr	CheckMedia
-	bne.s	sd_nomem
-	tst.w	WriteFault(a4)
+	bsr	CheckWriteMedia
 	bne.s	sd_nomem
 	tst.l	ReadFailures(a4)
 	bne.s	sd_nomem
