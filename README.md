@@ -425,11 +425,14 @@ debug95 CF0: ram:cf0.log
 
 Creates a dump of internal fat95 variables for diagnosis.
 
-### FAT32 Notes
+### Mount Scans and Dirty Volumes
 
-* FAT32 FAT table can be huge (8MB for 8GB partition)
-* fat95 does not cache entire FAT32 table to save memory
-* Free space calculation happens after mount ("volume is validating")
+* A FAT32 allocation table can be large (8MB for an 8GB partition); fat95 caches only part of it to save memory.
+* Clean FAT32 volumes with a valid saved free-space count skip the mount scan. Otherwise, fat95 recalculates free space while reporting "volume is validating".
+* fat95 marks FAT16/FAT32 volumes dirty before writing. Volumes mounted clean can return to clean after scanning finishes and pending writes flush successfully.
+* Volumes mounted dirty remain dirty. Recalculating free space does not repair disk errors.
+* Write or flush errors block further writes until remount.
+* FAT12 has no dirty flag.
 
 ### Disk Status Meanings
 
