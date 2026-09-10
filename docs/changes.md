@@ -1,4 +1,4 @@
-## 20260910-dev
+## 20260911-dev
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
@@ -15,20 +15,19 @@ _Components in this release_:
 <!-- COMPONENTS:END -->
 
 #### New major version of fat95 4.0 filesystem handler
-
 - **Shared partition scanning.** fat95 auto-detects its FAT partition (MBR, GPT, and flat whole-disk FAT) from the shared `partition.resource` published by `ptable.library`; a flat whole-disk volume is still detected from its boot block and registered back into the resource. The resolved mount Flags/CONTROL and the DosType the mount carries are reported and shown by `lsptres`. Partition auto-detection now requires `ptable.library`. Explicit-geometry mountlist entries still mount without it. See [ptable.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/ptable.md) and [lsptres.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/lsptres.md).
+- **New `q` (quiet) option.** Control `"+q"` silences all fat95 error windows for a mount (errors go to the calling program instead). Unmounting a removed card cancels any open window automatically.
+- **New Apollo 68080 tier.** For boards with an Apollo core 68080.
+- **Faster FAT32 validation.** The free-space scan of a freshly mounted FAT32 volume is more efficient and finishes a little sooner. A volume that was unmounted properly skips the scan and is ready at once.
 - Pulling a card while a Workbench window or an open file still holds the volume no longer stalls the driver: fat95 declines to quit at once and stays in service, so the partition is kept and the card mounts again when reinserted.
 - A FAT partition already mounted by another handler is no longer claimed. Mounting a second `DOSDrivers` entry over an already mounted partition fails with `object in use` instead of putting two handlers on one volume. A persistent handler reattaching to its own partition after a card swap is unaffected. The new `m` Control option overrides the refusal (reads mostly work, a write corrupts the volume). The extra mount is listed as its own `partition.resource` row.
-- **New `q` (quiet) option.** Control `"+q"` silences all fat95 error windows for a mount (errors go to the calling program instead). Unmounting a removed card cancels any open window automatically.
 - The `d` (datestamps as file comments) and `D` (record last-accessed date) Control options now default to off. `Control = "+d+D"` restores the previous behaviour.
+- Safer handling of write errors and card changes.
 - An accepted `ACTION_DIE` (e.g. `MOUNT <dev>: SHUTDOWN`) unhooks the device node before replying, so `C:Mount` no longer prints a misleading `object in use` for a successful shutdown. The handler also unregisters its mount, so the partition is free again instead of staying claimed.
 - Fixed: with no card inserted, opening the volume's root directory crashed instead of reporting `no disk`.
 - Fixed: turning a lock into a file handle lost count of it, so the handler could believe nothing was using the volume while files were still open.
 - Fixed: a newly created directory's `..` entry could name the wrong parent, so moving up out of it on another system could land in the root.
 - Fixed: giving a volume a serial number reported success even when the write failed, so the system could record a serial the card does not carry.
-- **New Apollo 68080 tier.** For boards with an Apollo core 68080.
-- **Faster FAT32 validation.** The free-space scan of a freshly mounted FAT32 volume is more efficient and finishes a little sooner. A volume that was unmounted properly skips the scan and is ready at once.
-- Safer handling of write errors and card changes.
 
 #### Tools 'dd 2.4'
 - The help and the `INSPECT` report print one screenful at a time; any key continues, `Q` stops.
