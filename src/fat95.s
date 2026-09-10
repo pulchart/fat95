@@ -4673,7 +4673,7 @@ sdi_loop:
 sdi_update:
 	moveq.l	#TRUE,d0		;"immediately"
 	bsr	UpdateDisk
-	moveq.l	#TRUE,d2		;"OK"
+	move.l	d0,d2			;a failed write-back is not "OK"
 sdi_end:
 	bsr	CacheFree
 	move.l	d2,d0
