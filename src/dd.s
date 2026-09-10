@@ -601,13 +601,13 @@ s_msgerr:
 	bra.w	s_closedos
 
 NoUnitStr:
-	dc.b	'dd: device named but no UNIT/US/UD given',10
+	dc.b	'dd: device named but no UNIT/US/UD given',LF
 NoUnitEnd:
 CmdErrStr:
-	dc.b	'dd: unknown CMD/CMDSRC/CMDDST value (AUTO|CMD|TD64|NSCMD|SCSI)',10
+	dc.b	'dd: unknown CMD/CMDSRC/CMDDST value (AUTO|CMD|TD64|NSCMD|SCSI)',LF
 CmdErrEnd:
 MemErrStr:
-	dc.b	'dd: unknown MEM value (ANY|PUBLIC|CHIP|FAST|24BIT)',10
+	dc.b	'dd: unknown MEM value (ANY|PUBLIC|CHIP|FAST|24BIT)',LF
 MemErrEnd:
 	even
 s_pdone:
@@ -1516,7 +1516,7 @@ s_DosName:
 	dc.b	'dos.library',0
 	even
 s_old_dos_msg:
-	dc.b	'dd requires Kickstart 2.0+ (V36+)',13,10
+	dc.b	'dd requires Kickstart 2.0+ (V36+)',LF
 s_old_dos_msg_end:
 	even
 
@@ -2873,12 +2873,12 @@ pi_end:
 	rts
 
 ;--- format strings ----------------------------------------
-fi_hdr:		dc.b	'%s unit %ld:',13,10,0
-fi_sect:	dc.b	'  sector size:    %ld',13,10,0
-fi_total:	dc.b	'  total sectors:  %ld',13,10,0
-fi_cyl:		dc.b	'  cylinders:      %ld',13,10,0
-fi_heads:	dc.b	'  heads:          %ld',13,10,0
-fi_spt:		dc.b	'  sec/track:      %ld',13,10,0
+fi_hdr:		dc.b	'%s unit %ld:',LF,0
+fi_sect:	dc.b	'  sector size:    %ld',LF,0
+fi_total:	dc.b	'  total sectors:  %ld',LF,0
+fi_cyl:		dc.b	'  cylinders:      %ld',LF,0
+fi_heads:	dc.b	'  heads:          %ld',LF,0
+fi_spt:		dc.b	'  sec/track:      %ld',LF,0
 fi_dtlbl:	dc.b	'  device type:    ',0
 fi_dtnum:	dc.b	'%ld',0
 fi_dtraw:	dc.b	' ($%02lx)',0
@@ -2890,40 +2890,40 @@ cn_mem_chip:	dc.b	'CHIP',0
 cn_mem_fast:	dc.b	'FAST',0
 cn_mem_24bit:	dc.b	'24BIT',0
 cn_mem_any:	dc.b	'ANY',0
-fi_cmds:	dc.b	'  commands:',13,10,0
+fi_cmds:	dc.b	'  commands:',LF,0
 fi_meth_lbl:	dc.b	'  >4GiB methods:  ',0
 fi_meth_t1:	dc.b	'%s',0
 fi_meth_t2:	dc.b	', %s',0
-fi_meth_nl:	dc.b	13,10,0
+fi_meth_nl:	dc.b	LF,0
 cn_cap_nscmd:	dc.b	'NSCMD_TD64',0
 cn_cap_td64:	dc.b	'TD64',0
 cn_cap_scsi:	dc.b	'HD_SCSI',0
 cn_cap_none:	dc.b	'(none)',0
-fi_cmdline:	dc.b	'                  %s (%s)',13,10,0
-fi_via:		dc.b	'  read/write via: %s / %s',13,10,0
-fu_read:	dc.b	'read:  %s unit %ld via %s',13,10,0
-fu_write:	dc.b	'write: %s unit %ld via %s',13,10,0
-fu_xfer:	dc.b	'xfer:  %ld bytes per request',13,10,0
-fu_xferm:	dc.b	'xfer:  %ld bytes per request, memory %s',13,10,0
-fu_tailk:	dc.b	'note: source file ends mid-block, keeping the %ld bytes already there',10,0
-fw_noadv:	dc.b	'dd: warning: %s unit %ld does not advertise %s',10,0
-fs_short:	dc.b	'  note: %s reported %ld of %ld bytes moved (shown once)',10,0
-fo_nofile:	dc.b	'could not open file "%s".',10,0
-fo_nodev:	dc.b	'opening unit %ld of %s failed (%ld).',10,0
-fw_sizewarn:	dc.b	'WARNING: device reports a different block size (%ld)',10
+fi_cmdline:	dc.b	'                  %s (%s)',LF,0
+fi_via:		dc.b	'  read/write via: %s / %s',LF,0
+fu_read:	dc.b	'read:  %s unit %ld via %s',LF,0
+fu_write:	dc.b	'write: %s unit %ld via %s',LF,0
+fu_xfer:	dc.b	'xfer:  %ld bytes per request',LF,0
+fu_xferm:	dc.b	'xfer:  %ld bytes per request, memory %s',LF,0
+fu_tailk:	dc.b	'note: source file ends mid-block, keeping the %ld bytes already there',LF,0
+fw_noadv:	dc.b	'dd: warning: %s unit %ld does not advertise %s',LF,0
+fs_short:	dc.b	'  note: %s reported %ld of %ld bytes moved (shown once)',LF,0
+fo_nofile:	dc.b	'could not open file "%s".',LF,0
+fo_nodev:	dc.b	'opening unit %ld of %s failed (%ld).',LF,0
+fw_sizewarn:	dc.b	'WARNING: device reports a different block size (%ld)',LF
 		dc.b	'Continue anyway? (y/n): ',0
-ft_progress:	dc.b	'%ld',13,0
-fe_read:	dc.b	'%s read error (%ld).',10,0
-fe_write:	dc.b	'%s write error (%ld).',10,0
-fe_tailrd:	dc.b	'dd: cannot read back the last block of %s (%ld).',10
-		dc.b	'  It is only partly covered by the file; nothing was written.',10,0
-fe_nocmd:	dc.b	'  -3 means the driver does not implement that command. Run',10
-		dc.b	'  "dd INSPECT %s UNIT %ld VERBOSE" to see what it offers, then',10
-		dc.b	'  pick CMD, CMDSRC or CMDDST to match (or leave it on AUTO).',10,0
-fb_note:	dc.b	'  %s not supported, falling back to %s',10,0
-fr_done:	dc.b	'%ld blocks of %ld bytes each transferred.',10,0
-fr_rspeed:	dc.b	'Read speed:  %ld kbyte/sec',10,0
-fr_wspeed:	dc.b	'Write speed: %ld kbyte/sec',10,0
+ft_progress:	dc.b	'%ld',CR,0
+fe_read:	dc.b	'%s read error (%ld).',LF,0
+fe_write:	dc.b	'%s write error (%ld).',LF,0
+fe_tailrd:	dc.b	'dd: cannot read back the last block of %s (%ld).',LF
+		dc.b	'  It is only partly covered by the file; nothing was written.',LF,0
+fe_nocmd:	dc.b	'  -3 means the driver does not implement that command. Run',LF
+		dc.b	'  "dd INSPECT %s UNIT %ld VERBOSE" to see what it offers, then',LF
+		dc.b	'  pick CMD, CMDSRC or CMDDST to match (or leave it on AUTO).',LF,0
+fb_note:	dc.b	'  %s not supported, falling back to %s',LF,0
+fr_done:	dc.b	'%ld blocks of %ld bytes each transferred.',LF,0
+fr_rspeed:	dc.b	'Read speed:  %ld kbyte/sec',LF,0
+fr_wspeed:	dc.b	'Write speed: %ld kbyte/sec',LF,0
 	even
 
 HelpBanner:
