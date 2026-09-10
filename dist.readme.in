@@ -26,6 +26,16 @@ New major version of fat95 4.0 filesystem handler:
   Partition auto-detection now requires ptable.library. Explicit-geometry
   mountlist entries still mount without it.
 
+* New "q" (quiet) option: control "+q" silences all fat95 error
+  windows for a mount (errors go to the calling program instead).
+  Unmounting a removed card cancels any open window automatically.
+
+* New Apollo 68080 tier for boards with an Apollo core 68080.
+
+* Faster FAT32 validation: the free-space scan of a freshly mounted
+  volume is more efficient and finishes a little sooner. A volume that
+  was unmounted properly skips the scan and is ready at once.
+
 * Pulling a card while a Workbench window or an open file still holds
   the volume no longer stalls the driver: fat95 declines to quit at once
   and stays in service, so the partition is kept and the card mounts
@@ -38,13 +48,11 @@ New major version of fat95 4.0 filesystem handler:
   (reads mostly work, a write corrupts the volume). The extra mount is
   listed as its own partition.resource row.
 
-* New "q" (quiet) option: control "+q" silences all fat95 error
-  windows for a mount (errors go to the calling program instead).
-  Unmounting a removed card cancels any open window automatically.
-
 * The "d" (datestamps as file comments) and "D" (record last-accessed
   date) options now default to off; Control "+d+D" restores the
   previous behaviour.
+
+* Safer handling of write errors and card changes.
 
 * An accepted ACTION_DIE (e.g. MOUNT <dev>: SHUTDOWN) unhooks the
   device node before replying, so C:Mount no longer prints a misleading
@@ -64,14 +72,6 @@ New major version of fat95 4.0 filesystem handler:
 * Fixed: giving a volume a serial number reported success even when the
   write failed, so the system could record a serial the card does not
   carry.
-
-* New Apollo 68080 tier for boards with an Apollo core 68080.
-
-* The free-space scan of a freshly mounted FAT32 volume is more
-  efficient and finishes a little sooner. A volume that was unmounted
-  properly skips the scan and is ready at once.
-
-* Safer handling of write errors and card changes.
 
 Tools 'dd 2.4':
 

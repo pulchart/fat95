@@ -113,7 +113,7 @@ You can confirm which tier you have loaded by reading the `$VER:` string:
 
 ```
 version fat95 full
-fat95 4.0 (17.04.2026)
+fat95 x.y (dd.mm.yyyy)
 [68080]
 ```
 

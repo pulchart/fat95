@@ -266,7 +266,7 @@ You can confirm which tier you have loaded by reading the @{fg shine}$VER:@{fg t
 
 @{fg highlight}
   version fat95 full
-  fat95 4.0 (17.04.2026)
+  fat95 x.y (dd.mm.yyyy)
   [68080]
 @{fg text}
 
