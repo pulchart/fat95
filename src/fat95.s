@@ -8570,6 +8570,46 @@ DeleteXLock:
 	addq.l	#8,sp
 	rts
 
+; a0 -> 11-byte short name; checksum -> d0.b. Advances a0; clears d1.
+; Keep the read and write checksum algorithms identical without extra calls.
+LFN_CHECKSUM macro
+	move.b	(a0)+,d0
+	moveq.l	#5,d1
+lfnc_loop\@:
+	ror.b	#1,d0
+	add.b	(a0)+,d0
+	ror.b	#1,d0
+	add.b	(a0)+,d0		;checksum for extended entries
+	subq.w	#1,d1
+	bgt.s	lfnc_loop\@
+
+	endm
+
+; d0.b = FAT attributes (consumed); d1 = DOS protection bits.
+FAT_TO_DOS_PROTECTION macro
+	moveq.l	#0,d1
+	lsr.b	#1,d0			;"read only"..
+	bcc.s	fdp_hidden\@
+
+	moveq.l	#5,d1			;..-> no writing or deleting
+fdp_hidden\@:
+	lsr.b	#1,d0			;"hidden"
+	bcc.s	fdp_system\@
+
+	or.b	#$80,d1
+fdp_system\@:
+	lsr.b	#1,d0			;"system"..
+	bcc.s	fdp_archive\@
+
+	or.b	#$20,d1			;..-> "pure"
+fdp_archive\@:
+	lsr.b	#3,d0			;not "changed"..
+	bcs.s	fdp_done\@
+
+	or.b	#$10,d1			;..-> "Archive"
+fdp_done\@:
+	endm
+
 ; <- struct ExtMSDirEntry *entry, struct DiskKey *next entry or 0;
 
 WriteXMSDE:
@@ -8579,15 +8619,7 @@ WriteXMSDE:
 	beq.s	wxms_standard
 
 	move.l	a3,a0			;&MSDE_Name
-	move.b	(a0)+,d0
-	moveq.l	#5,d1
-wxms_checksum:
-	ror.b	#1,d0
-	add.b	(a0)+,d0
-	ror.b	#1,d0
-	add.b	(a0)+,d0		;checksum for extended entries
-	subq.w	#1,d1
-	bgt.s	wxms_checksum
+	LFN_CHECKSUM
 
 	move.b	d0,XMSDE_FNCheck(a3)
 	moveq.l	#$40,d4
@@ -8860,15 +8892,7 @@ rxms_normal:
 	bne.s	rxms_delete		;faulty extended sequence
 
 	move.l	a3,a0			;&MSDE_Name
-	move.b	(a0)+,d0
-	moveq.l	#5,d1
-rxms_checksum:
-	ror.b	#1,d0
-	add.b	(a0)+,d0
-	ror.b	#1,d0
-	add.b	(a0)+,d0		;checksum..
-	subq.w	#1,d1
-	bgt.s	rxms_checksum
+	LFN_CHECKSUM
 
 	cmp.b	XMSDE_FNCheck(a3),d0
 	beq.s	rxms_ok			;..fits standard Name
@@ -9250,27 +9274,7 @@ gfi_1:
 
 ;- - protection bits - - - - - - - - - - - - - - - - - - - -
 
-	moveq.l	#0,d1
-	lsr.b	#1,d0			;"read only"..
-	bcc.s	gfi_2
-
-	moveq.l	#5,d1			;..-> no writing or deleting
-gfi_2:
-	lsr.b	#1,d0			;"hidden"
-	bcc.s	gfi_3
-
-	or.b	#$80,d1
-gfi_3:
-	lsr.b	#1,d0			;"system"..
-	bcc.s	gfi_4
-
-	or.b	#$20,d1			;..-> "pure"
-gfi_4:
-	lsr.b	#3,d0			;not "changed"..
-	bcs.s	gfi_5
-
-	or.b	#$10,d1			;..-> "Archive"
-gfi_5:
+	FAT_TO_DOS_PROTECTION
 	move.l	d1,FIB_Protection(a3)
 
 ;- - size  - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -9455,27 +9459,7 @@ exa_3:
 
 ;- - protection bits - - - - - - - - - - - - - - - - - - - -
 
-	moveq.l	#0,d1
-	lsr.b	#1,d0			;"read only"..
-	bcc.s	exa_4
-
-	moveq.l	#5,d1			;..-> no writing and deleting
-exa_4:
-	lsr.b	#1,d0			;"hidden"
-	bcc.s	exa_5
-
-	or.b	#$80,d1
-exa_5:
-	lsr.b	#1,d0			;"system"..
-	bcc.s	exa_6
-
-	or.b	#$20,d1			;..-> "pure"
-exa_6:
-	lsr.b	#3,d0			;not "changed"..
-	bcs.s	exa_7
-
-	or.b	#$10,d1			;..-> "Archive"
-exa_7:
+	FAT_TO_DOS_PROTECTION
 	move.l	d1,ED_Prot(a2)
 	cmp.w	#4,d4
 	bcs.s	exa_match
