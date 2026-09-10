@@ -1,9 +1,9 @@
-## 20260908-dev
+## 20260910-dev
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
 
-- `fat95 4.0-dev (08.09.2026)` _(new)_
+- `fat95 4.0-dev (10.09.2026)` _(new)_
 - `install95 3.19 (25.01.2026)`
 - `dd 2.3 (16.08.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
@@ -24,6 +24,8 @@ _Components in this release_:
 - An accepted `ACTION_DIE` (e.g. `MOUNT <dev>: SHUTDOWN`) unhooks the device node before replying, so `C:Mount` no longer prints a misleading `object in use` for a successful shutdown. The handler also unregisters its mount, so the partition is free again instead of staying claimed.
 - Fixed: with no card inserted, opening the volume's root directory crashed instead of reporting `no disk`.
 - Fixed: turning a lock into a file handle lost count of it, so the handler could believe nothing was using the volume while files were still open.
+- Fixed: a newly created directory's `..` entry could name the wrong parent, so moving up out of it on another system could land in the root.
+- Fixed: giving a volume a serial number reported success even when the write failed, so the system could record a serial the card does not carry.
 - **New Apollo 68080 tier.** For boards with an Apollo core 68080.
 - **Faster FAT32 validation.** The free-space scan of a freshly mounted FAT32 volume is more efficient and finishes a little sooner. A volume that was unmounted properly skips the scan and is ready at once.
 - Safer handling of write errors and card changes.

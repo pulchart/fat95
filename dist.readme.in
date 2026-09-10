@@ -57,6 +57,14 @@ New major version of fat95 4.0 filesystem handler:
   handler could believe nothing was using the volume while files were
   still open.
 
+* Fixed: a newly created directory's ".." entry could name the wrong
+  parent, so moving up out of it on another system could land in the
+  root.
+
+* Fixed: giving a volume a serial number reported success even when the
+  write failed, so the system could record a serial the card does not
+  carry.
+
 * New Apollo 68080 tier for boards with an Apollo core 68080.
 
 * The free-space scan of a freshly mounted FAT32 volume is more
