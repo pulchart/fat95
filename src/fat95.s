@@ -1267,6 +1267,12 @@ s_jump:
 	add.l	d0,d0
 	add.w	(a0,d0.l),a0
 	jmp	(a0)
+;--- actions that only report success ----------------------
+; ACTION_IS_FILESYSTEM, ACTION_EXAMINE_ALL_END, ACTION_FREE_DISK_FSSM
+s_true:
+	moveq.l	#TRUE,d0
+	bra.s	s_return
+
 s_unknown:
 	move.w	#209,ErrorNum(a4)	;"unsupported"
 	moveq.l	#FALSE,d0
@@ -1433,7 +1439,7 @@ s_tab:
 	dc.w	s_unknown-s_tab
 	dc.w	s_unknown-s_tab
 	dc.w	Action1026-s_tab
-	dc.w	Action1027-s_tab
+	dc.w	s_true-s_tab
 	dc.w	Action1028-s_tab
 	dc.w	s_unknown-s_tab
 	dc.w	Action1030-s_tab
@@ -1441,11 +1447,11 @@ s_tab:
 	dc.w	s_unknown-s_tab
 	dc.w	Action1033-s_tab
 	dc.w	Action1034-s_tab
-	dc.w	Action1035-s_tab
+	dc.w	s_true-s_tab
 
 	dc.w	Action4200-s_tab	;Action4200 to Action4202
 	dc.w	Action4201-s_tab
-	dc.w	Action4202-s_tab
+	dc.w	s_true-s_tab
 
 ;= = top level order service routines  = = = = = = = = = = =
 ;--- ACTION_DIE --------------------------------------------
@@ -1979,12 +1985,6 @@ Action1026:
 a1026_end:
 	bra.w	s_return
 
-;--- ACTION_IS_FILESYSTEM ----------------------------------
-
-Action1027:
-	moveq.l	#TRUE,d0
-	bra.w	s_return
-
 ;--- ACTION_CHANGE_MODE ------------------------------------
 
 Action1028:
@@ -2066,12 +2066,6 @@ Action1034:
 a1034_end:
 	bra.w	s_return
 
-;--- ACTION_EXAMINE_ALL_END --------------------------------
-
-Action1035:
-	moveq.l	#TRUE,d0
-	bra.w	s_return
-
 ;--- ACTION_SERIALIZE_DISK ---------------------------------
 
 Action4200:
@@ -2082,12 +2076,6 @@ Action4200:
 
 Action4201:
 	move.l	StartupMsg(a4),d0
-	bra.w	s_return
-
-;--- ACTION_FREE_DISK_FSSM ---------------------------------
-
-Action4202:
-	moveq.l	#TRUE,d0
 	bra.w	s_return
 
 ;--- Diskwechel-Interrupt ----------------------------------
@@ -9105,8 +9093,7 @@ cds_sloop:
 	moveq.l	#0,d1
 	move.w	BlockSize(a4),d1
 	sub.l	d1,d2
-	bcs.s	cds_end
-	beq.s	cds_end			;as needed..
+	bls.s	cds_end			;as needed..
 
 	bsr	NextBlock		;..get follow up blocks
 	tst.l	d0
