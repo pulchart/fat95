@@ -4697,10 +4697,6 @@ sdi_ndos:
 	move.w	#225,ErrorNum(a4)
 	bra.s	sdi_end
 
-sdi_nomem:
-	move.w	#103,ErrorNum(a4)
-	bra.s	sdi_end
-
 ;*** Block cache *******************************************
 ;--- set parameters ----------------------------------------
 ; d0 -> # bufs
@@ -14087,25 +14083,6 @@ _DateStamp
 	jmp	-$00c0(a6)
 
 ;*** Exec supplements **************************************
-;--- get self administrating mem ---------------------------
-; d0 <- size in bytes
-; d1 <- mem type
-; d0 -> &mem or 0
-
-AllocVec:
-	addq.l	#4,d0
-	move.l	d0,-(sp)
-	CALLEXEC AllocMem
-	move.l	(sp)+,d1
-	tst.l	d0
-	beq.s	av_end
-
-	move.l	d0,a0
-	move.l	d1,(a0)+
-	move.l	a0,d0
-av_end:
-	rts
-
 ;--- empty list --------------------------------------------
 ; a0 <- &Liste
 
