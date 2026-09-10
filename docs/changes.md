@@ -31,7 +31,7 @@ _Components in this release_:
 - Safer handling of write errors and card changes.
 
 #### Tools 'dd 2.4-dev'
-- The help now prints one screenful at a time, so the first lines no longer scroll away. Any key shows the next page, `Q` stops. A redirected help is written in full.
+- The help and the `INSPECT` report print one screenful at a time; any key continues, `Q` stops.
 - Output lines end in `LF` alone.
 
 #### Tools 'dd 2.3'

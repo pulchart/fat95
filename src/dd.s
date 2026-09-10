@@ -342,8 +342,9 @@ TailBytes	= -744			;odd bytes in the source file's last Block, 0 = none
 TailBuf		= -748			;that Block as read back from the destination, or 0
 ArgArray	= -812			;16 longs for ReadArgs (zeroed before call)
 KeyBuf		= -816			;byte: the key that dismissed a help page
-PageLines	= -820			;help lines per screenful
-Vars_Sizeof	= -820
+PageLines	= -820			;lines per screenful, 0 = do not pause
+PageLeft	= -824			;lines still free on this page
+Vars_Sizeof	= -824
 
 ;--- +++ TEST +++ TEST +++ ---------------------------------
 
@@ -2502,27 +2503,61 @@ pim_temit:
 fh_Type		= 8			;struct FileHandle, port of the serving handler
 
 PrintHelp:
-	movem.l	d2-d5/a2-a3,-(sp)
-	move.l	ConsoleO(a4),d5
-	beq.w	ph_end			;nowhere to write
+	movem.l	d2-d3/a2-a3,-(sp)
+	move.l	ConsoleO(a4),d0
+	beq.s	phl_end
+	bsr	PageBegin
+	lea	HelpBanner(pc),a2	;a2 = rest of the text
+	lea	HelpEnd(pc),a3
+phl_line:
+	cmp.l	a3,a2
+	bcc.s	phl_done
+	move.l	a2,d2			;line start
+	move.l	a2,a0
+phl_scan:
+	cmp.l	a3,a0
+	bcc.s	phl_write
+	cmp.b	#LF,(a0)+
+	bne.s	phl_scan
+phl_write:
+	move.l	a0,a2
+	move.l	a0,d3
+	sub.l	d2,d3			;bytes in this line
+	move.l	ConsoleO(a4),d1
+	CALLDOS	Write
+	bsr	PageLine
+	tst.l	d0
+	bne.s	phl_line		;reader wants more
+phl_done:
+	bsr	PageEnd
+phl_end:
+	movem.l	(sp)+,d2-d3/a2-a3
+	rts
 
-	move.l	#$10000,PageLines(a4)	;one Write unless a console says otherwise
-	moveq.l	#0,d4			;d4 = pause between pages
+;--- paged console output ----------------------------------
+; PageBegin decides whether pausing is possible and sizes the page,
+; PageLine is called after every line written, PageEnd hands the
+; console back. PageLines = 0 means everything scrolls as before.
+
+PageBegin:
+	movem.l	d0-d3/a0-a1/a6,-(sp)
+	clr.l	PageLines(a4)
+	clr.l	PageLeft(a4)
 	move.l	ConsoleI(a4),d0
-	beq.s	ph_start		;no input stream: cannot wait
-	move.l	d5,d1
+	beq.w	pgb_end			;no input stream: cannot wait
+	move.l	ConsoleO(a4),d1
 	CALLDOS	IsInteractive
 	tst.l	d0
-	beq.s	ph_start		;output redirected: print it all
+	beq.w	pgb_end			;output redirected
 	move.l	ConsoleI(a4),d1
 	CALLDOS	IsInteractive
 	tst.l	d0
-	beq.s	ph_start		;input redirected
+	beq.w	pgb_end			;input redirected
 
 ;- - the window query is written to the output and answered on the
 ;   input, so both must be the same handler. Equal fh_Type means one
-;   console; a redirected "dd ? >SER:" is a different port and gets
-;   neither the query nor a pause - -
+;   console; a redirected ">SER:" is a different port and gets neither
+;   the query nor a pause - -
 	move.l	ConsoleI(a4),d0
 	lsl.l	#2,d0			;BPTR -> struct FileHandle *
 	move.l	d0,a0
@@ -2531,73 +2566,57 @@ PrintHelp:
 	move.l	d0,a1
 	move.l	fh_Type(a0),d0
 	cmp.l	fh_Type(a1),d0
-	bne.s	ph_start		;two different handlers
-	moveq.l	#-1,d4
+	bne.w	pgb_end			;two different handlers
 
-;- - hold RAW mode for the whole paged run: the window query and each
-;   keypress both need it, and one switch per page would be visible - -
 	move.l	ConsoleI(a4),d1
 	moveq.l	#1,d2
-	CALLDOS	SetMode
-	bsr	ph_rows			;PageLines = window height, if it answers
+	CALLDOS	SetMode			;RAW for the query and every keypress
+	bsr	PageRows		;PageLines = window height, if it says
 	tst.l	d0
-	beq.s	ph_plain		;silent: not a console we can pause on
+	beq.s	pgb_plain
 	move.l	PageLines(a4),d0
 	subq.l	#1,d0			;the prompt needs a line of its own
 	cmp.l	#4,d0
-	blt.s	ph_plain		;implausible height, do not guess
+	blt.s	pgb_plain		;implausible height, do not guess
 	cmp.l	#200,d0
-	bgt.s	ph_plain
+	bgt.s	pgb_plain
 	move.l	d0,PageLines(a4)
-	bra.s	ph_start
+	move.l	d0,PageLeft(a4)
+	bra.s	pgb_end
 
-;- - anything that will not report a sane height gets the whole help in
-;   one Write, whatever IsInteractive said about it - -
-ph_plain:
-	moveq.l	#0,d4
+;- - anything that will not report a sane height scrolls as before - -
+pgb_plain:
+	clr.l	PageLines(a4)
 	move.l	ConsoleI(a4),d1
 	moveq.l	#0,d2
 	CALLDOS	SetMode
-ph_start:
-	lea	HelpBanner(pc),a2	;a2 = rest of the text
-	lea	HelpEnd(pc),a3
-ph_page:
-	move.l	a2,d2			;page start
-	move.l	a2,a0
-	move.l	PageLines(a4),d0
-ph_scan:
-	cmp.l	a3,a0
-	bcc.s	ph_write		;text exhausted
-	cmp.b	#LF,(a0)+
-	bne.s	ph_scan
-	subq.l	#1,d0
-	bne.s	ph_scan
-ph_write:
-	move.l	a0,a2			;resume here on the next page
-	move.l	a0,d3
-	sub.l	d2,d3			;bytes in this page
-	move.l	d5,d1
-	CALLDOS	Write
-	cmp.l	a3,a2
-	bcc.s	ph_done			;that was the last page
-	tst.l	d4
-	beq.s	ph_page
-	bsr.s	ph_wait
-	tst.l	d0
-	bne.s	ph_page
-ph_done:
-	tst.l	d4
-	beq.s	ph_end
+pgb_end:
+	movem.l	(sp)+,d0-d3/a0-a1/a6
+	rts
+
+PageEnd:
+	movem.l	d0-d2/a0-a1/a6,-(sp)
+	tst.l	PageLines(a4)
+	beq.s	pge_end
+	clr.l	PageLines(a4)
 	move.l	ConsoleI(a4),d1
 	moveq.l	#0,d2
 	CALLDOS	SetMode			;always hand the shell back cooked
-ph_end:
-	movem.l	(sp)+,d2-d5/a2-a3
+pge_end:
+	movem.l	(sp)+,d0-d2/a0-a1/a6
 	rts
 
+; Call after writing one line.
 ; -> d0 = 0 when the reader asked to stop
-ph_wait:
-	move.l	d5,d1
+
+PageLine:
+	movem.l	d1-d7/a0-a3/a6,-(sp)
+	tst.l	PageLines(a4)
+	beq.w	pgl_go			;not pausing
+	subq.l	#1,PageLeft(a4)
+	bgt.w	pgl_go			;room left on this page
+
+	move.l	ConsoleO(a4),d1
 	lea	MorePrompt(pc),a0
 	move.l	a0,d2
 	moveq.l	#MorePromptEnd-MorePrompt,d3
@@ -2608,19 +2627,24 @@ ph_wait:
 	move.l	a0,d2
 	moveq.l	#1,d3
 	CALLDOS	Read
-	move.l	d5,d1
+	move.l	ConsoleO(a4),d1
 	lea	MoreErase(pc),a0
 	move.l	a0,d2
 	moveq.l	#MoreEraseEnd-MoreErase,d3
 	CALLDOS	Write
+	move.l	PageLines(a4),d0
+	move.l	d0,PageLeft(a4)		;a fresh page
 	move.b	KeyBuf(a4),d0
 	and.b	#$df,d0			;fold case
 	cmp.b	#'Q',d0
-	beq.s	phw_stop
+	beq.s	pgl_stop
+pgl_go:
 	moveq.l	#-1,d0
-	rts
-phw_stop:
+	bra.s	pgl_ret
+pgl_stop:
 	moveq.l	#0,d0
+pgl_ret:
+	movem.l	(sp)+,d1-d7/a0-a3/a6
 	rts
 
 ;--- ask the console how tall its window is ----------------
@@ -2629,9 +2653,9 @@ phw_stop:
 ; CSI <p1>;<p2>;<p3>;<p4> SP r, whose third field is the height.
 ; -> d0 = -1 when the console answered, 0 otherwise
 
-ph_rows:
+PageRows:
 	movem.l	d1-d4/d6-d7/a0-a1,-(sp)
-	move.l	d5,d1
+	move.l	ConsoleO(a4),d1
 	lea	WinStatReq(pc),a0
 	move.l	a0,d2
 	moveq.l	#WinStatEnd-WinStatReq,d3
@@ -2639,56 +2663,56 @@ ph_rows:
 	moveq.l	#0,d4			;fields finished
 	moveq.l	#0,d6			;number being read
 	moveq.l	#40,d7			;give up after this many bytes
-phr_next:
+pgr_next:
 	tst.l	d7
-	beq	phr_fail
+	beq	pgr_fail
 	subq.l	#1,d7
 	move.l	ConsoleI(a4),d1
 	move.l	#200000,d2		;0.2 s is plenty for a local console
 	CALLDOS	WaitForChar
 	tst.l	d0
-	beq	phr_fail		;console stayed silent
+	beq	pgr_fail		;console stayed silent
 	move.l	ConsoleI(a4),d1
 	lea	KeyBuf(a4),a0
 	move.l	a0,d2
 	moveq.l	#1,d3
 	CALLDOS	Read
 	cmp.l	#1,d0
-	bne	phr_fail
+	bne	pgr_fail
 	move.b	KeyBuf(a4),d0
 	cmp.b	#'r',d0
-	beq.s	phr_end
+	beq.s	pgr_end
 	cmp.b	#';',d0
-	beq.s	phr_field
+	beq.s	pgr_field
 	sub.b	#'0',d0
-	bcs	phr_next		;not a digit
+	bcs	pgr_next		;not a digit
 	cmp.b	#9,d0
-	bhi	phr_next
+	bhi	pgr_next
 	cmp.l	#1000,d6
-	bcc	phr_next		;absurd number: stop adding to it
+	bcc	pgr_next		;absurd number: stop adding to it
 	lsl.l	#1,d6
 	move.l	d6,d1
 	lsl.l	#2,d6
 	add.l	d1,d6			;*10
 	and.l	#$ff,d0
 	add.l	d0,d6
-	bra	phr_next
-phr_field:
+	bra	pgr_next
+pgr_field:
 	addq.l	#1,d4
 	cmp.l	#3,d4
-	bne.s	phr_clear
+	bne.s	pgr_clear
 	move.l	d6,PageLines(a4)	;third field is the height
-phr_clear:
+pgr_clear:
 	moveq.l	#0,d6
-	bra	phr_next
-phr_end:
+	bra	pgr_next
+pgr_end:
 	cmp.l	#3,d4
-	bcs	phr_fail		;report was too short to trust
+	bcs.s	pgr_fail		;report was too short to trust
 	moveq.l	#-1,d0
-	bra.s	phr_ret
-phr_fail:
+	bra.s	pgr_ret
+pgr_fail:
 	moveq.l	#0,d0
-phr_ret:
+pgr_ret:
 	movem.l	(sp)+,d1-d4/d6-d7/a0-a1
 	rts
 
@@ -2716,6 +2740,7 @@ PrintInspect:
 	movem.l	d2-d3/a3,-(sp)
 	move.l	ConsoleO(a4),d0
 	beq.w	pi_end
+	bsr	PageBegin
 	lea	SourceVec(a4),a3
 
 	;header: "<name> unit <n>:"
@@ -2727,6 +2752,7 @@ PrintInspect:
 	move.l	sp,d3
 	CALLDOS	VFPrintf
 	addq.l	#8,sp
+	bsr	PageLine
 
 	;sector size
 	move.l	DV_BlockSize(a3),-(sp)
@@ -2736,6 +2762,7 @@ PrintInspect:
 	move.l	sp,d3
 	CALLDOS	VFPrintf
 	addq.l	#4,sp
+	bsr	PageLine
 
 	;total sectors
 	move.l	DV_NumBlocks(a3),-(sp)
@@ -2745,6 +2772,7 @@ PrintInspect:
 	move.l	sp,d3
 	CALLDOS	VFPrintf
 	addq.l	#4,sp
+	bsr	PageLine
 
 	;cylinders
 	move.l	DriveGeometry+DG_Cylinders(a4),-(sp)
@@ -2754,6 +2782,7 @@ PrintInspect:
 	move.l	sp,d3
 	CALLDOS	VFPrintf
 	addq.l	#4,sp
+	bsr	PageLine
 
 	;heads
 	move.l	DriveGeometry+DG_Heads(a4),-(sp)
@@ -2763,6 +2792,7 @@ PrintInspect:
 	move.l	sp,d3
 	CALLDOS	VFPrintf
 	addq.l	#4,sp
+	bsr	PageLine
 
 	;sec/track
 	move.l	DriveGeometry+DG_TrackSectors(a4),-(sp)
@@ -2772,10 +2802,12 @@ PrintInspect:
 	move.l	sp,d3
 	CALLDOS	VFPrintf
 	addq.l	#4,sp
+	bsr	PageLine
 
 	;buffer memory type the driver asks for (MEM= overrides it)
 	move.l	DriveGeometry+DG_BufMemType(a4),d0
 	bsr.w	pi_memtype
+	bsr	PageLine
 
 	;what the driver says the device is
 	moveq.l	#0,d0
@@ -2783,6 +2815,7 @@ PrintInspect:
 	moveq.l	#0,d1
 	move.b	DriveGeometry+DG_Flags(a4),d1
 	bsr.w	pi_devtype
+	bsr	PageLine
 
 	;NSD present? if not, show nothing here: the "for >4 GiB:" line
 	;below still reveals the command dd would use.
@@ -2792,6 +2825,7 @@ PrintInspect:
 	;NSD present: print the ">4GiB methods:" summary; the full command
 	;list follows only with VERBOSE.
 	bsr.w	pi_methods		;">4GiB methods:" summary (reads DV_CmdFlags)
+	bsr	PageLine
 	move.l	ArgArray+40(a4),d0	;VERBOSE switch (slot 10)
 	beq.w	pi_after_nsd		;not verbose: skip the command list
 	move.l	ConsoleO(a4),d1
@@ -2799,6 +2833,7 @@ PrintInspect:
 	move.l	a0,d2
 	moveq.l	#0,d3
 	CALLDOS	VFPrintf
+	bsr	PageLine
 	;walk SupportedCommands list, print "$HEX (name)" per entry
 	move.l	QueryResult+QR_SupportedCmds(a4),a3	;temporarily use a3 as iterator
 	move.l	a3,d0
@@ -2820,6 +2855,9 @@ pi_walk:
 	CALLDOS	VFPrintf
 	addq.l	#8,sp
 	move.l	(sp)+,a3		;restore iterator
+	bsr	PageLine
+	tst.l	d0
+	beq.w	pi_after_nsd		;reader stopped the listing
 	bra.w	pi_walk
 pi_after_nsd:
 	lea	SourceVec(a4),a3	;restore a3 (may have been used as iterator)
@@ -2868,7 +2906,9 @@ pi_c_emit:
 	move.l	sp,d3
 	CALLDOS	VFPrintf
 	addq.l	#8,sp
+	bsr	PageLine
 pi_end:
+	bsr	PageEnd
 	movem.l	(sp)+,d2-d3/a3
 	rts
 
