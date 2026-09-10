@@ -99,6 +99,9 @@ Output		= -60
 Read		= -42
 Write		= -48
 IoErr		= -132
+IsInteractive	= -216
+WaitForChar	= -204
+SetMode		= -426
 ExamineFH	= -390
 VFPrintf	= -354
 ReadArgs	= -798
@@ -126,6 +129,7 @@ FIB_Sizeof	 = 260
 
 LF		 = 10
 CR		 = 13
+ESC		 = 27
 
 SIGBREAKB_CTRL_C = 12
 
@@ -337,7 +341,9 @@ MemType		= -740			;MEM= buffer memory flags, 0 = derive from geometry
 TailBytes	= -744			;odd bytes in the source file's last Block, 0 = none
 TailBuf		= -748			;that Block as read back from the destination, or 0
 ArgArray	= -812			;16 longs for ReadArgs (zeroed before call)
-Vars_Sizeof	= -812
+KeyBuf		= -816			;byte: the key that dismissed a help page
+PageLines	= -820			;help lines per screenful
+Vars_Sizeof	= -820
 
 ;--- +++ TEST +++ TEST +++ ---------------------------------
 
@@ -405,7 +411,8 @@ s_dos_ok:
 
 ;- - early `?` check: bypass ReadArgs's interactive prompt - -
 
-	move.l	CmdLine(a4),a0
+	move.l	CmdLine(a4),d0		;movea sets no flags; test the pointer itself
+	move.l	d0,a0
 	beq.s	s_help_done
 s_help_skip:
 	move.b	(a0)+,d0
@@ -2492,15 +2499,211 @@ pim_temit:
 ;--- print help banner -------------------------------------
 ; (no input/output)
 
+fh_Type		= 8			;struct FileHandle, port of the serving handler
+
 PrintHelp:
-	move.l	ConsoleO(a4),d1
-	beq.s	ph_end
-	lea	HelpBanner(pc),a0
-	move.l	a0,d2
-	move.l	#HelpEnd-HelpBanner,d3
+	movem.l	d2-d5/a2-a3,-(sp)
+	move.l	ConsoleO(a4),d5
+	beq.w	ph_end			;nowhere to write
+
+	move.l	#$10000,PageLines(a4)	;one Write unless a console says otherwise
+	moveq.l	#0,d4			;d4 = pause between pages
+	move.l	ConsoleI(a4),d0
+	beq.s	ph_start		;no input stream: cannot wait
+	move.l	d5,d1
+	CALLDOS	IsInteractive
+	tst.l	d0
+	beq.s	ph_start		;output redirected: print it all
+	move.l	ConsoleI(a4),d1
+	CALLDOS	IsInteractive
+	tst.l	d0
+	beq.s	ph_start		;input redirected
+
+;- - the window query is written to the output and answered on the
+;   input, so both must be the same handler. Equal fh_Type means one
+;   console; a redirected "dd ? >SER:" is a different port and gets
+;   neither the query nor a pause - -
+	move.l	ConsoleI(a4),d0
+	lsl.l	#2,d0			;BPTR -> struct FileHandle *
+	move.l	d0,a0
+	move.l	ConsoleO(a4),d0
+	lsl.l	#2,d0
+	move.l	d0,a1
+	move.l	fh_Type(a0),d0
+	cmp.l	fh_Type(a1),d0
+	bne.s	ph_start		;two different handlers
+	moveq.l	#-1,d4
+
+;- - hold RAW mode for the whole paged run: the window query and each
+;   keypress both need it, and one switch per page would be visible - -
+	move.l	ConsoleI(a4),d1
+	moveq.l	#1,d2
+	CALLDOS	SetMode
+	bsr	ph_rows			;PageLines = window height, if it answers
+	tst.l	d0
+	beq.s	ph_plain		;silent: not a console we can pause on
+	move.l	PageLines(a4),d0
+	subq.l	#1,d0			;the prompt needs a line of its own
+	cmp.l	#4,d0
+	blt.s	ph_plain		;implausible height, do not guess
+	cmp.l	#200,d0
+	bgt.s	ph_plain
+	move.l	d0,PageLines(a4)
+	bra.s	ph_start
+
+;- - anything that will not report a sane height gets the whole help in
+;   one Write, whatever IsInteractive said about it - -
+ph_plain:
+	moveq.l	#0,d4
+	move.l	ConsoleI(a4),d1
+	moveq.l	#0,d2
+	CALLDOS	SetMode
+ph_start:
+	lea	HelpBanner(pc),a2	;a2 = rest of the text
+	lea	HelpEnd(pc),a3
+ph_page:
+	move.l	a2,d2			;page start
+	move.l	a2,a0
+	move.l	PageLines(a4),d0
+ph_scan:
+	cmp.l	a3,a0
+	bcc.s	ph_write		;text exhausted
+	cmp.b	#LF,(a0)+
+	bne.s	ph_scan
+	subq.l	#1,d0
+	bne.s	ph_scan
+ph_write:
+	move.l	a0,a2			;resume here on the next page
+	move.l	a0,d3
+	sub.l	d2,d3			;bytes in this page
+	move.l	d5,d1
 	CALLDOS	Write
+	cmp.l	a3,a2
+	bcc.s	ph_done			;that was the last page
+	tst.l	d4
+	beq.s	ph_page
+	bsr.s	ph_wait
+	tst.l	d0
+	bne.s	ph_page
+ph_done:
+	tst.l	d4
+	beq.s	ph_end
+	move.l	ConsoleI(a4),d1
+	moveq.l	#0,d2
+	CALLDOS	SetMode			;always hand the shell back cooked
 ph_end:
+	movem.l	(sp)+,d2-d5/a2-a3
 	rts
+
+; -> d0 = 0 when the reader asked to stop
+ph_wait:
+	move.l	d5,d1
+	lea	MorePrompt(pc),a0
+	move.l	a0,d2
+	moveq.l	#MorePromptEnd-MorePrompt,d3
+	CALLDOS	Write
+	move.b	#CR,KeyBuf(a4)		;stands if the read fails
+	move.l	ConsoleI(a4),d1
+	lea	KeyBuf(a4),a0
+	move.l	a0,d2
+	moveq.l	#1,d3
+	CALLDOS	Read
+	move.l	d5,d1
+	lea	MoreErase(pc),a0
+	move.l	a0,d2
+	moveq.l	#MoreEraseEnd-MoreErase,d3
+	CALLDOS	Write
+	move.b	KeyBuf(a4),d0
+	and.b	#$df,d0			;fold case
+	cmp.b	#'Q',d0
+	beq.s	phw_stop
+	moveq.l	#-1,d0
+	rts
+phw_stop:
+	moveq.l	#0,d0
+	rts
+
+;--- ask the console how tall its window is ----------------
+; Console must already be in RAW mode. Writes the height to PageLines.
+; WINDOW STATUS REQUEST is answered by a WINDOW BOUNDS REPORT,
+; CSI <p1>;<p2>;<p3>;<p4> SP r, whose third field is the height.
+; -> d0 = -1 when the console answered, 0 otherwise
+
+ph_rows:
+	movem.l	d1-d4/d6-d7/a0-a1,-(sp)
+	move.l	d5,d1
+	lea	WinStatReq(pc),a0
+	move.l	a0,d2
+	moveq.l	#WinStatEnd-WinStatReq,d3
+	CALLDOS	Write
+	moveq.l	#0,d4			;fields finished
+	moveq.l	#0,d6			;number being read
+	moveq.l	#40,d7			;give up after this many bytes
+phr_next:
+	tst.l	d7
+	beq	phr_fail
+	subq.l	#1,d7
+	move.l	ConsoleI(a4),d1
+	move.l	#200000,d2		;0.2 s is plenty for a local console
+	CALLDOS	WaitForChar
+	tst.l	d0
+	beq	phr_fail		;console stayed silent
+	move.l	ConsoleI(a4),d1
+	lea	KeyBuf(a4),a0
+	move.l	a0,d2
+	moveq.l	#1,d3
+	CALLDOS	Read
+	cmp.l	#1,d0
+	bne	phr_fail
+	move.b	KeyBuf(a4),d0
+	cmp.b	#'r',d0
+	beq.s	phr_end
+	cmp.b	#';',d0
+	beq.s	phr_field
+	sub.b	#'0',d0
+	bcs	phr_next		;not a digit
+	cmp.b	#9,d0
+	bhi	phr_next
+	cmp.l	#1000,d6
+	bcc	phr_next		;absurd number: stop adding to it
+	lsl.l	#1,d6
+	move.l	d6,d1
+	lsl.l	#2,d6
+	add.l	d1,d6			;*10
+	and.l	#$ff,d0
+	add.l	d0,d6
+	bra	phr_next
+phr_field:
+	addq.l	#1,d4
+	cmp.l	#3,d4
+	bne.s	phr_clear
+	move.l	d6,PageLines(a4)	;third field is the height
+phr_clear:
+	moveq.l	#0,d6
+	bra	phr_next
+phr_end:
+	cmp.l	#3,d4
+	bcs	phr_fail		;report was too short to trust
+	moveq.l	#-1,d0
+	bra.s	phr_ret
+phr_fail:
+	moveq.l	#0,d0
+phr_ret:
+	movem.l	(sp)+,d1-d4/d6-d7/a0-a1
+	rts
+
+WinStatReq:
+	dc.b	ESC,'[',' ','q'
+WinStatEnd:
+MorePrompt:
+	dc.b	'-- more -- (any key, Q quits)'
+MorePromptEnd:
+MoreErase:
+	dc.b	CR
+	dcb.b	MorePromptEnd-MorePrompt,' '
+	dc.b	CR
+MoreEraseEnd:
+	even
 
 ;(PrintCmdUsed removed - now inlined at s_fdone using VFPrintf)
 
@@ -2726,37 +2929,37 @@ fr_wspeed:	dc.b	'Write speed: %ld kbyte/sec',10,0
 HelpBanner:
 	dc.b	'dd '
 	VER_NUMBER
-	dc.b	' - raw block transfer tool',13,10,13,10
-	dc.b	'Usage: dd SRC DST [UNIT] [START] [COUNT] [BS] [US n] [UD n] [CMD x] [MT n] [MEM t]',13,10
-	dc.b	'       dd INSPECT device.name [UNIT n] [VERBOSE]  (probe device, print capabilities)',13,10
-	dc.b	'       dd ? or HELP   (this help; ? also opens the ReadArgs prompt)',13,10,13,10
-	dc.b	'Template: SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K,',13,10
-	dc.b	'          VERBOSE=V/S,CMD/K,CS=CMDSRC/K,CD=CMDDST/K,MT=MAXTRANSFER/N/K,MEM/K',13,10,13,10
-	dc.b	'Args:',13,10
-	dc.b	'  SRC, DST  Source and destination. Either:',13,10
-	dc.b	'            - a device name (e.g. compactflash.device) plus UNIT or US/UD',13,10
-	dc.b	'            - a file path (e.g. RAM:dump, DH0:foo)',13,10
-	dc.b	'            - FILL:      infinite zero bytes (FILL:NN for value NN)',13,10
-	dc.b	'            - RSPEED:    DST only (read-only throughput benchmark)',13,10
-	dc.b	'            - RWSPEED:   DST only (read+write throughput benchmark)',13,10
-	dc.b	'  UNIT      Device unit. Applies to whichever of SRC/DST is a device.',13,10
-	dc.b	'  US, UD    Per-side unit. Use when both SRC and DST are devices.',13,10
-	dc.b	'  START     First block to transfer (default 0).',13,10
-	dc.b	'  COUNT     Number of blocks (default: entire disk or file).',13,10
-	dc.b	'  BS        Block size in bytes (default: detected from device).',13,10
-	dc.b	'  VERBOSE   With INSPECT: also list the full SupportedCommands set.',13,10
-	dc.b	'  CMD       Force the transfer command: AUTO|CMD|TD64|NSCMD|SCSI (default AUTO).',13,10
-	dc.b	'  CS, CD    Per-side CMD. Use when SRC and DST need different commands.',13,10
-	dc.b	'  MT        Bytes per device request (default 130560).',13,10
-	dc.b	'  MEM       Buffer memory: ANY|PUBLIC|CHIP|FAST|24BIT. Default is what',13,10
-	dc.b	'            the driver reports.',13,10,13,10
-	dc.b	'Examples:',13,10
-	dc.b	'  dd FILL: scsi.device 0                      ; wipe whole device',13,10
-	dc.b	'  dd FILL: scsi.device 0 0 1048576 512        ; wipe 512 MiB at LBA 0',13,10
-	dc.b	'  dd compactflash.device RAM:dump 0 1000 200  ; read 200 blocks @ LBA 1000',13,10
-	dc.b	'  dd RAM:dump scsi.device 1 0 200             ; write file back to scsi:1',13,10
-	dc.b	'  dd compactflash.device scsi.device US 0 UD 1 START 0 COUNT 1000',13,10
-	dc.b	'  dd compactflash.device RAM:dump UNIT 0 START 1000 COUNT 200',13,10
+	dc.b	' - raw block transfer tool',LF,LF
+	dc.b	'Usage: dd SRC DST [UNIT] [START] [COUNT] [BS] [US n] [UD n] [CMD x] [MT n] [MEM t]',LF
+	dc.b	'       dd INSPECT device.name [UNIT n] [VERBOSE]  (probe device, print capabilities)',LF
+	dc.b	'       dd ? or HELP   (this help, one screenful at a time)',LF,LF
+	dc.b	'Template: SRC,DST,UNIT/N,START/N,COUNT/N,BS/N,US=UNITSRC/N/K,UD=UNITDST/N/K,HELP=H/S,INSPECT=I/K,',LF
+	dc.b	'          VERBOSE=V/S,CMD/K,CS=CMDSRC/K,CD=CMDDST/K,MT=MAXTRANSFER/N/K,MEM/K',LF,LF
+	dc.b	'Args:',LF
+	dc.b	'  SRC, DST  Source and destination. Either:',LF
+	dc.b	'            - a device name (e.g. compactflash.device) plus UNIT or US/UD',LF
+	dc.b	'            - a file path (e.g. RAM:dump, DH0:foo)',LF
+	dc.b	'            - FILL:      infinite zero bytes (FILL:NN for value NN)',LF
+	dc.b	'            - RSPEED:    DST only (read-only throughput benchmark)',LF
+	dc.b	'            - RWSPEED:   DST only (read+write throughput benchmark)',LF
+	dc.b	'  UNIT      Device unit. Applies to whichever of SRC/DST is a device.',LF
+	dc.b	'  US, UD    Per-side unit. Use when both SRC and DST are devices.',LF
+	dc.b	'  START     First block to transfer (default 0).',LF
+	dc.b	'  COUNT     Number of blocks (default: entire disk or file).',LF
+	dc.b	'  BS        Block size in bytes (default: detected from device).',LF
+	dc.b	'  VERBOSE   With INSPECT: also list the full SupportedCommands set.',LF
+	dc.b	'  CMD       Force the transfer command: AUTO|CMD|TD64|NSCMD|SCSI (default AUTO).',LF
+	dc.b	'  CS, CD    Per-side CMD. Use when SRC and DST need different commands.',LF
+	dc.b	'  MT        Bytes per device request (default 130560).',LF
+	dc.b	'  MEM       Buffer memory: ANY|PUBLIC|CHIP|FAST|24BIT. Default is what',LF
+	dc.b	'            the driver reports.',LF,LF
+	dc.b	'Examples:',LF
+	dc.b	'  dd FILL: scsi.device 0                      ; wipe whole device',LF
+	dc.b	'  dd FILL: scsi.device 0 0 1048576 512        ; wipe 512 MiB at LBA 0',LF
+	dc.b	'  dd compactflash.device RAM:dump 0 1000 200  ; read 200 blocks @ LBA 1000',LF
+	dc.b	'  dd RAM:dump scsi.device 1 0 200             ; write file back to scsi:1',LF
+	dc.b	'  dd compactflash.device scsi.device US 0 UD 1 START 0 COUNT 1000',LF
+	dc.b	'  dd compactflash.device RAM:dump UNIT 0 START 1000 COUNT 200',LF
 HelpEnd:
 	even
 

@@ -45,7 +45,7 @@
 
   * @{fg shine}fat95 4.0-dev (10.09.2026)@{fg text} @{i}(new)@{ui}
   * @{fg shine}install95 3.19 (25.01.2026)@{fg text}
-  * @{fg shine}dd 2.3 (16.08.2026)@{fg text} @{i}(new)@{ui}
+  * @{fg shine}dd 2.4-dev (10.09.2026)@{fg text} @{i}(new)@{ui}
   * @{fg shine}debug95 3.19 (25.01.2026)@{fg text}
   * @{fg shine}SetFileSize 1.1 (25.01.2026)@{fg text}
   * @{fg shine}boot95 3.19 (25.01.2026)@{fg text}
@@ -94,6 +94,11 @@
     is more efficient and finishes a little sooner. A volume that was unmounted
     properly skips the scan and is ready at once.
   * Safer handling of write errors and card changes.
+
+@{b}Tools 'dd 2.4-dev'@{ub}
+  * The help now prints one screenful at a time, so the first lines no longer
+    scroll away. Any key shows the next page, @{fg shine}Q@{fg text} stops. A redirected help is
+    written in full.
 
 @{b}Tools 'dd 2.3'@{ub}
   * A 64-bit transfer command ( @{fg shine}NSCMD_TD64@{fg text} , or classic @{fg shine}TD64@{fg text} ) is now used
