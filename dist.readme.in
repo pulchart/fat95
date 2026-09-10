@@ -73,7 +73,7 @@ New major version of fat95 4.0 filesystem handler:
 
 * Safer handling of write errors and card changes.
 
-Tools 'dd 2.4-dev':
+Tools 'dd 2.4':
 
 * The help and the INSPECT report print one screenful at a time; any
   key continues, Q stops.
