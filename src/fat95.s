@@ -4760,8 +4760,7 @@ CacheInit:
 	clr.w	NormBufsUsed(a4)
 	clr.w	DirBufsUsed(a4)
 	lea	FAT32List(a4),a0
-	bsr	InitList		;caution!
-	rts
+	bra	InitList		;caution!
 
 ;--- free 1 buffer -----------------------------------------
 ; a0 <- struct BlockBuffer *bb;
@@ -8394,8 +8393,7 @@ MSDate2Str:
 	moveq.l	#0,d0
 	swap	d1
 	move.w	d1,d0
-	bsr	Num2Str2		;year part 2
-	rts
+	bra	Num2Str2		;year part 2
 
 ;--- write standard dir entry ------------------------------
 ; a0 <- &XMSDE
