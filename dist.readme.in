@@ -75,9 +75,8 @@ New major version of fat95 4.0 filesystem handler:
 
 Tools 'dd 2.4-dev':
 
-* The help now prints one screenful at a time, so the first lines no
-  longer scroll away. Any key shows the next page, Q stops. A
-  redirected help is written in full.
+* The help and the INSPECT report print one screenful at a time; any
+  key continues, Q stops.
 * Output lines end in LF alone.
 
 Tools 'dd 2.3':

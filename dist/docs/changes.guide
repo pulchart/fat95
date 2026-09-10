@@ -96,9 +96,8 @@
   * Safer handling of write errors and card changes.
 
 @{b}Tools 'dd 2.4-dev'@{ub}
-  * The help now prints one screenful at a time, so the first lines no longer
-    scroll away. Any key shows the next page, @{fg shine}Q@{fg text} stops. A redirected help is
-    written in full.
+  * The help and the @{fg shine}INSPECT@{fg text} report print one screenful at a time; any key
+    continues, @{fg shine}Q@{fg text} stops.
   * Output lines end in @{fg shine}LF@{fg text} alone.
 
 @{b}Tools 'dd 2.3'@{ub}
