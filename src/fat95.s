@@ -6486,6 +6486,7 @@ _OpenPtable:
 	lea	PtableLibName(pc),a1
 	CALLEXEC OpenLibrary
 _op_ret:
+	tst.l	d0			;OpenLibrary answers in d0, not in the CCR
 	rts
 
 PtableLibName:
