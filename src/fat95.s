@@ -9011,11 +9011,11 @@ xtd_i1:
 
 	move.l	d0,a0			;of &XLock of parent dir..
 xtd_i2:
-	move.l	a0,d0			;remember parent XLock; MakeIntRef clobbers a0
+	move.l	a0,-(sp)		;MakeIntRef clobbers a0, and d0 via R2CopyMSDE
 	lea	MSDE_Sizeof(a2),a1
 	bsr	MakeIntRef		;..copy dir descriptor..
 	move.w	#"..",MSDE_Sizeof(a2)	;..as parent link
-	move.l	d0,a0
+	move.l	(sp)+,a0
 	tst.l	XL_Parent(a0)
 	bne.s	xtd_idone
 ;	Microsoft FAT spec: when the parent is the root, ".." must hold
