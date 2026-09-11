@@ -1,17 +1,17 @@
-## 20260911-dev
+## 20260911
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
 
-- `fat95 4.0-dev (10.09.2026)` _(new)_
+- `fat95 4.0 (10.09.2026)` _(new)_
 - `install95 3.19 (25.01.2026)`
 - `dd 2.4 (10.09.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
 - `lsfsres 1.0 (16.05.2026)`
-- `ptable.library 2.0-dev (27.08.2026)` _(new)_
-- `lsptres 1.0-dev (27.08.2026)` _(new)_
+- `ptable.library 2.0 (11.09.2026)` _(new)_
+- `lsptres 1.0 (11.09.2026)` _(new)_
 <!-- COMPONENTS:END -->
 
 #### New major version of fat95 4.0 filesystem handler
@@ -29,11 +29,13 @@ _Components in this release_:
 - Fixed: a newly created directory's `..` entry could name the wrong parent, so moving up out of it on another system could land in the root.
 - Fixed: giving a volume a serial number reported success even when the write failed, so the system could record a serial the card does not carry.
 
-#### Tools 'dd 2.4'
+#### Tools
+
+##### 'dd 2.4'
 - The help and the `INSPECT` report print one screenful at a time; any key continues, `Q` stops.
 - Output lines end in `LF` alone.
 
-#### Tools 'dd 2.3'
+##### 'dd 2.3'
 - A 64-bit transfer command (`NSCMD_TD64`, or classic `TD64`) is now used whenever the driver advertises one, not only past 4 GiB.
 - New `CMDSRC` (`CS=`) and `CMDDST` (`CD=`) force the transfer command for one side only. `CMD` still sets both sides. Only a real `.device` side is affected.
 - A forced command the driver does not advertise is now reported before the transfer, together with the methods the device does offer. An I/O error `-3` points at `dd INSPECT`.
@@ -45,10 +47,6 @@ _Components in this release_:
 - Fixed: a source file that is not a whole number of blocks lost its last partial block.
 - Fixed: a bad buffer when a device does not report its geometry.
 - Fixed: a hang when the block size exceeds one request.
-
-#### Bundled
-
-- `ptable.library` and `lsptres` are included in the archive, shared with the CompactFlash driver (https://github.com/pulchart/amigaos-ptable). `lsptres` lists `partition.resource`.
 
 ## 20260614
 
@@ -66,7 +64,7 @@ _Components in this release_:
 
 This release is mainly a `dd` maintenance update. `dd 2.2` adds TD64 support for large-disk transfers, fixes unreliable NSD detection from the previous `dd` release, and improves INSPECT output.
 
-#### dd 2.2
+##### dd 2.2
 
 IO (transfer) command usage changes:
 - Added TD64 support through `TD_READ64` and `TD_WRITE64`
@@ -76,7 +74,7 @@ IO (transfer) command usage changes:
 - `INSPECT VERBOSE` now lists all supported commands.
 - Added a new `CMD=AUTO|CMD|TD64|NSCMD|SCSI` argument to force the transfer command.
 
-#### dd 2.1
+##### dd 2.1
 
 - On Kickstart older than 2.0 (V36), `dd` now prints a short message saying it needs Kickstart 2.0+ and exits, instead of failing silently.
 - Console output now uses `VFPrintf`.
