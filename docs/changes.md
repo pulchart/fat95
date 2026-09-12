@@ -1,6 +1,24 @@
-## 20260911
+## 20260912-dev
 
 <!-- COMPONENTS:BEGIN -->
+_Components in this release_:
+
+- `fat95 4.0 (10.09.2026)`
+- `install95 3.19 (25.01.2026)`
+- `dd 2.4 (10.09.2026)`
+- `debug95 3.19 (25.01.2026)`
+- `SetFileSize 1.1 (25.01.2026)`
+- `boot95 3.19 (25.01.2026)`
+- `lsfsres 1.0 (16.05.2026)`
+- `ptable.library 2.0 (11.09.2026)` _(new)_
+- `lsptres 1.0 (11.09.2026)` _(new)_
+<!-- COMPONENTS:END -->
+
+TBD
+
+
+## 20260911
+
 _Components in this release_:
 
 - `fat95 4.0 (10.09.2026)` _(new)_
@@ -12,7 +30,6 @@ _Components in this release_:
 - `lsfsres 1.0 (16.05.2026)`
 - `ptable.library 2.0 (11.09.2026)` _(new)_
 - `lsptres 1.0 (11.09.2026)` _(new)_
-<!-- COMPONENTS:END -->
 
 #### New major version of fat95 4.0 filesystem handler
 - **Shared partition scanning.** fat95 auto-detects its FAT partition (MBR, GPT, and flat whole-disk FAT) from the shared `partition.resource` published by `ptable.library`; a flat whole-disk volume is still detected from its boot block and registered back into the resource. The resolved mount Flags/CONTROL and the DosType the mount carries are reported and shown by `lsptres`. Partition auto-detection now requires `ptable.library`. Explicit-geometry mountlist entries still mount without it. See [ptable.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/ptable.md) and [lsptres.md](https://github.com/pulchart/amigaos-ptable/blob/HEAD/docs/lsptres.md).
