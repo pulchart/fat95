@@ -139,7 +139,7 @@ endif
 # Build tools
 VASM_HOME ?= /opt/vasm
 VASM = $(VASM_HOME)/bin/vasmm68k_mot
-EXPECTED_VASM_VERSION = 2.0e
+EXPECTED_VASM_VERSION = 2.0f
 
 # Flags
 # VASMFLAGS is the base set shared by both CPU tiers; per-tier CPU flag
