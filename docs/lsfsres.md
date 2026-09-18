@@ -2,6 +2,8 @@
 
 `lsfsres` lists every entry in `FileSystem.resource`: DosType, version, SegList address, and handler name. A `[ROM]` / `[RAM]` tag shows whether the handler lives in Kickstart ROM or was loaded from disk.
 
+A listing longer than the window pauses with `-- more --`; any key shows the next screenful, `Q` stops. Redirected output (`lsfsres >SER:`, `>file`) scrolls without pausing.
+
 **Use cases**:
 - Confirm a ROM-resident filesystem (e.g. fat95 baked into a Kickstart  bundle) registered itself at boot.
 - Spot whether a mounted volume is using the ROM copy or a disk copy of a handler.

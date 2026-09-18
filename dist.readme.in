@@ -17,7 +17,16 @@ COMPONENTS IN THIS RELEASE
 WHAT'S NEW (@DATE@)
 =======================
 
-TBS
+Tools 'dd 2.5':
+
+* No change in what dd does; it shares the screenful pager with
+  lsfsres now.
+
+Tools 'lsfsres 1.1':
+
+* The listing prints one screenful at a time; any key continues, Q
+  stops. Redirected output is written in full.
+* Output lines end in LF alone.
 
 Purpose
 =======

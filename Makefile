@@ -5,7 +5,7 @@
 
 # Release version: YYYYMMDD package date + optional in-progress suffix
 # (-dev, -rc1, ...). Empty suffix for a final release.
-RELEASE_DATE = 20260912
+RELEASE_DATE = 20260918
 VERSION_SUFFIX = -dev
 
 # fat95 filesystem handler version
@@ -21,9 +21,9 @@ INSTALL95_VERSION_SUFFIX =
 INSTALL95_DATE = 25.01.2026
 
 DD_MAJOR = 2
-DD_MINOR = 4
+DD_MINOR = 5
 DD_VERSION_SUFFIX =
-DD_DATE = 10.09.2026
+DD_DATE = 18.09.2026
 
 DEBUG95_MAJOR = 3
 DEBUG95_MINOR = 19
@@ -41,9 +41,9 @@ BOOT95_VERSION_SUFFIX =
 BOOT95_DATE = 25.01.2026
 
 LSFSRES_MAJOR = 1
-LSFSRES_MINOR = 0
+LSFSRES_MINOR = 1
 LSFSRES_VERSION_SUFFIX =
-LSFSRES_DATE = 16.05.2026
+LSFSRES_DATE = 18.09.2026
 
 # Derived versions
 VERSION = $(RELEASE_DATE)$(VERSION_SUFFIX)
@@ -364,7 +364,7 @@ $(TARGET_INSTALL95): $(SOURCE_INSTALL95) $(VERSION_INSTALL95_INC)
 	$(Q)$(VASM) $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
-$(TARGET_DD): $(SOURCE_DD) $(VERSION_DD_INC)
+$(TARGET_DD): $(SOURCE_DD) $(VERSION_DD_INC) $(SRCDIR)/paging.i
 	$(Q)mkdir -p c
 	$(Q)echo "  VASM    $@"
 	$(Q)$(VASM) $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
@@ -388,7 +388,7 @@ $(TARGET_BOOT95): $(SOURCE_BOOT95) $(VERSION_BOOT95_INC)
 	$(Q)$(VASM) $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
-$(TARGET_LSFSRES): $(SOURCE_LSFSRES) $(VERSION_LSFSRES_INC)
+$(TARGET_LSFSRES): $(SOURCE_LSFSRES) $(VERSION_LSFSRES_INC) $(SRCDIR)/paging.i
 	$(Q)mkdir -p c
 	$(Q)echo "  VASM    $@"
 	$(Q)$(VASM) $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
@@ -593,12 +593,12 @@ $(GUIDE_CHANGES): docs/changes.md $(MD2GUIDE)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) docs/changes.md $@ --version $(VERSION) --date $(DATE) --title "fat95 release notes" --ver-title "fat95 release notes guide"
 
-$(GUIDE_DD): docs/dd.md $(MD2GUIDE)
+$(GUIDE_DD): docs/dd.md $(MD2GUIDE) $(VERSION_STAMP)
 	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) docs/dd.md $@ --version $(DD_VERSION) --date $(DD_DATE) --title "dd" --ver-title "dd guide"
 
-$(GUIDE_LSFSRES): docs/lsfsres.md $(MD2GUIDE)
+$(GUIDE_LSFSRES): docs/lsfsres.md $(MD2GUIDE) $(VERSION_STAMP)
 	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) docs/lsfsres.md $@ --version $(LSFSRES_VERSION) --date $(LSFSRES_DATE) --title "lsfsres" --ver-title "lsfsres guide"

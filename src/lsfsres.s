@@ -29,6 +29,8 @@ CloseLibrary	= -414
 OpenResource	= -498
 Forbid		= -132
 Permit		= -138
+AllocVec	= -684
+FreeVec		= -690
 
 ;--- dos.library -------------------------------------------
 
@@ -38,11 +40,19 @@ CALLDOS	macro
 	endm
 
 Output		= -60
+Input		= -54
+Read		= -42
 Write		= -48
 VPrintf		= -954
+IsInteractive	= -216
+WaitForChar	= -204
+SetMode		= -426
 
 LF		= 10
 CR		= 13
+ESC		= 27
+
+fh_Type		= 8			;struct FileHandle, port of the handler
 
 ;--- struct offsets (from NDK Include_I/resources/filesysres.i) ---
 ; Node (LN_SIZE = 14):
@@ -93,7 +103,24 @@ Argv		= -48		;8 longs (Argv+0..Argv+28), bytes -48..-17
 ; names get up to ~78 chars (okish for typical AmigaOS IDStrs
 ; without truncating across the version banner).
 NameBuf		= -136		;88 bytes, bytes -136..-49
-VarsSize	= 136
+ConsoleI	= -140		;long
+ConsoleO	= -144		;long
+PageLines	= -148		;lines per screenful, 0 = do not pause
+PageLeft	= -152		;lines still free on this page
+Snap		= -156		;long, the copied entries
+SnapCount	= -160		;long
+KeyBuf		= -161		;byte
+VarsSize	= 164
+
+; One copied entry: printing cannot run under Forbid, so rows come from a
+; snapshot taken while the list is held still.
+rec_DosType	= 0
+rec_Version	= 4
+rec_Patch	= 8
+rec_Seg		= 12		;byte address, already shifted
+rec_Name	= 16		;79 bytes plus NUL
+RecSize		= 96
+SnapMax		= 256
 
 ;*** entry point *******************************************
 ; a0 <- command line (ignored)
@@ -122,20 +149,95 @@ Start:
 	bra.w	s_closedos
 
 s_haveres:
-	lea	HeaderStr(pc),a0
-	bsr.w	WriteStr
+	clr.l	Snap(a4)
+	clr.l	SnapCount(a4)
+
+;--- count the list, then copy it: both under Forbid, printing outside ---
+	CALLEXEC Forbid
+	move.l	FSResource(a4),a2
+	lea	fsr_FileSysEntries(a2),a3
+	move.l	LH_HEAD(a3),a3
+	moveq.l	#0,d7
+s_count:
+	tst.l	LN_SUCC(a3)
+	beq.s	s_counted
+	addq.l	#1,d7
+	move.l	LN_SUCC(a3),a3
+	bra.s	s_count
+s_counted:
+	CALLEXEC Permit
+	tst.l	d7
+	beq.w	s_print_none
+	cmp.l	#SnapMax,d7
+	bls.s	s_size
+	move.l	#SnapMax,d7
+s_size:
+	move.l	d7,d0
+	mulu.w	#RecSize,d0
+	moveq.l	#0,d1
+	CALLEXEC AllocVec
+	move.l	d0,Snap(a4)
+	beq.w	s_nomem
 
 	CALLEXEC Forbid
-
 	move.l	FSResource(a4),a2
-	lea	fsr_FileSysEntries(a2),a3	;list header
-	move.l	LH_HEAD(a3),a3			;a3 = first node (or tail sentinel)
-
-s_loop:
+	lea	fsr_FileSysEntries(a2),a3
+	move.l	LH_HEAD(a3),a3
+	move.l	Snap(a4),a2
+	moveq.l	#0,d6
+s_copy:
+	tst.l	d7
+	beq.s	s_copied
 	tst.l	LN_SUCC(a3)
-	beq.w	s_done
+	beq.s	s_copied
+	move.l	fse_DosType(a3),rec_DosType(a2)
+	move.l	fse_Version(a3),rec_Version(a2)
+	move.l	fse_PatchFlags(a3),rec_Patch(a2)
+	move.l	fse_SegList(a3),d0
+	lsl.l	#2,d0
+	move.l	d0,rec_Seg(a2)
+	lea	rec_Name(a2),a1
+	move.l	LN_NAME(a3),d0
+	beq.s	s_cname_end
+	move.l	d0,a0
+	moveq.l	#78,d1			;fat95 stores its banner here, with an LF
+s_cname:
+	move.b	(a0)+,d2
+	beq.s	s_cname_end
+	cmp.b	#LF,d2
+	beq.s	s_cname_end
+	cmp.b	#CR,d2
+	beq.s	s_cname_end
+	move.b	d2,(a1)+
+	subq.l	#1,d1
+	bne.s	s_cname
+s_cname_end:
+	clr.b	(a1)
+	lea	RecSize(a2),a2
+	addq.l	#1,d6
+	subq.l	#1,d7
+	move.l	LN_SUCC(a3),a3
+	bra.s	s_copy
+s_copied:
+	move.l	d6,SnapCount(a4)
+	CALLEXEC Permit
 
-	;--- print one entry ---
+;--- print it -----------------------------------------------
+s_print_none:
+	CALLDOS	Input
+	move.l	d0,ConsoleI(a4)
+	CALLDOS	Output
+	move.l	d0,ConsoleO(a4)
+	bsr.w	PageBegin
+	lea	HeaderStr(pc),a0
+	bsr.w	WriteStr
+	bsr.w	PageLine
+	bsr.w	PageLine
+
+	move.l	SnapCount(a4),d7
+	beq.w	s_done
+	move.l	Snap(a4),a3
+s_loop:
 	addq.l	#1,EntryCount(a4)
 
 	;Argv layout for the format string below:
@@ -149,25 +251,15 @@ s_loop:
 	; [7] = pointer to Name string  (%s)
 
 	move.l	EntryCount(a4),Argv(a4)
-	move.l	fse_DosType(a3),Argv+4(a4)
-
-	;build 4-char ASCII rendering of the DosType into NameBuf+0..NameBuf+5
-	;(reuse the start of NameBuf as scratch; we copy the actual name later
-	; into NameBuf+8..NameBuf+39)
-	lea	NameBuf(a4),a0
-	move.l	fse_DosType(a3),d0
-	bsr.w	RenderDosType			;writes 4 bytes + NUL
-	move.l	a0,Argv+8(a4)			;a0 returned = pointer to start of ASCII
-
-	move.l	fse_Version(a3),Argv+12(a4)
-	move.l	fse_PatchFlags(a3),Argv+16(a4)
-
-	;SegList: stored as BPTR; convert to byte address
-	move.l	fse_SegList(a3),d0
-	lsl.l	#2,d0
+	move.l	rec_DosType(a3),Argv+4(a4)
+	move.l	rec_DosType(a3),d0
+	bsr.w	RenderDosType
+	move.l	a0,Argv+8(a4)
+	move.l	rec_Version(a3),Argv+12(a4)
+	move.l	rec_Patch(a3),Argv+16(a4)
+	move.l	rec_Seg(a3),d0
 	move.l	d0,Argv+20(a4)
 
-	;decide [ROM] vs [RAM]
 	cmp.l	#ROM_MAIN_LO,d0
 	bcs.s	s_check_ext
 	cmp.l	#ROM_MAIN_HI,d0
@@ -185,54 +277,44 @@ s_rom:
 s_locset:
 	move.l	a0,Argv+24(a4)
 
-	;Name: copy LN_NAME into NameBuf+8, truncating at LF/CR/NUL.
-	;Handlers that follow the AmigaOS convention put a short node
-	;name here. fat95 puts its descriptive banner with a trailing
-	; LF before the NUL), so we stop at LF/CR to avoid staircase
-	; artifacts on `lsfsres >ser:`
-	move.l	LN_NAME(a3),d0
-	beq.s	s_noname
-	move.l	d0,a0
-	lea	NameBuf+8(a4),a1
-	move.l	a1,Argv+28(a4)
-	moveq.l	#78,d1			;max chars to copy (fits in 88-8=80)
-s_ncpy:
-	move.b	(a0)+,d2
-	beq.s	s_ncpy_done		;NUL -> stop
-	cmp.b	#LF,d2
-	beq.s	s_ncpy_done		;LF -> stop (avoid staircase on ser:)
-	cmp.b	#CR,d2
-	beq.s	s_ncpy_done		;CR -> stop
-	move.b	d2,(a1)+
-	subq.l	#1,d1
-	bne.s	s_ncpy
-s_ncpy_done:
-	clr.b	(a1)
-	bra.s	s_print
-s_noname:
+	lea	rec_Name(a3),a0
+	tst.b	(a0)
+	bne.s	s_havename
 	lea	UnnamedStr(pc),a0
+s_havename:
 	move.l	a0,Argv+28(a4)
 
-s_print:
 	lea	EntryFmt(pc),a0
 	move.l	a0,d1
 	lea	Argv(a4),a0
 	move.l	a0,d2
 	CALLDOS	VPrintf
 
-	move.l	LN_SUCC(a3),a3
-	bra.w	s_loop
+	bsr.w	PageLine
+	tst.l	d0
+	beq.s	s_stopped
+	lea	RecSize(a3),a3
+	subq.l	#1,d7
+	bne.w	s_loop
 
 s_done:
-	CALLEXEC Permit
-
-	;--- summary line ---
 	move.l	EntryCount(a4),Argv(a4)
 	lea	SummaryFmt(pc),a0
 	move.l	a0,d1
 	lea	Argv(a4),a0
 	move.l	a0,d2
 	CALLDOS	VPrintf
+s_stopped:
+	bsr.w	PageEnd
+	move.l	Snap(a4),d0
+	beq.s	s_closedos
+	move.l	d0,a1
+	CALLEXEC FreeVec
+	bra.s	s_closedos
+
+s_nomem:
+	lea	NoMemStr(pc),a0
+	bsr.w	WriteStr
 
 s_closedos:
 	move.l	DosBase(a4),a1
@@ -243,6 +325,8 @@ s_end_nodos:
 	movem.l	(sp)+,d2-d7/a2-a3/a6
 	unlk	a4
 	rts
+
+	include	"paging.i"
 
 ;--- helpers ------------------------------------------------
 
@@ -295,16 +379,16 @@ rd_emit:
 	VER_STRING
 DosName:	dc.b	'dos.library',0
 FSRName:	dc.b	'FileSystem.resource',0
-; CR+LF line endings so the output is readable on both CON: and SER:
-NoResStr:	dc.b	'FileSystem.resource not available (need V36+).',CR,LF,0
-HeaderStr:	dc.b	'#: DosType (ascii) Version  Patch SegList  Loc   Name',CR,LF
-		dc.b	'----------------------------------------------------------',CR,LF,0
-EntryFmt:	dc.b	'%2ld: %08lx (%s)    %08lx %04lx  %08lx %s   %s',CR,LF,0
-SummaryFmt:	dc.b	'----------------------------------------------------------',CR,LF
-		dc.b	'Total: %ld entries in FileSystem.resource.',CR,LF,0
+NoResStr:	dc.b	'FileSystem.resource not available (need V36+).',LF,0
+HeaderStr:	dc.b	'#: DosType (ascii) Version  Patch SegList  Loc   Name',LF
+		dc.b	'----------------------------------------------------------',LF,0
+EntryFmt:	dc.b	'%2ld: %08lx (%s)    %08lx %04lx  %08lx %s   %s',LF,0
+SummaryFmt:	dc.b	'----------------------------------------------------------',LF
+		dc.b	'Total: %ld entries in FileSystem.resource.',LF,0
 RomTag:		dc.b	'[ROM]',0
 RamTag:		dc.b	'[RAM]',0
 UnnamedStr:	dc.b	'(unnamed)',0
+NoMemStr:	dc.b	'Out of memory.',LF,0
 		even
 
 ;*** end ***************************************************
