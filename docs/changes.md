@@ -10,14 +10,14 @@ _Components in this release_:
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
 - `lsfsres 1.1 (18.09.2026)` _(new)_
-- `ptable.library 2.0 (11.09.2026)` _(new)_
-- `lsptres 1.0 (11.09.2026)` _(new)_
+- `ptable.library 2.0 (11.09.2026)`
+- `lsptres 1.0 (11.09.2026)`
 <!-- COMPONENTS:END -->
 
 #### Tools
 
 ##### 'dd 2.5'
-- No change in what dd does; it shares the screenful pager with `lsfsres` now.
+- Nothing changes in use; the pausing of long output is now the same code `lsfsres` uses.
 
 ##### 'lsfsres 1.1'
 - The listing prints one screenful at a time; any key continues, `Q` stops. Redirected output is written in full.

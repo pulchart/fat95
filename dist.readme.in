@@ -19,8 +19,8 @@ WHAT'S NEW (@DATE@)
 
 Tools 'dd 2.5':
 
-* No change in what dd does; it shares the screenful pager with
-  lsfsres now.
+* Nothing changes in use; the pausing of long output is now the same
+  code lsfsres uses.
 
 Tools 'lsfsres 1.1':
 

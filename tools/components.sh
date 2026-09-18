@@ -15,12 +15,15 @@
 # Current versions are passed in by the Makefile (the source of truth).
 # The previous release is read from that tag's Makefile via git; the
 # "[$]" filter skips derived "X = $(Y)" lines so only literal source
-# values are compared.
+# values are compared. A component whose version the Makefile derives from
+# a submodule file is compared against the previous release notes instead,
+# since the parent tag does not carry the submodule's files.
 fmt=$1
 shift
 
 prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-dev*' 2>/dev/null)
 oldmk=$(git show "$prev:Makefile" 2>/dev/null)
+oldnotes=$(git show "$prev:docs/changes.md" 2>/dev/null)
 
 # First literal (non-derived) value of a Makefile macro in the previous tag.
 old_val() {
@@ -41,6 +44,15 @@ old_version() {
 	printf '%s' "$v"
 }
 
+# A bundled component's version is derived from a file inside the submodule,
+# which the parent tag does not carry, so compare against that release's own
+# notes: "- `name version (date)`".
+old_from_notes() {
+	esc=$(printf '%s' "$1" | sed 's/[.[\*^$]/\\&/g')
+	printf '%s\n' "$oldnotes" |
+		sed -n "s/^- \`$esc \([^ ]*\) (\([^)]*\))\`.*/\1|\2/p" | head -1
+}
+
 out=
 sep=
 for entry in "$@"; do
@@ -50,6 +62,12 @@ for entry in "$@"; do
 
 	ov=$(old_version "$prefix")
 	od=$(old_val "${prefix}_DATE")
+	if [ -z "$ov" ]; then
+		nv=$(old_from_notes "$name")
+		case $nv in
+		*\|*) ov=${nv%%|*}; od=${nv#*|} ;;
+		esac
+	fi
 
 	new=
 	{ [ -z "$prev" ] || [ "$ver ($date)" != "$ov ($od)" ]; } && new=1
