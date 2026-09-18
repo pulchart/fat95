@@ -1,20 +1,27 @@
-## 20260912-dev
+## 20260918-dev
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
 
 - `fat95 4.0 (10.09.2026)`
 - `install95 3.19 (25.01.2026)`
-- `dd 2.4 (10.09.2026)`
+- `dd 2.5 (18.09.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
-- `lsfsres 1.0 (16.05.2026)`
+- `lsfsres 1.1 (18.09.2026)` _(new)_
 - `ptable.library 2.0 (11.09.2026)` _(new)_
 - `lsptres 1.0 (11.09.2026)` _(new)_
 <!-- COMPONENTS:END -->
 
-TBD
+#### Tools
+
+##### 'dd 2.5'
+- No change in what dd does; it shares the screenful pager with `lsfsres` now.
+
+##### 'lsfsres 1.1'
+- The listing prints one screenful at a time; any key continues, `Q` stops. Redirected output is written in full.
+- Output lines end in `LF` alone.
 
 
 ## 20260911
