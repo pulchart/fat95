@@ -52,13 +52,14 @@
   * @{fg shine}SetFileSize 1.1 (25.01.2026)@{fg text}
   * @{fg shine}boot95 3.19 (25.01.2026)@{fg text}
   * @{fg shine}lsfsres 1.1 (18.09.2026)@{fg text} @{i}(new)@{ui}
-  * @{fg shine}ptable.library 2.0 (11.09.2026)@{fg text} @{i}(new)@{ui}
-  * @{fg shine}lsptres 1.0 (11.09.2026)@{fg text} @{i}(new)@{ui}
+  * @{fg shine}ptable.library 2.0 (11.09.2026)@{fg text}
+  * @{fg shine}lsptres 1.0 (11.09.2026)@{fg text}
 
 @{b}Tools@{ub}
 
 @{b}'dd 2.5'@{ub}
-  * No change in what dd does; it shares the screenful pager with @{fg shine}lsfsres@{fg text} now.
+  * Nothing changes in use; the pausing of long output is now the same code
+    @{fg shine}lsfsres@{fg text} uses.
 
 @{b}'lsfsres 1.1'@{ub}
   * The listing prints one screenful at a time; any key continues, @{fg shine}Q@{fg text} stops.
