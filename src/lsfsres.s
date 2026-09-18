@@ -211,6 +211,15 @@ s_cname:
 	move.b	d2,(a1)+
 	subq.l	#1,d1
 	bne.s	s_cname
+	move.b	(a0),d2			;full: nothing to mark
+	beq.s	s_cname_end
+	cmp.b	#LF,d2
+	beq.s	s_cname_end
+	cmp.b	#CR,d2
+	beq.s	s_cname_end
+	move.b	#'.',-3(a1)		;cut short: say so
+	move.b	#'.',-2(a1)
+	move.b	#'.',-1(a1)
 s_cname_end:
 	clr.b	(a1)
 	lea	RecSize(a2),a2
@@ -244,7 +253,7 @@ s_loop:
 	; [0] = entry index            (%ld)
 	; [1] = DosType                 (%08lx)
 	; [2] = pointer to 4-char ASCII (%s)
-	; [3] = Version                 (%08lx)
+	; [3] = pointer to "major.revision" (%-8s)
 	; [4] = PatchFlags              (%04lx)  - low 16 bits printed
 	; [5] = SegList byte address    (%08lx)
 	; [6] = pointer to "[ROM]"/"[RAM]" (%s)
@@ -255,7 +264,9 @@ s_loop:
 	move.l	rec_DosType(a3),d0
 	bsr.w	RenderDosType
 	move.l	a0,Argv+8(a4)
-	move.l	rec_Version(a3),Argv+12(a4)
+	move.l	rec_Version(a3),d0
+	bsr.w	RenderVersion
+	move.l	a0,Argv+12(a4)
 	move.l	rec_Patch(a3),Argv+16(a4)
 	move.l	rec_Seg(a3),d0
 	move.l	d0,Argv+20(a4)
@@ -349,6 +360,45 @@ ws_end:
 	movem.l	(sp)+,d0-d3/a0-a1
 	rts
 
+; RenderVersion: version longword in d0 -> "major.revision" at NameBuf+8(a4)
+; Out: a0 = the string. Both halves are 16 bits, so at most 11 characters.
+RenderVersion:
+	movem.l	d0-d3/a1,-(sp)
+	lea	NameBuf+8(a4),a1
+	move.l	d0,d3
+	swap	d0
+	and.l	#$ffff,d0
+	bsr.s	rv_num
+	move.b	#'.',(a1)+
+	move.l	d3,d0
+	and.l	#$ffff,d0
+	bsr.s	rv_num
+	clr.b	(a1)
+	lea	NameBuf+8(a4),a0
+	movem.l	(sp)+,d0-d3/a1
+	rts
+; d0 = 0..65535 -> decimal digits at (a1)+
+rv_num:
+	movem.l	d0-d2,-(sp)
+	moveq.l	#0,d2
+rv_digit:
+	divu.w	#10,d0
+	move.l	d0,d1
+	swap	d1
+	and.l	#$ffff,d1
+	move.w	d1,-(sp)
+	addq.l	#1,d2
+	and.l	#$ffff,d0
+	bne.s	rv_digit
+rv_emit:
+	move.w	(sp)+,d1
+	add.b	#'0',d1
+	move.b	d1,(a1)+
+	subq.l	#1,d2
+	bne.s	rv_emit
+	movem.l	(sp)+,d0-d2
+	rts
+
 ; RenderDosType: 4-byte DosType in d0 -> ASCII at NameBuf(a4)
 ; Non-printable bytes (< 32 or > 126) are rendered as '.'
 ; Returns a0 = pointer to start of ASCII (5 bytes incl. NUL)
@@ -380,10 +430,10 @@ rd_emit:
 DosName:	dc.b	'dos.library',0
 FSRName:	dc.b	'FileSystem.resource',0
 NoResStr:	dc.b	'FileSystem.resource not available (need V36+).',LF,0
-HeaderStr:	dc.b	'#: DosType (ascii) Version  Patch SegList  Loc   Name',LF
-		dc.b	'----------------------------------------------------------',LF,0
-EntryFmt:	dc.b	'%2ld: %08lx (%s)    %08lx %04lx  %08lx %s   %s',LF,0
-SummaryFmt:	dc.b	'----------------------------------------------------------',LF
+HeaderStr:	dc.b	' #: DosType   ascii    Version  Patch SegList  Loc     Name',LF
+		dc.b	'-----------------------------------------------------------',LF,0
+EntryFmt:	dc.b	'%2ld: %08lx (%s)    %-8s %04lx  %08lx %s   %s',LF,0
+SummaryFmt:	dc.b	'-----------------------------------------------------------',LF
 		dc.b	'Total: %ld entries in FileSystem.resource.',LF,0
 RomTag:		dc.b	'[ROM]',0
 RamTag:		dc.b	'[RAM]',0
