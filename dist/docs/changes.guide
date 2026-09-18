@@ -64,6 +64,9 @@
 @{b}'lsfsres 1.1'@{ub}
   * The listing prints one screenful at a time; any key continues, @{fg shine}Q@{fg text} stops.
     Redirected output is written in full.
+  * The column headings line up with the columns, and a name too long for its
+    column ends in @{fg shine}...@{fg text} .
+  * @{fg shine}Version@{fg text} reads as @{fg shine}47.4@{fg text} rather than as the raw @{fg shine}002F0004@{fg text}.
   * Output lines end in @{fg shine}LF@{fg text} alone.
 
 ----------------------------------------

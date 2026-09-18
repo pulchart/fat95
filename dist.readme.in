@@ -26,6 +26,9 @@ Tools 'lsfsres 1.1':
 
 * The listing prints one screenful at a time; any key continues, Q
   stops. Redirected output is written in full.
+* The column headings line up with the columns, and a name too long for
+  its column ends in "...".
+* The Version column reads as 47.4 rather than as the raw 002F0004.
 * Output lines end in LF alone.
 
 Purpose
