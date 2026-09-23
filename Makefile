@@ -136,10 +136,26 @@ else
   DEFINITIONS = -quiet
 endif
 
+ifeq ($(V),1)
+  TESTFLAGS = -v
+  TESTQUIET =
+else
+  TESTFLAGS = -q
+  TESTQUIET = >/dev/null
+endif
+
 # Build tools
 VASM_HOME ?= /opt/vasm
 VASM = $(VASM_HOME)/bin/vasmm68k_mot
 EXPECTED_VASM_VERSION = 2.0f
+
+# Test suite: the suites assemble src/ themselves, and FAT95_VASM is how they
+# are told to use exactly the assembler this Makefile uses.
+PYTHON ?= python3
+TESTDIR = tests
+TEST_CPUS = 68000 68020
+AMIFUSE_CYCLES ?= 100
+export FAT95_VASM = $(VASM)
 
 # Flags
 # VASMFLAGS is the base set shared by both CPU tiers; per-tier CPU flag
@@ -407,6 +423,42 @@ boot95: check-vasm $(TARGET_BOOT95)
 lsfsres: check-vasm $(TARGET_LSFSRES)
 
 # ============================================================
+# Test targets
+# ============================================================
+# Fast emulated checks; see tests/README.md.
+TEST_CHECKS = lsfsres_paging.py audit_ptable_check.py audit_extenddir_check.py
+
+# Must also run when vasm is missing.
+check-test-deps:
+	$(Q)$(PYTHON) $(TESTDIR)/deps.py
+
+test: check-vasm
+	$(Q)for cpu in $(TEST_CPUS); do \
+		echo "  TEST    unittest [$$cpu]"; \
+		FAT95_TEST_CPU=$$cpu $(PYTHON) -m unittest discover -s $(TESTDIR) $(TESTFLAGS) || exit 1; \
+		for check in $(TEST_CHECKS); do \
+			echo "  CHECK   $$check [$$cpu]"; \
+			FAT95_TEST_CPU=$$cpu $(PYTHON) $(TESTDIR)/$$check $(TESTQUIET) || exit 1; \
+		done; \
+	done
+
+# Optional image tests; missing dependencies are errors when requested.
+test-amifuse: check-vasm $(TARGET_020)
+	$(Q)$(PYTHON) -c 'import amifuse' >/dev/null 2>&1 || { \
+		echo "ERROR: amifuse is not installed, so this tier cannot run"; \
+		echo "       pip install -r $(TESTDIR)/requirements-amifuse.txt"; \
+		echo "       run 'make check-test-deps' for the full list"; \
+		exit 1; \
+	}
+	$(Q)$(PYTHON) $(TESTDIR)/amifuse_suite.py --cycles $(AMIFUSE_CYCLES)
+	$(Q)$(PYTHON) $(TESTDIR)/amifuse_media.py --suite
+
+# Per-test inventory in tests/INVENTORY.md, built from the docstrings
+test-list-update:
+	$(Q)$(PYTHON) $(TESTDIR)/list_tests.py
+	$(Q)echo "Updated: $(TESTDIR)/INVENTORY.md"
+
+# ============================================================
 # Release targets
 # ============================================================
 
@@ -536,6 +588,15 @@ help:
 	@echo "Options:"
 	@echo "  V=1                 - Verbose output (show full assembler messages)"
 	@echo "  VASM_HOME=/opt/vbcc - vasm installation path"
+	@echo "  FAT95_TEST_CPU=68020 - CPU tier for a direct python test run"
+	@echo "  TEST_CPUS=68020    - Run make test on one CPU tier"
+	@echo "  AMIFUSE_CYCLES=1    - Restart cycles per test-amifuse case (default $(AMIFUSE_CYCLES))"
+	@echo ""
+	@echo "Test targets:"
+	@echo "  test             - All fast checks, both CPU tiers"
+	@echo "  test-amifuse     - Handler-in-the-loop suite (needs amifuse, dosfstools, mtools)"
+	@echo "  test-list-update - Refresh the inventory in $(TESTDIR)/INVENTORY.md"
+	@echo "  check-test-deps  - Report what the test suites need and what is missing"
 	@echo ""
 	@echo "Documentation targets:"
 	@echo "  guide / guides - Generate AmigaGuide documentation"
@@ -603,4 +664,4 @@ $(GUIDE_LSFSRES): docs/lsfsres.md $(MD2GUIDE) $(VERSION_STAMP)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) docs/lsfsres.md $@ --version $(LSFSRES_VERSION) --date $(LSFSRES_DATE) --title "lsfsres" --ver-title "lsfsres guide"
 
-.PHONY: all fat95 fat95-080 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide guides help version-readme FORCE
+.PHONY: all fat95 fat95-080 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide guides help version-readme FORCE test test-amifuse test-list-update check-test-deps

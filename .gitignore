@@ -2,3 +2,6 @@
 *.lha
 *.readme
 .version-stamp
+__pycache__/
+.venv/
+tests/.amifuse-runs/
