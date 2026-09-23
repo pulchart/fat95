@@ -803,6 +803,7 @@ XFH_Node	= 0
 XFH_XLock	= 8
 XFH_CurrentPos	= 12
 XFH_Cluster	= 16
+; Current cluster: 0 for an empty file, >0 for data, <0 at chain end/error.
 XFH_Changed	= 20		;0 or 1
 ;22.w unused
 XFH_Sizeof	= 24
@@ -7980,13 +7981,19 @@ lob_killtail:
 	beq.s	lob_ktstart		;unless in fixed size root..
 
 	bsr	NextCluster
+	cmp.l	#FAT_READ_ERROR,d0
+	beq.w	lob_ready
 	tst.l	d0
 	ble.s	lob_ktstart		;..free following..
 
 	bsr	FreeChain		;..clusters
+	tst.l	d0
+	beq.w	lob_ready
 	move.l	d4,d0
 	moveq.l	#-1,d1
 	bsr	PutFATEntry		;cut cluster chain here
+	tst.l	d0
+	beq.w	lob_ready
 lob_ktstart:
 	bsr	NextMSDE		;start below new entry
 lob_ktblock:
@@ -10463,7 +10470,8 @@ mfw_end:
 
 ;--- read entry --------------------------------------------
 ; d0 <- ULONG Cluster #;
-; d0 -> ULONG next cluster #;
+; d0 -> next cluster, normalized FAT marker, or FAT_READ_ERROR.
+FAT_READ_ERROR	= -10		;distinct from bad (-9) and EOC (-8..-1)
 
 NextCluster:
 GetFATEntry:
@@ -10523,19 +10531,23 @@ gfe_end:
 	rts
 
 gfe_error:
-	moveq.l	#-1,d0
+	bsr	LatchWriteFault		;never let stale disk-full status mask FAT failure
+	moveq.l	#FAT_READ_ERROR,d0
 	bra.s	gfe_end
 
 ;--- write entry -------------------------------------------
 ; d0 <- ULONG Cluster #
 ; d1 <- ULONG new next Cluster #
+; d0 -> BOOL success
 
 PutFATEntry:
 	move.l	d2,-(sp)
+	bsr	CheckWriteMedia
+	bne.w	pfe_error
 	move.l	d1,d2			;new contents
 	move.l	d0,d1			;FAT Index
 	move.l	FATBuffer(a4),d0
-	beq.w	pfe_end
+	beq.w	pfe_error
 
 	move.l	d0,a0			;&FAT
 	tst.w	FATType(a4)
@@ -10546,7 +10558,7 @@ PutFATEntry:
 	moveq.l	#-1,d1
 	bsr	MoveFATWindow		;32bit entries
 	tst.l	d0
-	beq.w	pfe_end
+	beq.w	pfe_error
 	move.l	d0,a0
 	ReverseL d2
 	and.b	#$0f,d2			;only 28bit are actually used
@@ -10598,9 +10610,14 @@ pfe_12end:
 
 pfe_ok:
 	or.w	#8,NewFlags(a4)		;"FAT changed"
+	moveq.l	#TRUE,d0
 pfe_end:
 	move.l	(sp)+,d2
 	rts
+pfe_error:
+	bsr	LatchWriteFault		;failed mutation also invalidates scan success
+	moveq.l	#FALSE,d0
+	bra.s	pfe_end
 
 ;--- append 1 cluster to chain -----------------------------
 ; d0 <- ULONG Start Cluster # or 0;
@@ -10610,25 +10627,36 @@ ExtendChain:
 	movem.l	d2-d5,-(sp)
 	move.l	d0,d2
 	beq.s	xch_add			;start new chain
+	move.l	LastCluster(a4),d5
+	subq.l	#1,d5			;at most this many data clusters
 xch_search:
+	subq.l	#1,d5
+	bmi.s	xch_corrupt		;cycle: no end within volume size
+	cmp.l	#2,d2
+	bcs.s	xch_corrupt
+	cmp.l	LastCluster(a4),d2
+	bhi.s	xch_corrupt		;never index FAT outside data clusters
 	move.l	d2,d0
 	bsr	NextCluster
-	tst.l	d0			;find last Cluster
-	bmi.s	xch_add
+	cmp.l	#FAT_READ_ERROR,d0
+	beq.s	xch_readfail
+	cmp.l	#$fffffff8,d0		;only end markers terminate a valid chain
+	bcc.s	xch_add
 
 	move.l	d0,d2
 	bra.s	xch_search
+xch_corrupt:
+	move.w	#225,ErrorNum(a4)	;ERROR_NOT_A_DOS_DISK: broken chain
+xch_readfail:
+	moveq.l	#-1,d2
+	bra.w	xch_end			;no allocation state changed yet
 xch_add:
 	subq.l	#1,FreeClusters(a4)
 	bcs.s	xch_error		;Disk full
 
 	move.l	LastCluster(a4),d3
 	addq.l	#1,d3
-;	Watchdog: at most (LastCluster - 1) data clusters exist, so the
-;	wrap-around scan visits each one at most once. If FreeClusters
-;	is stale (e.g. FAT read errors filled the buffer with the "end
-;	of chain" placeholder) we'd otherwise spin forever - catch it
-;	here and report disk full instead.
+;	Visit each data cluster at most once, even if FreeClusters is stale.
 	move.l	d3,d5
 	subq.l	#2,d5
 	move.l	d2,d4			;# predictor
@@ -10647,63 +10675,89 @@ xch_loop:
 xch_2:
 	move.l	d2,d0
 	bsr	GetFATEntry
+	cmp.l	#FAT_READ_ERROR,d0
+	beq.s	xch_scanfail
 	tst.l	d0			;..for free Clusters
 	bne.s	xch_loop
 
-	move.l	d2,NextFreeCluster(a4)
 	move.l	d2,d0
 	moveq.l	#-1,d1
 	bsr	PutFATEntry		;found Cluster = "end of chain"
+	tst.l	d0
+	beq.s	xch_scanfail
+	move.l	d2,NextFreeCluster(a4)
 
 	move.l	d4,d0
 	ble.s	xch_end			;if predictor valid,..
 
 	move.l	d2,d1
 	bsr	PutFATEntry		;..append there
+	tst.l	d0
+	beq.w	xch_readfail		;new cluster remains allocated on link failure
 xch_end:
 	move.l	d2,d0
 	movem.l	(sp)+,d2-d5
 	rts
 
 xch_error:
-	addq.l	#1,FreeClusters(a4)	;revoke subtraction
 	move.w	#221,ErrorNum(a4)
+xch_scanfail:
+	addq.l	#1,FreeClusters(a4)	;revoke subtraction, retain read error
 	moveq.l	#-1,d2			;"error"
 	bra.s	xch_end
 
 ;--- free cluster chain ------------------------------------
 ; d0 <- ULONG StartClustersummer;
+; d0 -> BOOL success. Earlier freed clusters stay freed on failure.
 
 FreeChain:
 	movem.l	d2-d4/a2,-(sp)
 	move.l	d0,d2
-	ble.s	fch_end
+	bsr	CheckWriteMedia
+	bne.s	fch_fail
+	cmp.l	#FAT_READ_ERROR,d2
+	beq.s	fch_fail
+	tst.l	d2
+	ble.s	fch_ok
 
 	move.l	FreeClusters(a4),d3
 	move.l	NextFreeCluster(a4),d4
-	bne.s	fch_loop
-
-	moveq.l	#-1,d4
 fch_loop:
-	cmp.l	d4,d2			;update first free..
-	bcc.s	fch_free
-
-	move.l	d2,d4			;..cluster #
-fch_free:
 	move.l	d2,d0
 	bsr	NextCluster		;read and..
+	cmp.l	#FAT_READ_ERROR,d0
+	beq.s	fch_partial
 	exg.l	d0,d2
+	move.l	d0,a2			;current cluster, count only after clearing
 	moveq.l	#0,d1
 	bsr	PutFATEntry		;..delete entry
+	tst.l	d0
+	beq.s	fch_partial
+	tst.l	d4
+	beq.s	fch_hint
+	cmp.l	a2,d4
+	bls.s	fch_count
+fch_hint:
+	move.l	a2,d4
+fch_count:
 	addq.l	#1,d3
 	tst.l	d2
 	bgt.s	fch_loop
 
 	move.l	d3,FreeClusters(a4)
 	move.l	d4,NextFreeCluster(a4)
+fch_ok:
+	moveq.l	#TRUE,d0
 fch_end:
 	movem.l	(sp)+,d2-d4/a2
 	rts
+fch_partial:
+	move.l	d3,FreeClusters(a4)
+	move.l	d4,NextFreeCluster(a4)
+fch_fail:
+	bsr	LatchWriteFault
+	moveq.l	#FALSE,d0
+	bra.s	fch_end
 
 ;*** High Level file access ********************************
 ;--- open file ---------------------------------------------
@@ -11662,37 +11716,45 @@ sfs_u1:
 	add.l	d3,d2			;# remaining Clusters
 	bne.s	sfs_unext
 
-	clr.l	XL_FilePos(a3)
-	clr.l	XL_FileChain(a3)
 	moveq.l	#0,d3
 	move.l	d0,d4			;free entire chain
-	clr.w	XL_MSDE+MSDE_1L(a3)
-	tst.w	FATType(a4)
-	bpl.s	sfs_ufree
-
-	clr.w	XL_MSDE+MSDE_1H(a3)
 	bra.s	sfs_ufree
 sfs_uwalk:
 	bsr	NextCluster		;skip Clusters 0...n-1
 sfs_unext:
+	cmp.l	#FAT_READ_ERROR,d0
+	beq.w	sfs_failed
 	tst.l	d0
 	ble.w	sfs_seekerr
 
 	subq.l	#1,d2
 	bgt.s	sfs_uwalk
 
-	move.l	d5,XL_FilePos(a3)
-	move.l	d0,XL_FileChain(a3)
 	move.l	d0,d2
 	bsr	NextCluster		;Cluster n..
+	cmp.l	#FAT_READ_ERROR,d0
+	beq.w	sfs_failed
 	move.l	d0,d4
 	move.l	d2,d0
 	moveq.l	#-1,d1
 	bsr	PutFATEntry		;..= new end of chain
+	tst.l	d0
+	beq.w	sfs_failed
 	moveq.l	#-1,d3
 sfs_ufree:
 	move.l	d4,d0
 	bsr	FreeChain		;free Clusters n+1...?
+	tst.l	d0
+	beq.w	sfs_failed
+	move.l	d5,XL_FilePos(a3)
+	move.l	d2,XL_FileChain(a3)
+	tst.l	d5
+	bne.s	sfs_ufreed
+	clr.w	XL_MSDE+MSDE_1L(a3)
+	tst.w	FATType(a4)
+	bpl.s	sfs_ufreed
+	clr.w	XL_MSDE+MSDE_1H(a3)
+sfs_ufreed:
 	exg.l	d3,d4			;for sfs_sdjust
 	cmp.l	XFH_CurrentPos(a2),d5	;limit new Position..
 	bcc.s	sfs_adjust
@@ -11742,6 +11804,8 @@ sfs_anext:
 	bgt.s	sfs_aloop
 	bra.s	sfs_aok
 sfs_abreak:
+	cmp.w	#221,ErrorNum(a4)	;only disk-full permits a partial resize
+	bne.s	sfs_failed
 	move.w	BlockShift(a4),d1
 	add.w	ClusterShift(a4),d1	;disk full, stop here..
 	move.l	d3,d0
@@ -11793,6 +11857,7 @@ sfs_seekerr:
 	move.w	#219,d0
 sfs_error:
 	move.w	d0,ErrorNum(a4)
+sfs_failed:
 	moveq.l	#-1,d0
 	bra.s	sfs_end
 
@@ -11916,6 +11981,8 @@ fo_enext:
 fo_freechain:
 	move.l	d4,d0
 	bsr	FreeChain		;free Cluster chain..
+	tst.l	d0
+	beq.s	fo_failed
 fo_reset:
 	clr.l	XL_MSDE+MSDE_FSize(a2)
 	clr.w	XL_MSDE+MSDE_1L(a2)	;..and delete link..
@@ -11946,6 +12013,7 @@ fo_notempty:
 	move.w	#216,d1
 fo_error:
 	move.w	d1,ErrorNum(a4)
+fo_failed:
 	moveq.l	#FALSE,d0
 	bra.s	fo_end
 
