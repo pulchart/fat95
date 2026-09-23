@@ -17,6 +17,11 @@ COMPONENTS IN THIS RELEASE
 WHAT'S NEW (@DATE@)
 =======================
 
+Filesystem handler 'fat95 4.1-dev':
+
+* Fixed: a file cut to zero length with SetFileSize and then written
+  again could keep using its freed clusters.
+
 Tools 'dd 2.5':
 
 * Nothing changes in use; the pausing of long output is now the same

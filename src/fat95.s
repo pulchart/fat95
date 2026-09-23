@@ -11698,6 +11698,9 @@ sfs_ufree:
 	bcc.s	sfs_adjust
 
 	move.l	d5,XFH_CurrentPos(a2)	;..to new end of file
+	moveq.l	#0,d1			;empty file: extension remaps cluster 0
+	tst.l	d5
+	beq.s	sfs_u2
 	moveq.l	#-1,d1
 	move.l	ClusterMask(a4),d0
 	and.l	d5,d0

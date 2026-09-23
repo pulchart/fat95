@@ -1,9 +1,9 @@
-## 20260918-dev
+## 20260924-dev
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
 
-- `fat95 4.0 (10.09.2026)`
+- `fat95 4.1-dev (24.09.2026)` _(new)_
 - `install95 3.19 (25.01.2026)`
 - `dd 2.5 (18.09.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
@@ -13,6 +13,9 @@ _Components in this release_:
 - `ptable.library 2.0 (11.09.2026)`
 - `lsptres 1.0 (11.09.2026)`
 <!-- COMPONENTS:END -->
+
+##### 'fat95 4.1-dev'
+- Fixed: a file cut to zero length with `SetFileSize` and then written again could keep using its freed clusters.
 
 #### Tools
 
