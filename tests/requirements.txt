@@ -1,0 +1,23 @@
+# Python packages for the fat95 unit tests and the gated scripts.
+#
+#   pip install -r tests/requirements.txt
+#
+# Or, without touching the system packages:
+#
+#   python3 -m venv .venv && . .venv/bin/activate
+#   pip install -r tests/requirements.txt
+#
+# These are the amifuse forks of amitools and machine68k, and they are not
+# interchangeable with the upstream packages of the same import name. The
+# harness calls Machine.from_name, which upstream amitools 0.8.1 does not
+# have; it offers from_cfg instead. Installing both providers is worse than
+# installing the wrong one: they claim the same import paths and overwrite
+# each other, and the suite then fails in every test with an AttributeError
+# on from_name. tests/deps.py reports that situation by name.
+#
+# The versions are exact because that is the combination the suite was last
+# green against, so installing this file does pin them. Another version is
+# untested rather than known to be broken.
+
+amitools-amifuse==0.8.0.post8
+machine68k-amifuse==0.4.1.post1

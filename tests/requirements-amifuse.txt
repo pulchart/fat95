@@ -1,0 +1,18 @@
+# The handler-in-the-loop tier, behind make test-amifuse. Extends the base set.
+#
+#   pip install -r tests/requirements-amifuse.txt
+#
+# It includes the base file, so installing this one alone still gets the tested
+# fork versions rather than whatever amifuse happens to pull in.
+#
+# It also needs dosfstools and mtools from the distribution, and amifuse_fuse.py
+# additionally needs fuse3 and a /dev/fuse the caller may use.
+#
+# amifuse is exact for a second reason beyond being the tested version:
+# tests/amifuse_media.py imports _snapshot_block_state and _restore_block_state
+# from amifuse.startup_runner, which are private and may move in any release.
+
+-r requirements.txt
+
+amifuse==0.6.0
+fusepy==3.0.1

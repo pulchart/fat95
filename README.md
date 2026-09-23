@@ -56,10 +56,10 @@ See [docs/changes.md](docs/changes.md) for release news and history.
 
 ## Documentation Included
 
-- `docs/fat95.md` - main filesystem handler documentation.
-- `docs/changes.md` - release notes and original fat95 history.
-- `docs/dd.guide` - `dd` raw block transfer tool documentation.
-- `docs/lsfsres.guide` - `lsfsres` FileSystem.resource lister documentation.
+- This README documents the filesystem handler.
+- [Release notes](docs/changes.md) and original fat95 history.
+- [dd](docs/dd.md) raw block transfer tool.
+- [lsfsres](docs/lsfsres.md) FileSystem.resource lister.
 
 ## Installation
 
