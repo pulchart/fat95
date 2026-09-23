@@ -56,6 +56,11 @@
   * @{fg shine}lsptres 1.0 (11.09.2026)@{fg text}
 
 @{b}'fat95 4.1-dev'@{ub}
+  * A damaged FAT, such as a looped or out-of-range cluster chain, fails with
+    @{fg shine}not a DOS disk@{fg text} instead of hanging the handler or following the chain outside
+    the volume.
+  * A FAT read error while deleting or resizing a file is reported as a failure
+    instead of success.
   * Fixed: a file cut to zero length with @{fg shine}SetFileSize@{fg text} and then written again could
     keep using its freed clusters.
 

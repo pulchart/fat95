@@ -15,6 +15,8 @@ _Components in this release_:
 <!-- COMPONENTS:END -->
 
 ##### 'fat95 4.1-dev'
+- A damaged FAT, such as a looped or out-of-range cluster chain, fails with `not a DOS disk` instead of hanging the handler or following the chain outside the volume.
+- A FAT read error while deleting or resizing a file is reported as a failure instead of success.
 - Fixed: a file cut to zero length with `SetFileSize` and then written again could keep using its freed clusters.
 
 #### Tools
