@@ -129,8 +129,8 @@ CLRQ	macro				;clear 8 bytes at \1; \2 = zero reg, 020/000 only
 ; When fat95 is baked into a Kickstart ROM, InitCode registers one
 ; FileSysEntry per FAT\<n> partition selector in FileSystem.resource so
 ; MountList entries with any of those DOS types match the ROM handler.
-; 0 = whole disk/floppy, 1..8 = Nth FAT partition on the medium
-; (ranked by partition.resource index; MBR yields at most four).
+; 0 = whole disk/floppy, 1..8 = partition.resource index 0..7 (MBR
+; primaries 0-3, logicals 4..).
 FAT_MAX_REG_VARIANT	equ	8
 
 ; Device-name-suffix scheme. One DosType for every FAT mount; the
@@ -3594,14 +3594,14 @@ ic_loop:
 ;
 ;   DosType byte:  the selector is the low byte of the DosType
 ;                  (FAT\<n>), so a mount with DosType $4641540<n>
-;                  picks partition <n>. Device name is free-form.
+;                  picks partition index <n>-1. Device name is free-form.
 ;
 ;   Device name:   DosType is the canonical DEVICE_DOSTYPE_MARKER
 ;                  ($464154FF) and the partition is the trailing
-;                  decimal number of the device name, 0-based:
-;                  CF0: -> first FAT partition, CF1: -> second, ...
+;                  decimal number of the device name, the partition
+;                  index: CF0: -> index 0, CF4: -> first MBR logical.
 ;                  (internally name+1, since selector 0 is whole disk).
-;                  No number defaults to the first partition; a number
+;                  No number defaults to index 0; a number
 ;                  above 254 fails the mount.
 ;
 ; On unpartitioned media (floppy/raw FAT) the selector is ignored later
@@ -6259,22 +6259,20 @@ svp_pick:
 	cmp.w	#PRES_LAYOUT_MIN,PRES_Layout(a2)
 	bcs.w	svp_pfail		;older layout -> unusable
 svp_layok:
-;-- target selector (1-based; 0 -> autoselect first)
-	moveq.l	#0,d2
-	move.b	PartitionSelector(a4),d2
+;-- target: selector n (1-based) picks pe_PartIndex n-1; 0 -> lowest index
+	moveq.l	#0,d3
+	move.b	PartitionSelector(a4),d3
+	move.l	d3,d2
 	bne.s	svp_haveS
-	moveq.l	#1,d2
+	moveq.l	#1,d2			;PartitionNum stays nonzero: partitioned
 svp_haveS:
+	subq.l	#1,d3			;d3 = wanted index (-1 = lowest)
 ;-- ptable's writers rewrite the list under ptr_Lock; a reader must walk it
 ;   under Forbid (or take the lock), or a concurrent unmount frees entries
 ;   under this walk. The winner's fields are copied before the Permit.
 	CALLEXEC Forbid
-;-- pick the d2-th match (by pe_PartIndex ascending) for DevName+Unit
-	moveq.l	#-1,d3			;d3 = prevIdx
-	move.l	d2,d4			;d4 = passes remaining
-svp_kpass:
-	sub.l	a5,a5			;a5 = best entry (0 = none)
-	move.l	#$7fffffff,d6		;d6 = best idx
+	sub.l	a5,a5			;a5 = selected entry (0 = none)
+	move.l	#$7fffffff,d6		;d6 = lowest index seen
 	lea	PRES_PartList(a2),a0
 	move.l	(a0),a1			;a1 = first node
 svp_walk:
@@ -6300,11 +6298,14 @@ svp_sc:
 	bne.s	svp_wnext
 	btst	#PEB_PRESENT,PENT_Flags(a1)
 	beq.s	svp_wnext
-	move.l	PENT_PartIndex(a1),d1	;matched dev+unit: rank by index
+	move.l	PENT_PartIndex(a1),d1
+	tst.l	d3
+	bmi.s	svp_cand		;selector 0: any index is a candidate
 	cmp.l	d3,d1
-	ble.s	svp_wnext		;idx <= prevIdx (already taken), signed: -1 < all
+	bne.s	svp_wnext
+svp_cand:
 	cmp.l	d6,d1
-	bge.s	svp_wnext		;idx >= best (not smaller)
+	bge.s	svp_wnext		;keep the lowest; the first wins a tie
 	move.l	d1,d6
 	move.l	a1,a5
 svp_wnext:
@@ -6312,10 +6313,7 @@ svp_wnext:
 	bra.s	svp_walk
 svp_passend:
 	move.l	a5,d0
-	beq.s	svp_pfail2		;fewer than d2 matches -> not found
-	move.l	d6,d3			;prevIdx = best idx
-	subq.l	#1,d4
-	bne.s	svp_kpass
+	beq.s	svp_pfail2		;no entry with that index -> not found
 ;-- a5 = selected partition entry
 ;-- ownership gate: a partition another handler already serves is not
 ;   eligible - two auto-detect handlers on one FAT volume corrupt it.

@@ -1,15 +1,19 @@
 /* Device-name partition selection, on a CompactFlash card.   */
 /*                                                            */
 /* DosType is 0x464154FF for every FAT mount; the number at   */
-/* the end of the device name picks the partition. The number */
-/* is 0-based, like DF0:/HD0:, so:                            */
-/*   CF0: -> first FAT partition                              */
-/*   CF1: -> second FAT partition (this file)                 */
-/*   CF2: -> third, and so on, up to 254                      */
-/* A name with no number means the first partition. Copy this */
-/* file to CF0, CF2, ... to mount other partitions; the       */
-/* DosType stays the same, only the name changes. The other   */
-/* way (DosType byte FAT\<n>) is shown in CF0 and             */
+/* the end of the device name picks the partition by its      */
+/* place in the partition table (lsptres Part column):        */
+/*   CF0: to CF3: -> MBR primary partitions (CF1: this file)  */
+/*   CF4:, CF5:, ... -> logical drives in the extended        */
+/*                     partition (ptable.library 2.1)         */
+/*   GPT: CF<n>: -> GPT entry n                               */
+/* Non-FAT and empty slots keep their number; a mount naming  */
+/* one fails. Limits: numbers up to 99 (CF99:), at most 12    */
+/* FAT partitions per card.                                   */
+/* A name with no number means CF0:. Copy this file to CF0,   */
+/* CF4, ... to mount other partitions; the DosType stays the  */
+/* same, only the name changes. The other way (DosType byte   */
+/* FAT\<n>, n = number + 1) is shown in CF0 and               */
 /* mountlist.examples. See README "Partition Selection".      */
 
 FileSystem = l:fat95
