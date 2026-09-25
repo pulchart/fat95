@@ -1,9 +1,9 @@
-## 20260924-dev
+## 20260925-dev
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
 
-- `fat95 4.1-dev (24.09.2026)` _(new)_
+- `fat95 4.1-dev (25.09.2026)` _(new)_
 - `install95 3.19 (25.01.2026)`
 - `dd 2.5 (18.09.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
@@ -18,6 +18,7 @@ _Components in this release_:
 - A damaged FAT, such as a looped or out-of-range cluster chain, fails with `not a DOS disk` instead of hanging the handler or following the chain outside the volume.
 - A FAT read error while deleting or resizing a file is reported as a failure instead of success.
 - Fixed: a file cut to zero length with `SetFileSize` and then written again could keep using its freed clusters.
+- The partition number in `CF<n>:` and `FAT\<n>` is the partition's place in the table, as `lsptres` shows it, not a count of FAT partitions: `CF4:` / `FAT\5` is the first MBR logical drive, and a FAT partition after a non-FAT slot keeps its slot number.
 
 #### Tools
 

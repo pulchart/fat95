@@ -482,17 +482,18 @@ mountlist picks its way by its @{b}DosType@{ub} value, so use whichever you like
 The partition selector is the last byte of the DosType. The device name
 can be anything you like.
 
-  @{b}DosType@{ub}  @{b}Hex Value@{ub}   @{b}Description@{ub}                
-  -------  ----------  -------------------------  
-  FAT\0    0x46415400  Floppies only              
-  FAT\1    0x46415401  First FAT partition        
-  FAT\2    0x46415402  Second FAT partition       
-  FAT\3    0x46415403  Third FAT partition        
-  FAT\4    0x46415404  Fourth FAT partition       
-  FAT\5    0x46415405  Fifth FAT partition (GPT   
-                       only; MBR yields at most   
-                       four)                      
-  FAT\6    0x46415406  Sixth FAT partition, etc.  
+  @{b}DosType@{ub}  @{b}Hex Value@{ub}   @{b}Description@{ub}             
+  -------  ----------  ----------------------  
+  FAT\0    0x46415400  Floppies only           
+  FAT\1    0x46415401  Partition 0: first MBR  
+                       primary or GPT entry    
+  FAT\2    0x46415402  Partition 1             
+  FAT\3    0x46415403  Partition 2             
+  FAT\4    0x46415404  Partition 3: last MBR   
+                       primary                 
+  FAT\5    0x46415405  Partition 4: first MBR  
+                       logical drive           
+  FAT\6    0x46415406  Partition 5, etc.       
 
 @{i}Option B: device name suffix@{ui}
 
@@ -500,18 +501,28 @@ Use DosType @{fg shine}0x464154FF@{fg text} for @{b}every@{ub} FAT mount, and th
 the device name picks the partition. The number is 0-based, like @{fg shine}DF0:@{fg text}
 and @{fg shine}HD0:@{fg text} :
 
-  @{b}Device name@{ub}      @{b}DosType@{ub}     @{b}Mounts@{ub}                
-  ---------------  ----------  --------------------  
-  @{fg shine}CF0:@{fg text}             0x464154FF  First FAT partition   
-  @{fg shine}CF1:@{fg text}             0x464154FF  Second FAT partition  
-  @{fg shine}CF9:@{fg text}             0x464154FF  Tenth FAT partition   
-  @{fg shine}CF:@{fg text} (no number)  0x464154FF  First FAT partition   
-                               (default)             
+  @{b}Device name@{ub}      @{b}DosType@{ub}     @{b}Mounts@{ub}                  
+  ---------------  ----------  ----------------------  
+  @{fg shine}CF0:@{fg text}             0x464154FF  Partition 0: first MBR  
+                               primary or GPT entry    
+  @{fg shine}CF3:@{fg text}             0x464154FF  Partition 3: last MBR   
+                               primary                 
+  @{fg shine}CF4:@{fg text}             0x464154FF  Partition 4: first MBR  
+                               logical drive           
+  @{fg shine}CF:@{fg text} (no number)  0x464154FF  Partition 0 (default)   
 
-The whole trailing digit run is read as one decimal number from 0 to 254
-( @{fg shine}CF255:@{fg text} and above fail the mount). To mount several partitions from one
-card, copy the mountlist to @{fg shine}CF0@{fg text} , @{fg shine}CF1@{fg text} , @{fg shine}CF2@{fg text} . The DosType stays the
-same; only the leading device name differs.
+The partition number is its place in the partition table, as @{fg shine}lsptres@{fg text}
+shows in its @{fg shine}Part@{fg text} column: MBR primary slots 0 to 3, logical drives in
+the extended partition from 4 (ptable.library 2.1), GPT entry number.
+Non-FAT and empty slots keep their number; a mount naming one fails.
+
+@{b}Limits@{ub} (ptable.library 2.1): partition numbers go up to 99 ( @{fg shine}CF99:@{fg text} ,
+@{fg shine}FAT\100@{fg text} ), and a card yields at most 12 FAT partitions. A higher number,
+or one past the card's last partition, fails the mount.
+
+The whole trailing digit run is read as one decimal number. To mount
+several partitions from one card, copy the mountlist to @{fg shine}CF0@{fg text} , @{fg shine}CF1@{fg text} , @{fg shine}CF4@{fg text}
+. The DosType stays the same; only the leading device name differs.
 
 Because every FAT mount uses the same DosType ( @{fg shine}0x464154FF@{fg text} ), fat95
 needs only one entry in @{fg shine}FileSystem.resource@{fg text} , no matter how many
@@ -530,17 +541,16 @@ mountlist using either DosType mounts the same way.
 
 For MBR disks, fat95 recognizes these partition types:
 
-  @{b}Type@{ub}        @{b}Description@{ub}                            
-  ----------  -------------------------------------  
-  0x01        FAT12                                  
-  0x04        FAT16, < 32 MB                         
-  0x06        FAT16, >= 32 MB                        
-  0x0B        FAT32                                  
-  0x0C        FAT32, LBA                             
-  0x0E        FAT16, LBA                             
-  0x05, 0x0F  Extended partitions are not followed;  
-              logical drives inside them are not     
-              found                                  
+  @{b}Type@{ub}              @{b}Description@{ub}                             
+  ----------------  --------------------------------------  
+  0x01              FAT12                                   
+  0x04              FAT16, < 32 MB                          
+  0x06              FAT16, >= 32 MB                         
+  0x0B              FAT32                                   
+  0x0C              FAT32, LBA                              
+  0x0E              FAT16, LBA                              
+  0x05, 0x0F, 0x85  Extended partition: FAT logical drives  
+                    inside are found (ptable.library 2.1)   
 
 For GPT disks, fat95 considers only partition entries whose @{b}type GUID@{ub} is
 one of the following:
@@ -603,7 +613,8 @@ For special cases like damaged partition tables:
 @node Complete_Mountlist_Example "Complete Mountlist Example"
 @{i}Complete Mountlist Example@{ui}
 
-Two options based on DosType, both mount the first FAT partition (see @{"Partition Selection" link partition_selection}).
+Two options based on DosType, both mount partition 0, the first MBR
+primary or GPT entry (see @{"Partition Selection" link partition_selection} ).
 
 @{fg highlight}
   CF0:
@@ -626,10 +637,10 @@ Two options based on DosType, both mount the first FAT partition (see @{"Partiti
   
       /* Keep exactly one of the two DosType lines below. */
   
-      /* Option A: DosType byte (FAT\<n>): FAT\1 = first FAT partition */
+      /* Option A: DosType byte (FAT\<n>): FAT\1 = partition 0 */
       DosType        = 0x46415401
   
-      /* Option B: device name suffix: CF0 = first FAT partition */
+      /* Option B: device name suffix: CF0 = partition 0 */
       DosType        = 0x464154FF
   
       Activate       = 1
@@ -639,7 +650,7 @@ For devices with more than one FAT partition:
 
   * Option A: copy the mountlist and change @{fg shine}DosType@{fg text} to @{fg shine}0x46415402@{fg text} (FAT\2),
     @{fg shine}0x46415403@{fg text} (FAT\3), and so on, matching the table in @{"Partition Selection" link partition_selection} .
-  * Option B: copy the mountlist to @{fg shine}CF1@{fg text} , @{fg shine}CF2@{fg text} , ... and keep @{fg shine}DosType = 0x464154FF@{fg text}
+  * Option B: copy the mountlist to @{fg shine}CF1@{fg text} , @{fg shine}CF4@{fg text} , ... and keep @{fg shine}DosType = 0x464154FF@{fg text}
     . The number on the device name picks the partition.
 
 The @{fg shine}FileSystem = l:fat95@{fg text} line stays in every copy. AmigaOS @{fg shine}Mount@{fg text} needs

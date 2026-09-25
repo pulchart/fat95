@@ -26,6 +26,10 @@ Filesystem handler 'fat95 4.1-dev':
   failure instead of success.
 * Fixed: a file cut to zero length with SetFileSize and then written
   again could keep using its freed clusters.
+* The partition number in CF<n>: and FAT\<n> is the partition's place
+  in the table, as lsptres shows it, not a count of FAT partitions:
+  CF4: / FAT\5 is the first MBR logical drive, and a FAT partition
+  after a non-FAT slot keeps its slot number.
 
 Tools 'dd 2.5':
 

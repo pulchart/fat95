@@ -155,16 +155,24 @@ Control		= "+s"		/* testing: SCSI direct commands */
 /*                                                              */
 /* All the examples above use the DosType-byte scheme, where    */
 /* the partition is the last byte of DosType (0x46415401 =      */
-/* FAT\1 = first partition).                                    */
+/* FAT\1 = partition 0).                                        */
 /*                                                              */
 /* The two entries below use the newer device-name scheme       */
 /* instead: DosType is 0x464154FF for every FAT mount, and the  */
 /* number at the end of the device name picks the partition,    */
-/* 0-based (CF0 = first, CF1 = second, ...). To mount another   */
-/* partition, copy an entry and change only the name; the       */
-/* DosType stays the same. Because every mount shares one       */
-/* DosType, fat95 needs only a single FileSystem.resource entry */
-/* for all of them (check with the lsfsres tool).               */
+/* 0-based (CF0 = partition 0, CF1 = partition 1, ...). To      */
+/* mount another partition, copy an entry and change only the   */
+/* name; the DosType stays the same. Because every mount        */
+/* shares one DosType, fat95 needs only a single                */
+/* FileSystem.resource entry for all of them (check with the    */
+/* lsfsres tool).                                               */
+/*                                                              */
+/* Both schemes use the partition's place in the table, as      */
+/* lsptres shows it: MBR primaries 0 to 3, logical drives in    */
+/* the extended partition from 4 (ptable.library 2.1), GPT      */
+/* entry number. CF4 = FAT\5 = first logical drive. A card      */
+/* yields at most 12 FAT partitions, numbered up to 99 (CF99,   */
+/* FAT\100).                                                    */
 
 CF0:
 FileSystem	= l:fat95
@@ -181,7 +189,7 @@ BufMemType	= 1
 Stacksize	= 4096
 Priority	= 5
 GlobVec		= -1
-DosType		= 0x464154FF		/* CF0 -> first FAT partition */
+DosType		= 0x464154FF		/* CF0 -> partition 0 */
 Activate	= 1
 #
 
@@ -200,7 +208,7 @@ BufMemType	= 1
 Stacksize	= 4096
 Priority	= 5
 GlobVec		= -1
-DosType		= 0x464154FF		/* CF1 -> second FAT partition */
+DosType		= 0x464154FF		/* CF1 -> partition 1 */
 Activate	= 1
 #
 

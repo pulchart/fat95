@@ -63,3 +63,74 @@ class SelectorTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+RES, ENTRIES, DEVICE = 0x60000, 0x61000, 0x5f000
+FAT, DOS = 0x46415400, 0x444f5301
+
+
+class PickTests(unittest.TestCase):
+    """The selector picks the partition.resource entry with that index."""
+    @classmethod
+    def setUpClass(cls):
+        tmp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(tmp.cleanup)
+        cls.image = load(Path(tmp.name) / 'handler.hunk')
+
+    def pick(self, selector, entries):
+        """entries: (index, dostype, present, unit, start). Returns FirstBlock or None."""
+        h = Handler(self.image)
+        try:
+            return self._pick(h, selector, entries)
+        finally:
+            h.close()
+
+    def _pick(self, h, selector, entries):
+        h.set('ExecBase', 0x70000)
+        h.trap(0x70000 + C['OpenResource'], lambda: h.result(RES))
+        h.trap(0x70000 + C['Forbid'], lambda: None)
+        h.trap(0x70000 + C['Permit'], lambda: None)
+        h.mem.w_block(DEVICE, b'compactflash.device\0')
+        h.set('DevName', DEVICE)
+        h.set('UnitNumber', 0)
+        h.set('PartitionSelector', selector, 1)
+        h.set('FirstBlock', 0xdead)
+        h.mem.w16(RES + 18, 98)
+        h.mem.w16(RES + C['PRES_Layout'], 5)
+        head, tail = RES + C['PRES_PartList'], RES + C['PRES_PartList'] + 4
+        nodes = [ENTRIES + i * 0x100 for i in range(len(entries))]
+        h.mem.w32(head, nodes[0] if nodes else tail)
+        h.mem.w32(tail, 0)
+        for node, succ, (index, dostype, present, unit, start) in zip(
+                nodes, nodes[1:] + [tail], entries):
+            h.mem.w_block(node, bytes(0x100))
+            h.mem.w32(node, succ)
+            h.mem.w32(node + C['PENT_Device'], DEVICE)
+            h.mem.w32(node + C['PENT_Unit'], unit)
+            h.mem.w32(node + C['PENT_PartIndex'], index)
+            h.mem.w8(node + C['PENT_Flags'], 1 << C['PEB_PRESENT'] if present else 0)
+            h.mem.w32(node + C['PENT_StartLBA'], start)
+            h.mem.w32(node + C['PENT_BlockCount'], 100)
+            h.mem.w32(node + C['PENT_DosType'], dostype)
+        found = h.run('svp_pick')
+        return h.get('FirstBlock') if found else None
+
+    # primary FAT, primary non-FAT, then the first MBR logical at index 4
+    CARD = [(0, FAT, 1, 0, 1000), (1, DOS, 1, 0, 2000), (4, FAT, 1, 0, 5000)]
+
+    def test_selector_is_index_plus_one(self):
+        """CF<n> and FAT\\<n+1> both reach pe_PartIndex n."""
+        for selector, want in ((1, 1000), (5, 5000), (2, None), (3, None), (6, None)):
+            with self.subTest(selector=selector):
+                self.assertEqual(self.pick(selector, self.CARD), want)
+
+    def test_selector_zero_takes_the_lowest_index(self):
+        """FAT\\0 on partitioned media falls back to the lowest FAT index."""
+        self.assertEqual(self.pick(0, list(reversed(self.CARD))), 1000)
+        self.assertEqual(self.pick(0, self.CARD[1:]), 5000)
+
+    def test_absent_and_other_unit_entries_are_skipped(self):
+        """A removed card's entry or another unit's never answers the index."""
+        self.assertIsNone(self.pick(5, [(4, FAT, 0, 0, 5000)]))
+        self.assertIsNone(self.pick(5, [(4, FAT, 1, 1, 5000)]))
+        self.assertEqual(self.pick(5, [(4, FAT, 0, 0, 7), (4, FAT, 1, 0, 5000)]), 5000)

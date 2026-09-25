@@ -234,12 +234,12 @@ The partition selector is the last byte of the DosType. The device name can be a
 | DosType | Hex Value | Description |
 |---------|-----------|-------------|
 | FAT\0 | 0x46415400 | Floppies only |
-| FAT\1 | 0x46415401 | First FAT partition |
-| FAT\2 | 0x46415402 | Second FAT partition |
-| FAT\3 | 0x46415403 | Third FAT partition |
-| FAT\4 | 0x46415404 | Fourth FAT partition |
-| FAT\5 | 0x46415405 | Fifth FAT partition (GPT only; MBR yields at most four) |
-| FAT\6 | 0x46415406 | Sixth FAT partition, etc. |
+| FAT\1 | 0x46415401 | Partition 0: first MBR primary or GPT entry |
+| FAT\2 | 0x46415402 | Partition 1 |
+| FAT\3 | 0x46415403 | Partition 2 |
+| FAT\4 | 0x46415404 | Partition 3: last MBR primary |
+| FAT\5 | 0x46415405 | Partition 4: first MBR logical drive |
+| FAT\6 | 0x46415406 | Partition 5, etc. |
 
 *Option B: device name suffix*
 
@@ -247,12 +247,16 @@ Use DosType `0x464154FF` for **every** FAT mount, and the number at the end of t
 
 | Device name | DosType | Mounts |
 |-------------|---------|--------|
-| `CF0:` | 0x464154FF | First FAT partition |
-| `CF1:` | 0x464154FF | Second FAT partition |
-| `CF9:` | 0x464154FF | Tenth FAT partition |
-| `CF:` (no number) | 0x464154FF | First FAT partition (default) |
+| `CF0:` | 0x464154FF | Partition 0: first MBR primary or GPT entry |
+| `CF3:` | 0x464154FF | Partition 3: last MBR primary |
+| `CF4:` | 0x464154FF | Partition 4: first MBR logical drive |
+| `CF:` (no number) | 0x464154FF | Partition 0 (default) |
 
-The whole trailing digit run is read as one decimal number from 0 to 254 (`CF255:` and above fail the mount). To mount several partitions from one card, copy the mountlist to `CF0`, `CF1`, `CF2`. The DosType stays the same; only the leading device name differs.
+The partition number is its place in the partition table, as `lsptres` shows in its `Part` column: MBR primary slots 0 to 3, logical drives in the extended partition from 4 (ptable.library 2.1), GPT entry number. Non-FAT and empty slots keep their number; a mount naming one fails.
+
+**Limits** (ptable.library 2.1): partition numbers go up to 99 (`CF99:`, `FAT\100`), and a card yields at most 12 FAT partitions. A higher number, or one past the card's last partition, fails the mount.
+
+The whole trailing digit run is read as one decimal number. To mount several partitions from one card, copy the mountlist to `CF0`, `CF1`, `CF4`. The DosType stays the same; only the leading device name differs.
 
 Because every FAT mount uses the same DosType (`0x464154FF`), fat95 needs only one entry in `FileSystem.resource`, no matter how many partitions you mount. With the DosType-byte way each distinct `FAT\<n>` you use needs its own `FileSystem.resource` entry (and when fat95 is ROM-resident it registers `FAT\0`..`FAT\8` as nine separate entries at boot). One entry instead of many means a little less memory and a shorter resource list. You can see the entries with the [`lsfsres`](docs/lsfsres.md) tool.
 
@@ -270,7 +274,7 @@ For MBR disks, fat95 recognizes these partition types:
 | 0x0B | FAT32 |
 | 0x0C | FAT32, LBA |
 | 0x0E | FAT16, LBA |
-| 0x05, 0x0F | Extended partitions are not followed; logical drives inside them are not found |
+| 0x05, 0x0F, 0x85 | Extended partition: FAT logical drives inside are found (ptable.library 2.1) |
 
 For GPT disks, fat95 considers only partition entries whose **type GUID** is one of the following:
 
@@ -307,7 +311,7 @@ HighCyl = <LastBlock>
 
 ### Complete Mountlist Example
 
-Two options based on DosType, both mount the first FAT partition (see [Partition Selection](#partition-selection)).
+Two options based on DosType, both mount partition 0, the first MBR primary or GPT entry (see [Partition Selection](#partition-selection)).
 
 ```
 CF0:
@@ -330,10 +334,10 @@ CF0:
 
     /* Keep exactly one of the two DosType lines below. */
 
-    /* Option A: DosType byte (FAT\<n>): FAT\1 = first FAT partition */
+    /* Option A: DosType byte (FAT\<n>): FAT\1 = partition 0 */
     DosType        = 0x46415401
 
-    /* Option B: device name suffix: CF0 = first FAT partition */
+    /* Option B: device name suffix: CF0 = partition 0 */
     DosType        = 0x464154FF
 
     Activate       = 1
@@ -342,7 +346,7 @@ CF0:
 For devices with more than one FAT partition:
 
 - Option A: copy the mountlist and change `DosType` to `0x46415402` (FAT\2), `0x46415403` (FAT\3), and so on, matching the table in [Partition Selection](#partition-selection).
-- Option B: copy the mountlist to `CF1`, `CF2`, ... and keep `DosType = 0x464154FF`. The number on the device name picks the partition.
+- Option B: copy the mountlist to `CF1`, `CF4`, ... and keep `DosType = 0x464154FF`. The number on the device name picks the partition.
 
 The `FileSystem = l:fat95` line stays in every copy. AmigaOS `Mount` needs it even when fat95 is already in ROM, because the `FileSystem.resource` auto-lookup only fires on the auto-mount path, not on text-file DOSDrivers.
 
