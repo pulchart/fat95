@@ -19,6 +19,7 @@ _Components in this release_:
 - A FAT read error while deleting or resizing a file is reported as a failure instead of success.
 - Fixed: a file cut to zero length with `SetFileSize` and then written again could keep using its freed clusters.
 - The partition number in `CF<n>:` and `FAT\<n>` is the partition's place in the table, as `lsptres` shows it, not a count of FAT partitions: `CF4:` / `FAT\5` is the first MBR logical drive, and a FAT partition after a non-FAT slot keeps its slot number.
+- ROM-resident fat95 registers `FAT\0` to `FAT\12` in `FileSystem.resource` (up to `FAT\8` before), so the DosType-byte scheme reaches logical drives up to `CF11:` / `FAT\12`.
 
 #### Tools
 

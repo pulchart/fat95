@@ -129,9 +129,9 @@ CLRQ	macro				;clear 8 bytes at \1; \2 = zero reg, 020/000 only
 ; When fat95 is baked into a Kickstart ROM, InitCode registers one
 ; FileSysEntry per FAT\<n> partition selector in FileSystem.resource so
 ; MountList entries with any of those DOS types match the ROM handler.
-; 0 = whole disk/floppy, 1..8 = partition.resource index 0..7 (MBR
+; 0 = whole disk/floppy, 1..12 = partition.resource index 0..11 (MBR
 ; primaries 0-3, logicals 4..).
-FAT_MAX_REG_VARIANT	equ	8
+FAT_MAX_REG_VARIANT	equ	12
 
 ; Device-name-suffix scheme. One DosType for every FAT mount; the
 ; partition selector comes from the trailing decimal digits of the
