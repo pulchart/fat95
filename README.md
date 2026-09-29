@@ -265,7 +265,7 @@ The partition number is its place in the partition table, as `lsptres` shows in 
 
 The whole trailing digit run is read as one decimal number. To mount several partitions from one card, copy the mountlist to `CF0`, `CF1`, `CF4`. The DosType stays the same; only the leading device name differs.
 
-Because every FAT mount uses the same DosType (`0x464154FF`), fat95 needs only one entry in `FileSystem.resource`, no matter how many partitions you mount. With the DosType-byte way each distinct `FAT\<n>` you use needs its own `FileSystem.resource` entry (and when fat95 is ROM-resident it registers `FAT\0`..`FAT\8` as nine separate entries at boot). One entry instead of many means a little less memory and a shorter resource list. You can see the entries with the [`lsfsres`](docs/lsfsres.md) tool.
+Because every FAT mount uses the same DosType (`0x464154FF`), fat95 needs only one entry in `FileSystem.resource`, no matter how many partitions you mount. With the DosType-byte way each distinct `FAT\<n>` you use needs its own `FileSystem.resource` entry (and when fat95 is ROM-resident it registers `FAT\0`..`FAT\12`, one entry each, at boot). One entry instead of many means a little less memory and a shorter resource list. You can see the entries with the [`lsfsres`](docs/lsfsres.md) tool.
 
 *Floppies and other unpartitioned media* behave identically under both schemes: the whole disk is mounted as one FAT volume and the partition selector is ignored (the physical drive is chosen by `Unit=`). A floppy mountlist using either DosType mounts the same way.
 

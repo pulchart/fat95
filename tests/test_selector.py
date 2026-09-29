@@ -134,3 +134,21 @@ class PickTests(unittest.TestCase):
         self.assertIsNone(self.pick(5, [(4, FAT, 0, 0, 5000)]))
         self.assertIsNone(self.pick(5, [(4, FAT, 1, 1, 5000)]))
         self.assertEqual(self.pick(5, [(4, FAT, 0, 0, 7), (4, FAT, 1, 0, 5000)]), 5000)
+
+
+class RegistrationTests(unittest.TestCase):
+    """A ROM-resident fat95 registers one FileSysEntry per DosType it serves."""
+    @classmethod
+    def setUpClass(cls):
+        tmp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(tmp.cleanup)
+        cls.image = load(Path(tmp.name) / 'handler.hunk')
+
+    def test_init_registers_fat0_to_fat12_and_the_device_scheme(self):
+        """FAT\\0..FAT\\12 cover partition indexes 0..11, then 0x464154FF."""
+        h = Handler(self.image)
+        self.addCleanup(h.close)
+        seen = []
+        h.stub('RegisterFS', lambda: (seen.append(h.cpu.r_reg(0)), h.result(0)))
+        h.run('InitCode')
+        self.assertEqual(seen, [0x46415400 | n for n in range(13)] + [0x464154ff])

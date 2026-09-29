@@ -67,6 +67,9 @@
     table, as @{fg shine}lsptres@{fg text} shows it, not a count of FAT partitions: @{fg shine}CF4:@{fg text} / @{fg shine}FAT\5@{fg text} is the
     first MBR logical drive, and a FAT partition after a non-FAT slot keeps its
     slot number.
+  * ROM-resident fat95 registers @{fg shine}FAT\0@{fg text} to @{fg shine}FAT\12@{fg text} in @{fg shine}FileSystem.resource@{fg text} (up to
+    @{fg shine}FAT\8@{fg text} before), so the DosType-byte scheme reaches logical drives up to @{fg shine}CF11:@{fg text} /
+    @{fg shine}FAT\12@{fg text} .
 
 @{b}Tools@{ub}
 

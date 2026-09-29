@@ -43,7 +43,7 @@ Total: 13 entries in FileSystem.resource.
 
 ### fat95 baked into Kickstart ROM
 
-fat95 3.22 added cold-boot registration of `FAT\0`..`FAT\8` (the DosType-byte scheme); 3.24 added `464154FF` (the device-name scheme). From 3.24 on that is ten fat95 entries, all sharing the same handler code (same `Loc`). ROM registration was broken before 3.22, so prior ROM builds still fall back to `L:fat95` (RAM).
+fat95 3.22 added cold-boot registration of `FAT\0`..`FAT\8` (the DosType-byte scheme); 3.24 added `464154FF` (the device-name scheme). From 3.24 on that is ten fat95 entries, all sharing the same handler code (same `Loc`). ROM registration was broken before 3.22, so prior ROM builds still fall back to `L:fat95` (RAM). fat95 4.1 registers `FAT\0`..`FAT\12`, one per partition index up to 11.
 
 ```
  #: DosType   ascii    Version  Patch SegList  Loc     Name
@@ -76,7 +76,7 @@ Total: 22 entries in FileSystem.resource.
 
 **Reading the fat95 entries**:
 All ten fat95 entries above point to the same handler code (same `SegList` / `Loc`). They differ only in DosType, which is how AmigaOS matches a mountlist to a handler:
-- `46415400`..`46415408` (`FAT\0`..`FAT\8`) serve the **DosType-byte** partition scheme: one entry per partition number you might mount.
+- `46415400`..`46415408` (`FAT\0`..`FAT\8`; up to `4641540C`, `FAT\12`, from fat95 4.1) serve the **DosType-byte** partition scheme: one entry per partition number you might mount.
 - `464154FF` serves the **device-name** scheme: a single entry that covers every partition, because the partition comes from the device name instead of the DosType.
 
 So a setup that uses only the device-name scheme needs just the one `464154FF` entry, no matter how many partitions are mounted. See [Partition Selection](../README.md#partition-selection).

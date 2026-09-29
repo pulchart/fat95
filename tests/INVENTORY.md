@@ -231,6 +231,10 @@ Partition selection from DosType bytes and device-name suffixes.
 | `test_selector_zero_takes_the_lowest_index` | FAT\0 on partitioned media falls back to the lowest FAT index. |
 | `test_absent_and_other_unit_entries_are_skipped` | A removed card's entry or another unit's never answers the index. |
 
+| test | what it guards |
+|---|---|
+| `test_init_registers_fat0_to_fat12_and_the_device_scheme` | FAT\0..FAT\12 cover partition indexes 0..11, then 0x464154FF. |
+
 #### `test_serialize.py`
 
 SerializeDisk must propagate the result of flushing its changes.
