@@ -188,7 +188,8 @@ def line_test(image,eq):
             assert f.call('PageLine',seed)!=0 and not f.written   # two lines
             assert f.call('PageLine',reset=False)!=0 and not f.written
             r=f.call('PageLine',reset=False)
-            assert b'-- more --' in bytes(f.written),bytes(f.written)
+            text=b'-- more -- (any key, Q quits)'
+            assert bytes(f.written)==b'\x1b[3;7m'+text+b'\x1b[23;27m'+b'\r'+b' '*len(text)+b'\r',bytes(f.written)
             assert (r!=0)==more,(key,r)
             assert f.var('PageLeft')==3,'a fresh page'
         finally:f.close()

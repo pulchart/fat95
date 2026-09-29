@@ -31,6 +31,14 @@ Filesystem handler 'fat95 4.1-dev':
   CF4: / FAT\5 is the first MBR logical drive, and a FAT partition
   after a non-FAT slot keeps its slot number.
 
+Tools 'dd 2.6-dev':
+
+* The -- more -- prompt is shown in italic, reversed.
+
+Tools 'lsfsres 1.2-dev':
+
+* The -- more -- prompt is shown in italic, reversed.
+
 Tools 'dd 2.5':
 
 * Nothing changes in use; the pausing of long output is now the same
