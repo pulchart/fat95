@@ -252,7 +252,14 @@ Use DosType `0x464154FF` for **every** FAT mount, and the number at the end of t
 | `CF4:` | 0x464154FF | Partition 4: first MBR logical drive |
 | `CF:` (no number) | 0x464154FF | Partition 0 (default) |
 
-The partition number is its place in the partition table, as `lsptres` shows in its `Part` column: MBR primary slots 0 to 3, logical drives in the extended partition from 4 (ptable.library 2.1), GPT entry number. Non-FAT and empty slots keep their number; a mount naming one fails.
+The partition number is its place in the partition table, as `lsptres` shows in its `Part` column: MBR primary slots 0 to 3, logical drives from 4 whichever slot holds the extended partition (only one is read; ptable.library 2.1), GPT entry number. A slot that is empty, not FAT, or holds the extended partition has no drive: its number is skipped, and mounting it fails.
+
+| MBR slot | Content | Device name | DosType byte |
+|----------|---------|-------------|--------------|
+| 0 | FAT primary | `CF0:` | `FAT\1` |
+| 1 | extended | none | none |
+| 2, 3 | empty | none | none |
+| in slot 1 | 1st, 2nd FAT logical drive | `CF4:`, `CF5:` | `FAT\5`, `FAT\6` |
 
 **Limits** (ptable.library 2.1): partition numbers go up to 99 (`CF99:`, `FAT\100`), and a card yields at most 12 FAT partitions. A higher number, or one past the card's last partition, fails the mount.
 
