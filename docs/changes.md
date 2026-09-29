@@ -5,11 +5,11 @@ _Components in this release_:
 
 - `fat95 4.1-dev (29.09.2026)` _(new)_
 - `install95 3.19 (25.01.2026)`
-- `dd 2.5 (18.09.2026)` _(new)_
+- `dd 2.6-dev (29.09.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
-- `lsfsres 1.1 (18.09.2026)` _(new)_
+- `lsfsres 1.2-dev (29.09.2026)` _(new)_
 - `ptable.library 2.0 (11.09.2026)`
 - `lsptres 1.0 (11.09.2026)`
 <!-- COMPONENTS:END -->
@@ -21,6 +21,12 @@ _Components in this release_:
 - The partition number in `CF<n>:` and `FAT\<n>` is the partition's place in the table, as `lsptres` shows it, not a count of FAT partitions: `CF4:` / `FAT\5` is the first MBR logical drive, and a FAT partition after a non-FAT slot keeps its slot number.
 
 #### Tools
+
+##### 'dd 2.6-dev'
+- The `-- more --` prompt is shown in italic, reversed.
+
+##### 'lsfsres 1.2-dev'
+- The `-- more --` prompt is shown in italic, reversed.
 
 ##### 'dd 2.5'
 - Nothing changes in use; the pausing of long output is now the same code `lsfsres` uses.

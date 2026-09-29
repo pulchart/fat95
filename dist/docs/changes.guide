@@ -47,11 +47,11 @@
 
   * @{fg shine}fat95 4.1-dev (29.09.2026)@{fg text} @{i}(new)@{ui}
   * @{fg shine}install95 3.19 (25.01.2026)@{fg text}
-  * @{fg shine}dd 2.5 (18.09.2026)@{fg text} @{i}(new)@{ui}
+  * @{fg shine}dd 2.6-dev (29.09.2026)@{fg text} @{i}(new)@{ui}
   * @{fg shine}debug95 3.19 (25.01.2026)@{fg text}
   * @{fg shine}SetFileSize 1.1 (25.01.2026)@{fg text}
   * @{fg shine}boot95 3.19 (25.01.2026)@{fg text}
-  * @{fg shine}lsfsres 1.1 (18.09.2026)@{fg text} @{i}(new)@{ui}
+  * @{fg shine}lsfsres 1.2-dev (29.09.2026)@{fg text} @{i}(new)@{ui}
   * @{fg shine}ptable.library 2.0 (11.09.2026)@{fg text}
   * @{fg shine}lsptres 1.0 (11.09.2026)@{fg text}
 
@@ -69,6 +69,12 @@
     slot number.
 
 @{b}Tools@{ub}
+
+@{b}'dd 2.6-dev'@{ub}
+  * The @{fg shine}-- more --@{fg text} prompt is shown in italic, reversed.
+
+@{b}'lsfsres 1.2-dev'@{ub}
+  * The @{fg shine}-- more --@{fg text} prompt is shown in italic, reversed.
 
 @{b}'dd 2.5'@{ub}
   * Nothing changes in use; the pausing of long output is now the same code

@@ -174,10 +174,12 @@ pgr_ret:
 
 WinStatReq:	dc.b	ESC,'[',' ','q'
 WinStatEnd:
-MorePrompt:	dc.b	'-- more -- (any key, Q quits)'
+MorePrompt:	dc.b	ESC,'[3;7m'		;italic, reversed
+MoreText:	dc.b	'-- more -- (any key, Q quits)'
+MoreTextEnd:	dc.b	ESC,'[23;27m'		;both off, other attributes kept
 MorePromptEnd:
 MoreErase:	dc.b	CR
-		dcb.b	MorePromptEnd-MorePrompt,' '
+		dcb.b	MoreTextEnd-MoreText,' '
 		dc.b	CR
 MoreEraseEnd:
 		even
