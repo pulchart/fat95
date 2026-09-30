@@ -1,14 +1,14 @@
-Short:        Win95/98 compatible file system
+Short:        fat12/16/32 filesystem handler
 Uploader:     jaroslav.pulchart@gmail.com (Jaroslav Pulchart)
 Author:       jaroslav.pulchart@gmail.com (Jaroslav Pulchart), based on work by Torsten Jager
 Type:         disk/misc
 Version:      @VERSION@
 Requires:     AmigaOS 1.3+ (2.0+ for full functionality), a block device such as compactflash.device, ptable.library for auto-detect
 Architecture: m68k-amigaos
-Replaces:     disk/misc/fat95.v20260911.lha
-Kurz:         Win95/98-kompatibles Dateisystem
+Replaces:     disk/misc/fat95.v20260930.lha
+Kurz:         fat12/16/32 Dateisystem-Handler
 
-fat95 - Win95/98 compatible FAT filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
+fat95 - FAT12/16/32 filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
 
 COMPONENTS IN THIS RELEASE
 ==========================
@@ -17,57 +17,13 @@ COMPONENTS IN THIS RELEASE
 WHAT'S NEW (@DATE@)
 =======================
 
-Filesystem handler 'fat95 4.1':
-
-* PARTITION NUMBERING CHANGED. CF<n>: and FAT\<n> select the partition
-  at that place in the partition table, as lsptres shows it in its Part
-  column, instead of the n-th FAT partition:
-
-    MBR primary slots 0 to 3   CF0: to CF3:     FAT\1 to FAT\4
-    logical drives             CF4:, CF5:, ...  FAT\5, FAT\6, ...
-
-  An empty or non-FAT slot keeps its number: a FAT partition in slot 1
-  after a Linux partition in slot 0 is now CF1:, where it was CF0:.
-  Cards with FAT partitions in consecutive slots from the first mount
-  as before; for others, rename the mountlist to the slot number.
-* A damaged FAT, such as a looped or out-of-range cluster chain, fails
-  with "not a DOS disk" instead of hanging the handler or following the
-  chain outside the volume.
-* A FAT read error while deleting or resizing a file is reported as a
-  failure instead of success.
-* Fixed: a file cut to zero length with SetFileSize and then written
-  again could keep using its freed clusters.
-* ROM-resident fat95 registers FAT\0 to FAT\12 in FileSystem.resource
-  (up to FAT\8 before), so the DosType-byte scheme reaches logical drives
-  up to CF11: / FAT\12.
-
-Tools 'dd 2.6':
-
-* The -- more -- prompt is shown in italic, reversed.
-
-Tools 'lsfsres 1.2':
-
-* The -- more -- prompt is shown in italic, reversed.
-
-Tools 'dd 2.5':
-
-* Nothing changes in use; the pausing of long output is now the same
-  code lsfsres uses.
-
-Tools 'lsfsres 1.1':
-
-* The listing prints one screenful at a time; any key continues, Q
-  stops. Redirected output is written in full.
-* The column headings line up with the columns, and a name too long for
-  its column ends in "...".
-* The Version column reads as 47.4 rather than as the raw 002F0004.
-* Output lines end in LF alone.
+TBD
 
 Purpose
 =======
 
-"fat95" is a DOS handler to mount and use Win95/98 volumes just as if they were
-AMIGA volumes.
+"fat95" is a DOS handler to mount and use FAT12/16/32 volumes just as if
+they were AMIGA volumes.
 
 System requirements
 ===================
