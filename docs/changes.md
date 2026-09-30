@@ -1,32 +1,41 @@
-## 20260929-dev
+## 20260930
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
 
-- `fat95 4.1-dev (29.09.2026)` _(new)_
+- `fat95 4.1 (30.09.2026)` _(new)_
 - `install95 3.19 (25.01.2026)`
-- `dd 2.6-dev (29.09.2026)` _(new)_
+- `dd 2.6 (30.09.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
-- `lsfsres 1.2-dev (29.09.2026)` _(new)_
-- `ptable.library 2.0 (11.09.2026)`
-- `lsptres 1.0 (11.09.2026)`
+- `lsfsres 1.2 (30.09.2026)` _(new)_
+- `ptable.library 2.1 (30.09.2026)` _(new)_
+- `lsptres 1.1 (30.09.2026)` _(new)_
 <!-- COMPONENTS:END -->
 
-##### 'fat95 4.1-dev'
+##### 'fat95 4.1'
+
+**Partition numbering changed.** `CF<n>:` and `FAT\<n>` select the partition at that place in the partition table, as `lsptres` shows it in its `Part` column, instead of the n-th FAT partition:
+
+| Partition | Device name | DosType byte |
+|-----------|-------------|--------------|
+| MBR primary slots 0 to 3 | `CF0:` to `CF3:` | `FAT\1` to `FAT\4` |
+| logical drives in the extended partition | `CF4:`, `CF5:`, ... | `FAT\5`, `FAT\6`, ... |
+
+An empty or non-FAT slot keeps its number: a FAT partition in slot 1 after a Linux partition in slot 0 is now `CF1:`, where it was `CF0:`. Cards with FAT partitions in consecutive slots from the first mount as before; for others, rename the mountlist to the partition's slot number.
+
 - A damaged FAT, such as a looped or out-of-range cluster chain, fails with `not a DOS disk` instead of hanging the handler or following the chain outside the volume.
 - A FAT read error while deleting or resizing a file is reported as a failure instead of success.
 - Fixed: a file cut to zero length with `SetFileSize` and then written again could keep using its freed clusters.
-- The partition number in `CF<n>:` and `FAT\<n>` is the partition's place in the table, as `lsptres` shows it, not a count of FAT partitions: `CF4:` / `FAT\5` is the first MBR logical drive, and a FAT partition after a non-FAT slot keeps its slot number.
 - ROM-resident fat95 registers `FAT\0` to `FAT\12` in `FileSystem.resource` (up to `FAT\8` before), so the DosType-byte scheme reaches logical drives up to `CF11:` / `FAT\12`.
 
 #### Tools
 
-##### 'dd 2.6-dev'
+##### 'dd 2.6'
 - The `-- more --` prompt is shown in italic, reversed.
 
-##### 'lsfsres 1.2-dev'
+##### 'lsfsres 1.2'
 - The `-- more --` prompt is shown in italic, reversed.
 
 ##### 'dd 2.5'
