@@ -1,4 +1,4 @@
-# Win95/98 compatible FAT filesystem handler for AmigaOS.
+# FAT12/16/32 filesystem handler for AmigaOS.
 
 Based on Torsten Jager's fat95 v3.18 (Aminet: [disk/misc/fat95.lha](https://aminet.net/package/disk/misc/fat95)).
 
@@ -8,7 +8,7 @@ Based on Torsten Jager's fat95 v3.18 (Aminet: [disk/misc/fat95.lha](https://amin
 
 **Purpose**
 
-"fat95" is a DOS handler to mount and use Win95/98 volumes just as if they were AMIGA volumes.
+"fat95" is a DOS handler to mount and use FAT12/16/32 volumes just as if they were AMIGA volumes.
 
 **Personal Note**
 
