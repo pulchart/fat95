@@ -17,8 +17,19 @@ COMPONENTS IN THIS RELEASE
 WHAT'S NEW (@DATE@)
 =======================
 
-Filesystem handler 'fat95 4.1-dev':
+Filesystem handler 'fat95 4.1':
 
+* PARTITION NUMBERING CHANGED. CF<n>: and FAT\<n> select the partition
+  at that place in the partition table, as lsptres shows it in its Part
+  column, instead of the n-th FAT partition:
+
+    MBR primary slots 0 to 3   CF0: to CF3:     FAT\1 to FAT\4
+    logical drives             CF4:, CF5:, ...  FAT\5, FAT\6, ...
+
+  An empty or non-FAT slot keeps its number: a FAT partition in slot 1
+  after a Linux partition in slot 0 is now CF1:, where it was CF0:.
+  Cards with FAT partitions in consecutive slots from the first mount
+  as before; for others, rename the mountlist to the slot number.
 * A damaged FAT, such as a looped or out-of-range cluster chain, fails
   with "not a DOS disk" instead of hanging the handler or following the
   chain outside the volume.
@@ -26,19 +37,15 @@ Filesystem handler 'fat95 4.1-dev':
   failure instead of success.
 * Fixed: a file cut to zero length with SetFileSize and then written
   again could keep using its freed clusters.
-* The partition number in CF<n>: and FAT\<n> is the partition's place
-  in the table, as lsptres shows it, not a count of FAT partitions:
-  CF4: / FAT\5 is the first MBR logical drive, and a FAT partition
-  after a non-FAT slot keeps its slot number.
 * ROM-resident fat95 registers FAT\0 to FAT\12 in FileSystem.resource
   (up to FAT\8 before), so the DosType-byte scheme reaches logical drives
   up to CF11: / FAT\12.
 
-Tools 'dd 2.6-dev':
+Tools 'dd 2.6':
 
 * The -- more -- prompt is shown in italic, reversed.
 
-Tools 'lsfsres 1.2-dev':
+Tools 'lsfsres 1.2':
 
 * The -- more -- prompt is shown in italic, reversed.
 
