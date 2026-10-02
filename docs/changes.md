@@ -1,6 +1,23 @@
-## 20260930
+## 20261001-dev
 
 <!-- COMPONENTS:BEGIN -->
+_Components in this release_:
+
+- `fat95 4.1 (30.09.2026)`
+- `install95 3.19 (25.01.2026)`
+- `dd 2.6 (30.09.2026)`
+- `debug95 3.19 (25.01.2026)`
+- `SetFileSize 1.1 (25.01.2026)`
+- `boot95 3.19 (25.01.2026)`
+- `lsfsres 1.2 (30.09.2026)`
+- `ptable.library 2.1 (30.09.2026)`
+- `lsptres 1.1 (30.09.2026)`
+<!-- COMPONENTS:END -->
+
+TBD
+
+## 20260930
+
 _Components in this release_:
 
 - `fat95 4.1 (30.09.2026)` _(new)_
@@ -12,7 +29,6 @@ _Components in this release_:
 - `lsfsres 1.2 (30.09.2026)` _(new)_
 - `ptable.library 2.1 (30.09.2026)` _(new)_
 - `lsptres 1.1 (30.09.2026)` _(new)_
-<!-- COMPONENTS:END -->
 
 ##### 'fat95 4.1'
 
