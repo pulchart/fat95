@@ -110,7 +110,12 @@ PageLeft	= -152		;lines still free on this page
 Snap		= -156		;long, the copied entries
 SnapCount	= -160		;long
 KeyBuf		= -161		;byte
-VarsSize	= 164
+PageCols	= -168		;window width, 0 = unknown
+PagePos		= -172		;bytes collected in PageBuf
+PAGEBUF		= 512
+PageBuf		= -684		;one formatted line before it is written
+PagePtr		= -688		;PageFmt write cursor
+VarsSize	= 688
 
 ; One copied entry: printing cannot run under Forbid, so rows come from a
 ; snapshot taken while the list is held still.
@@ -239,9 +244,10 @@ s_print_none:
 	move.l	d0,ConsoleO(a4)
 	bsr.w	PageBegin
 	lea	HeaderStr(pc),a0
-	bsr.w	WriteStr
-	bsr.w	PageLine
-	bsr.w	PageLine
+	moveq.l	#HeaderEnd-HeaderStr,d0
+	bsr.w	PageText
+	tst.l	d0
+	beq.w	s_stopped
 
 	move.l	SnapCount(a4),d7
 	beq.w	s_done
@@ -296,12 +302,11 @@ s_havename:
 	move.l	a0,Argv+28(a4)
 
 	lea	EntryFmt(pc),a0
-	move.l	a0,d1
-	lea	Argv(a4),a0
 	move.l	a0,d2
-	CALLDOS	VPrintf
-
-	bsr.w	PageLine
+	lea	Argv(a4),a0
+	move.l	a0,d3
+	bsr.w	PageFmt
+	bsr.w	PageFlush
 	tst.l	d0
 	beq.s	s_stopped
 	lea	RecSize(a3),a3
@@ -311,10 +316,11 @@ s_havename:
 s_done:
 	move.l	EntryCount(a4),Argv(a4)
 	lea	SummaryFmt(pc),a0
-	move.l	a0,d1
-	lea	Argv(a4),a0
 	move.l	a0,d2
-	CALLDOS	VPrintf
+	lea	Argv(a4),a0
+	move.l	a0,d3
+	bsr.w	PageFmt
+	bsr.w	PageFlush
 s_stopped:
 	bsr.w	PageEnd
 	move.l	Snap(a4),d0
@@ -431,7 +437,8 @@ DosName:	dc.b	'dos.library',0
 FSRName:	dc.b	'FileSystem.resource',0
 NoResStr:	dc.b	'FileSystem.resource not available (need V36+).',LF,0
 HeaderStr:	dc.b	' #: DosType   ascii    Version  Patch SegList  Loc     Name',LF
-		dc.b	'-----------------------------------------------------------',LF,0
+		dc.b	'-----------------------------------------------------------',LF
+HeaderEnd:
 EntryFmt:	dc.b	'%2ld: %08lx (%s)    %-8s %04lx  %08lx %s   %s',LF,0
 SummaryFmt:	dc.b	'-----------------------------------------------------------',LF
 		dc.b	'Total: %ld entries in FileSystem.resource.',LF,0

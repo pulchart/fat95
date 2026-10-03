@@ -15,10 +15,10 @@ FRAME=0x180000                  # a4 points here, vars live below it
 RES,LIST,SNAP=0x340000,0x340020,0x400000
 FH_IN,FH_OUT=0x360000,0x360100  # struct FileHandle, fh_Type at 8
 EXEC_LVO={'OpenLibrary':552,'CloseLibrary':414,'OpenResource':498,
-          'Forbid':132,'Permit':138,'AllocVec':684,'FreeVec':690}
+          'Forbid':132,'Permit':138,'AllocVec':684,'FreeVec':690,'RawDoFmt':522}
 DOS_LVO={'Read':42,'Write':48,'Input':54,'Output':60,'WaitForChar':204,
          'IsInteractive':216,'SetMode':426,'VPrintf':954}
-NEED=('PageLines','PageLeft','ConsoleI','ConsoleO','KeyBuf','VarsSize',
+NEED=('PageLines','PageLeft','PageCols','PagePos','PageBuf','PagePtr','ConsoleI','ConsoleO','KeyBuf','VarsSize',
       'RecSize','rec_Name')
 
 def build(tmp):
@@ -80,6 +80,28 @@ class Fake:
         self.allocated=self.cpu.r_reg(0);self.mem.w_block(SNAP,bytes(self.allocated))
         self.ret(SNAP)
     def x_FreeVec(self):self.freed.append(self.cpu.r_reg(9));self.ret()
+    def x_RawDoFmt(self):
+        # RawDoFmt(a0 format, a1 longword arguments, a2 PutChProc, a3 PutChData).
+        # The tool's PutChProc keeps its write cursor in the longword a3 points
+        # at; store the bytes the same way. Like exec, a3 comes back unchanged.
+        # Arguments are read now, while the scratch buffers still hold this
+        # entry's strings.
+        fmt=self.cpu.r_reg(8);argv=self.cpu.r_reg(9);dst=self.cpu.r_reg(11)
+        out=b''
+        while self.mem.r8(fmt):out+=bytes([self.mem.r8(fmt)]);fmt+=1
+        text=out.decode('latin-1');vals=[];i=0
+        def conv(m):
+            nonlocal i
+            flags,width,kind=m.group(1),m.group(2),m.group(3)
+            raw=self.mem.r32(argv+4*i) if argv else 0;i+=1
+            v=self.string(raw) if kind=='s' else raw;vals.append(v)
+            spec='%'+flags+width+('s' if kind=='s' else ('X' if kind=='x' else 'd'))
+            return spec%v
+        rendered=re.sub(r'%(-?0?)(\d*)l?([dxs])',conv,text)
+        data=rendered.encode('latin-1')+b'\0'
+        cur=self.mem.r32(dst)
+        self.mem.w_block(cur,data);self.mem.w32(dst,cur+len(data))
+        self.rows.append((text,vals))
     # --- dos ---
     def d_Input(self):self.ret(FH_IN>>2)
     def d_Output(self):self.ret(FH_OUT>>2)
@@ -144,6 +166,7 @@ def rows_test(image,eq):
         try:
             assert f.call('PageRows',seed_streams)&0xffffffff==want&0xffffffff,(reply,rows)
             assert f.var('PageLines')==rows,(reply,f.var('PageLines'))
+            if want:assert f.var('PageCols')==80,f.var('PageCols')   # the fourth is the width
             assert bytes(f.written[:4])==b'\x1b[ q','no window status request'
         finally:f.close()
         n+=1
@@ -160,6 +183,8 @@ def begin_test(image,eq):
            (b'1;1;5;80 r',True,True,4),
            (b'1;1;4;80 r',True,True,0),     # too short after the prompt line
            (b'1;1;9999;80 r',True,True,0),
+           (b'1;1;25;29 r',True,True,0),    # the prompt would wrap
+           (b'1;1;25;30 r',True,True,24),
            (b'1;1;25;80 r',False,True,0),   # redirected
            (b'1;1;25;80 r',True,False,0)]   # ">SER:" is a different handler
     n=0
@@ -176,30 +201,122 @@ def begin_test(image,eq):
         n+=1
     return n
 
+TEXT=0x170000                    # PageText input lives here
+
+def page_text(f,text,lines,left,cols=0,reset=True):
+    """Call PageText on text with the pager state given."""
+    def seed(f):
+        f.mem.w_block(TEXT,text)
+        if reset:
+            f.mem.w32(FRAME+f.eq['PageLines'],lines);f.mem.w32(FRAME+f.eq['PageLeft'],left)
+            f.mem.w32(FRAME+f.eq['PageCols'],cols)
+        seed_streams(f);f.cpu.w_reg(8,TEXT);f.cpu.w_reg(0,len(text))
+    return f.call('PageText',seed,reset=False)
+
+PROMPT=b'\x1b[3;7m-- more -- (any key, Q quits)\x1b[23;27m'
+
 def line_test(image,eq):
-    """Every line counts down; the last one asks, and Q stops the listing."""
+    """A page that fills exactly asks nothing; the next line asks first, and Q stops."""
     n=0
+    f=Fake(image,eq)
+    try:
+        assert page_text(f,b'a\nb\nc\n',3,3)!=0
+        assert bytes(f.written)==b'a\nb\nc\n',bytes(f.written)   # no trailing prompt
+        assert f.var('PageLeft')==0
+    finally:f.close()
+    n+=1
     for key,more in ((b'\r',True),(b'q',False),(b'Q',False),(b'x',True)):
         f=Fake(image,eq,keys=key)
-        def seed(f):
-            f.mem.w32(FRAME+eq['PageLines'],3);f.mem.w32(FRAME+eq['PageLeft'],3)
-            seed_streams(f)
         try:
-            assert f.call('PageLine',seed)!=0 and not f.written   # two lines
-            assert f.call('PageLine',reset=False)!=0 and not f.written
-            r=f.call('PageLine',reset=False)
+            r=page_text(f,b'a\nb\nc\nd\n',3,3)
             text=b'-- more -- (any key, Q quits)'
-            assert bytes(f.written)==b'\x1b[3;7m'+text+b'\x1b[23;27m'+b'\r'+b' '*len(text)+b'\r',bytes(f.written)
+            erase=b'\r'+b' '*len(text)+b'\r'
+            want=b'a\nb\nc\n'+PROMPT+erase+(b'd\n' if more else b'')
+            assert bytes(f.written)==want,bytes(f.written)
             assert (r!=0)==more,(key,r)
-            assert f.var('PageLeft')==3,'a fresh page'
+            if more:assert f.var('PageLeft')==2,'a fresh page, one line used'
         finally:f.close()
         n+=1
+    # a last line without LF counts all its characters: 121 at 30 columns is
+    # five rows, more than the four a 5-row window leaves
+    f=Fake(image,eq,keys=b'\r')
+    try:
+        page_text(f,b'x'*121,4,4,30)
+        assert bytes(f.written).count(PROMPT)==1,bytes(f.written)
+    finally:f.close()
+    n+=1
     # a tool whose console said nothing scrolls, and asks nothing
     f=Fake(image,eq)
     try:
-        assert f.call('PageLine')!=0 and not f.written
+        assert page_text(f,b'a\n'*50,0,0)!=0 and bytes(f.written)==b'a\n'*50
     finally:f.close()
     return n+1
+
+def wrap_test(image,eq):
+    """A line wider than the window counts as the rows it wraps onto."""
+    n=0
+    line=b'x'*43+b'\n'                  # 3 rows at 20 columns, 1 when width is unknown
+    for count,cols,prompts in ((3,20,0),(4,20,1),(9,0,0),(10,0,1),(9,20,2)):
+        f=Fake(image,eq,keys=b'\r'*4)
+        try:
+            page_text(f,line*count,9,9,cols)
+            assert bytes(f.written).count(PROMPT)==prompts,(count,cols,bytes(f.written))
+        finally:f.close()
+        n+=1
+    return n
+
+def narrow_test(image,eq):
+    """In a narrow window every entry wraps; nothing may scroll off before the pause."""
+    # 14 rows by 66 columns, as on the 0.1 report: each entry line is wider
+    # than the window, so it takes two rows and the header used to scroll away
+    entries=[(0x46415400+i,0x00040000,0x190,0x00e5f6a0,b'fat95 4.0 (10.09.2026) [68000]')
+             for i in range(8)]
+    f=Fake(image,eq,reply=b'1;1;14;66 r',keys=b'\r'*8,entries=entries)
+    try:
+        f.call('Start')
+        text=bytes(f.written).decode('latin-1').replace('\x1b[ q','')
+        page=text.split('\x1b[3;7m')[0]               # up to the first prompt
+        rows=sum(max(1,-(-len(l)//66)) for l in page.split('\n')[:-1])
+        assert '\x1b[3;7m' in text,'no pause in a full window'
+        assert rows<=13,(rows,page)                    # 14 rows, one kept for the prompt
+        assert page.startswith(' #: DosType'),page[:40]
+    finally:f.close()
+    return 1
+
+def pages(text,cols):
+    """Screen rows written between pauses, the erased prompt removed."""
+    prompt='\x1b[3;7m-- more -- (any key, Q quits)\x1b[23;27m'
+    erase='\r'+' '*29+'\r'
+    out=[]
+    for page in text.replace('\x1b[ q','').split(prompt):
+        page=page.replace(erase,'')
+        lines=page.split('\n')
+        rows=sum(max(1,-(-len(l)//cols)) for l in lines[:-1])
+        rows+=-(-len(lines[-1])//cols)
+        out.append(rows)
+    return out
+
+def tall_test(image,eq):
+    """A line taller than a whole page goes out a page at a time; Q stops it all."""
+    entries=[(0x46415400+i,0x00040000,0x190,0x00e5f6a0,b'n'*78) for i in range(3)]
+    f=Fake(image,eq,reply=b'1;1;5;30 r',keys=b'\r'*40,entries=entries)
+    try:
+        f.call('Start')
+        text=bytes(f.written).decode('latin-1')
+        rows=pages(text,30)
+        assert len(rows)>3 and max(rows)<=4,rows       # 5 rows, one for the prompt
+        assert 'Total: 3' in text,text[-80:]
+    finally:f.close()
+    f=Fake(image,eq,reply=b'1;1;5;30 r',keys=b'q',entries=entries)
+    try:
+        f.call('Start')
+        text=bytes(f.written).decode('latin-1')
+        after=text.split('(any key, Q quits)')
+        assert len(after)==2,len(after)                # one pause, then nothing
+        assert after[1].strip('\x1b[23;27m\r ')=='',repr(after[1])
+        assert f.raw and f.raw[-1]==0,'console handed back cooked'
+    finally:f.close()
+    return 2
 
 def list_test(image,eq):
     """The whole tool: two entries copied out of the list and printed."""
@@ -236,6 +353,9 @@ def list_test(image,eq):
             assert header.index(label)==line.index(field,3),(label,header,line)
         rule=text.split('\n')[1]
         assert len(rule)==len(header),(len(rule),len(header))
+        # the entries and the summary reach the console, not only the header
+        assert text.count('\n')==6,repr(text)
+        assert 'fat95 1.2' in text and 'Total: 2 entries' in text,repr(text)
         assert f.raw and f.raw[-1]==0,'console handed back cooked'
     finally:f.close()
     # out of memory says so and lists nothing
@@ -252,6 +372,43 @@ def list_test(image,eq):
     finally:f.close()
     return 3
 
+def dd_inspect_test(image,eq):
+    """dd INSPECT shares paging.i: every field reaches the console, and Q stops it."""
+    with tempfile.TemporaryDirectory() as t:
+        p=Path(t);obj=p/'dd';lst=p/'dd.lst'
+        assemble(obj,'src/dd.s',cpu='68000',listing=lst)
+        deq={}
+        for line in lst.read_text(errors='replace').splitlines():
+            m=re.match(r'^([A-Za-z_][A-Za-z0-9_]*)\s+E:([0-9A-Fa-f]{8})\s*$',line)
+            if m:
+                v=int(m.group(2),16);deq[m.group(1)]=v-0x100000000 if v>=0x80000000 else v
+        dd=BinFmt().load_image(str(obj))
+    def seed(f):
+        seed_streams(f)
+        for name,val in (('ExecBase',EXEC),('DosBase',DOS),('PagePos',0),('PageLines',0)):
+            f.mem.w32(FRAME+deq[name],val)
+        src=FRAME+deq['SourceVec']
+        f.mem.w32(src+deq['DV_Name'],0x150000);f.mem.w_block(0x150000,b'compactflash.device\0')
+        f.mem.w32(src+deq['DV_BlockSize'],512);f.mem.w32(src+deq['DV_NumBlocks'],123456)
+    f=Fake(dd,deq,reply=b'1;1;25;80 r')
+    try:
+        f.call('PrintInspect',seed,keep=False)
+        text=bytes(f.written).decode('latin-1')
+        for field in ('compactflash.device unit 0:','sector size:    512','total sectors:  123456',
+                      'cylinders:','heads:','sec/track:','buf mem type:','device type:','read/write via:'):
+            assert field in text,(field,text)
+        assert PROMPT.decode('latin-1') not in text,'a full report fits 25 rows'
+    finally:f.close()
+    f=Fake(dd,deq,reply=b'1;1;5;40 r',keys=b'q')
+    try:
+        f.call('PrintInspect',seed,keep=False)
+        text=bytes(f.written).decode('latin-1')
+        rest=text.split('(any key, Q quits)')
+        assert len(rest)==2 and 'read/write via' not in rest[1],repr(text)
+        assert f.raw==[1,0],f.raw
+    finally:f.close()
+    return 2
+
 def main():
     bad=[];total=0
     with tempfile.TemporaryDirectory() as t:
@@ -259,6 +416,10 @@ def main():
         for name,fn in (('window bounds report',rows_test),
                         ('pausing decided once',begin_test),
                         ('line countdown',line_test),
+                        ('wrapped lines',wrap_test),
+                        ('narrow window',narrow_test),
+                        ('taller than a page',tall_test),
+                        ('dd INSPECT',dd_inspect_test),
                         ('resource listed from a copy',list_test)):
             try:
                 n=fn(image,eq);total+=n
