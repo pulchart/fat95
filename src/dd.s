@@ -344,7 +344,12 @@ ArgArray	= -812			;16 longs for ReadArgs (zeroed before call)
 KeyBuf		= -816			;byte: the key that dismissed a help page
 PageLines	= -820			;lines per screenful, 0 = do not pause
 PageLeft	= -824			;lines still free on this page
-Vars_Sizeof	= -824
+PageCols	= -828			;window width, 0 = unknown
+PagePos		= -832			;bytes collected in PageBuf
+PAGEBUF		= 512
+PageBuf		= -1344			;one formatted line before it is written
+PagePtr		= -1348			;PageFmt write cursor
+Vars_Sizeof	= -1348
 
 ;--- +++ TEST +++ TEST +++ ---------------------------------
 
@@ -375,6 +380,8 @@ s_nullvars:
 	clr.l	(a1)+
 	subq.w	#1,d0
 	bgt.s	s_nullvars
+	clr.l	PageLines(a4)		;unpaged until PageBegin finds a console
+	clr.l	PagePos(a4)
 
 	moveq.l	#0,d0			;open any version, we check lib_Version ourselves
 	lea	s_DosName(pc),a1
@@ -2235,6 +2242,7 @@ wf_test:
 	CALLDOS	VFPrintf
 	lea	12(sp),sp
 	bsr.w	pi_methods		;..and list what it does advertise
+	bsr	PageFlush
 wf_ret:
 	movem.l	(sp)+,d0-d7/a0-a6
 	rts
@@ -2304,12 +2312,12 @@ pi_devtype:
 	movem.l	d0-d7/a0-a2,-(sp)
 	move.l	d0,d5			;d5 = device class
 	move.l	d1,d6			;d6 = flags
-	move.l	ConsoleO(a4),d1
+	tst.l	ConsoleO(a4)
 	beq.w	pdt_end
 	lea	fi_dtlbl(pc),a0		;label, no newline
 	move.l	a0,d2
 	moveq.l	#0,d3
-	CALLDOS	VFPrintf
+	bsr	PageFmt
 	moveq.l	#0,d4			;0 = nothing printed yet
 	lea	DevTypeTab(pc),a1
 pdt_scan:
@@ -2328,11 +2336,10 @@ pdt_name:
 	bra.s	pdt_flags
 pdt_num:
 	move.l	d5,-(sp)		;arg1: the class as it came
-	move.l	ConsoleO(a4),d1
 	lea	fi_dtnum(pc),a0
 	move.l	a0,d2
 	move.l	sp,d3
-	CALLDOS	VFPrintf
+	bsr	PageFmt
 	addq.l	#4,sp
 	moveq.l	#1,d4
 pdt_flags:
@@ -2345,18 +2352,16 @@ pdt_rest:
 	and.l	#$fe,d0			;flag bits with no name
 	beq.s	pdt_nl
 	move.l	d6,-(sp)		;arg1: the flags as they came
-	move.l	ConsoleO(a4),d1
 	lea	fi_dtraw(pc),a0
 	move.l	a0,d2
 	move.l	sp,d3
-	CALLDOS	VFPrintf
+	bsr	PageFmt
 	addq.l	#4,sp
 pdt_nl:
-	move.l	ConsoleO(a4),d1
 	lea	fi_meth_nl(pc),a0
 	move.l	a0,d2
 	moveq.l	#0,d3
-	CALLDOS	VFPrintf
+	bsr	PageFmt
 pdt_end:
 	movem.l	(sp)+,d0-d7/a0-a2
 	rts
@@ -2390,7 +2395,7 @@ pi_memtype:
 	lea	fi_memlbl(pc),a0	;label, no newline
 	move.l	a0,d2
 	moveq.l	#0,d3
-	CALLDOS	VFPrintf
+	bsr	PageFmt
 	moveq.l	#0,d4			;0 = nothing printed yet
 	btst	#0,d5			;MEMF_PUBLIC
 	beq.s	pmt_1
@@ -2423,18 +2428,16 @@ pmt_rest:
 	beq.s	pmt_nl
 
 	move.l	d5,-(sp)		;arg1: the mask as it came
-	move.l	ConsoleO(a4),d1
 	lea	fi_memraw(pc),a0
 	move.l	a0,d2
 	move.l	sp,d3
-	CALLDOS	VFPrintf
+	bsr	PageFmt
 	addq.l	#4,sp
 pmt_nl:
-	move.l	ConsoleO(a4),d1
 	lea	fi_meth_nl(pc),a0
 	move.l	a0,d2
 	moveq.l	#0,d3
-	CALLDOS	VFPrintf
+	bsr	PageFmt
 pmt_end:
 	movem.l	(sp)+,d0-d5/a0-a2
 	rts
@@ -2445,12 +2448,12 @@ pmt_end:
 
 pi_methods:
 	move.b	DV_CmdFlags(a3),d5	;capability bits
-	move.l	ConsoleO(a4),d1
+	tst.l	ConsoleO(a4)
 	beq.s	pim_ret			;no console
 	lea	fi_meth_lbl(pc),a0	;label, no newline
 	move.l	a0,d2
 	moveq.l	#0,d3
-	CALLDOS	VFPrintf
+	bsr	PageFmt
 	moveq.l	#0,d4			;0 = nothing printed yet
 	btst	#2,d5			;NSCMD_TD64
 	beq.s	pim_1
@@ -2472,11 +2475,10 @@ pim_3:
 	lea	cn_cap_none(pc),a0	;none advertised
 	bsr.s	pim_tok
 pim_nl:
-	move.l	ConsoleO(a4),d1
 	lea	fi_meth_nl(pc),a0	;just a newline
 	move.l	a0,d2
 	moveq.l	#0,d3
-	CALLDOS	VFPrintf
+	bsr	PageFmt
 pim_ret:
 	rts
 
@@ -2490,9 +2492,8 @@ pim_tsep:
 	lea	fi_meth_t2(pc),a0	;", %s"
 pim_temit:
 	move.l	a0,d2
-	move.l	ConsoleO(a4),d1
 	move.l	sp,d3
-	CALLDOS	VFPrintf
+	bsr	PageFmt
 	addq.l	#4,sp
 	moveq.l	#1,d4			;mark "something printed"
 	rts
@@ -2507,28 +2508,9 @@ PrintHelp:
 	move.l	ConsoleO(a4),d0
 	beq.s	phl_end
 	bsr	PageBegin
-	lea	HelpBanner(pc),a2	;a2 = rest of the text
-	lea	HelpEnd(pc),a3
-phl_line:
-	cmp.l	a3,a2
-	bcc.s	phl_done
-	move.l	a2,d2			;line start
-	move.l	a2,a0
-phl_scan:
-	cmp.l	a3,a0
-	bcc.s	phl_write
-	cmp.b	#LF,(a0)+
-	bne.s	phl_scan
-phl_write:
-	move.l	a0,a2
-	move.l	a0,d3
-	sub.l	d2,d3			;bytes in this line
-	move.l	ConsoleO(a4),d1
-	CALLDOS	Write
-	bsr	PageLine
-	tst.l	d0
-	bne.s	phl_line		;reader wants more
-phl_done:
+	lea	HelpBanner(pc),a0
+	move.l	#HelpEnd-HelpBanner,d0
+	bsr	PageText
 	bsr	PageEnd
 phl_end:
 	movem.l	(sp)+,d2-d3/a2-a3
@@ -2544,7 +2526,7 @@ phl_end:
 ; + NSD probe.
 
 PrintInspect:
-	movem.l	d2-d3/a3,-(sp)
+	movem.l	d2-d3/a2-a3,-(sp)
 	move.l	ConsoleO(a4),d0
 	beq.w	pi_end
 	bsr	PageBegin
@@ -2553,68 +2535,39 @@ PrintInspect:
 	;header: "<name> unit <n>:"
 	move.l	DV_Unit(a3),-(sp)
 	move.l	DV_Name(a3),-(sp)
-	move.l	ConsoleO(a4),d1
 	lea	fi_hdr(pc),a0
 	move.l	a0,d2
 	move.l	sp,d3
-	CALLDOS	VFPrintf
+	bsr	PageFmt
 	addq.l	#8,sp
-	bsr	PageLine
+	bsr	PageFlush
+	tst.l	d0
+	beq.w	pi_end			;reader stopped the listing
 
-	;sector size
-	move.l	DV_BlockSize(a3),-(sp)
-	move.l	ConsoleO(a4),d1
-	lea	fi_sect(pc),a0
+	;one line per single-value field, from the table below
+	lea	pi_fields(pc),a2
+pi_field:
+	move.w	(a2)+,d0		;frame offset of the value, 0 ends
+	beq.s	pi_fdone
+	move.l	0(a4,d0.w),-(sp)
+	lea	pi_fields(pc),a0
+	add.w	(a2)+,a0		;its format
 	move.l	a0,d2
 	move.l	sp,d3
-	CALLDOS	VFPrintf
+	bsr	PageFmt
 	addq.l	#4,sp
-	bsr	PageLine
-
-	;total sectors
-	move.l	DV_NumBlocks(a3),-(sp)
-	move.l	ConsoleO(a4),d1
-	lea	fi_total(pc),a0
-	move.l	a0,d2
-	move.l	sp,d3
-	CALLDOS	VFPrintf
-	addq.l	#4,sp
-	bsr	PageLine
-
-	;cylinders
-	move.l	DriveGeometry+DG_Cylinders(a4),-(sp)
-	move.l	ConsoleO(a4),d1
-	lea	fi_cyl(pc),a0
-	move.l	a0,d2
-	move.l	sp,d3
-	CALLDOS	VFPrintf
-	addq.l	#4,sp
-	bsr	PageLine
-
-	;heads
-	move.l	DriveGeometry+DG_Heads(a4),-(sp)
-	move.l	ConsoleO(a4),d1
-	lea	fi_heads(pc),a0
-	move.l	a0,d2
-	move.l	sp,d3
-	CALLDOS	VFPrintf
-	addq.l	#4,sp
-	bsr	PageLine
-
-	;sec/track
-	move.l	DriveGeometry+DG_TrackSectors(a4),-(sp)
-	move.l	ConsoleO(a4),d1
-	lea	fi_spt(pc),a0
-	move.l	a0,d2
-	move.l	sp,d3
-	CALLDOS	VFPrintf
-	addq.l	#4,sp
-	bsr	PageLine
+	bsr	PageFlush
+	tst.l	d0
+	beq.w	pi_end			;reader stopped the listing
+	bra.s	pi_field
+pi_fdone:
 
 	;buffer memory type the driver asks for (MEM= overrides it)
 	move.l	DriveGeometry+DG_BufMemType(a4),d0
 	bsr.w	pi_memtype
-	bsr	PageLine
+	bsr	PageFlush
+	tst.l	d0
+	beq.w	pi_end			;reader stopped the listing
 
 	;what the driver says the device is
 	moveq.l	#0,d0
@@ -2622,7 +2575,9 @@ PrintInspect:
 	moveq.l	#0,d1
 	move.b	DriveGeometry+DG_Flags(a4),d1
 	bsr.w	pi_devtype
-	bsr	PageLine
+	bsr	PageFlush
+	tst.l	d0
+	beq.w	pi_end			;reader stopped the listing
 
 	;NSD present? if not, show nothing here: the "for >4 GiB:" line
 	;below still reveals the command dd would use.
@@ -2632,15 +2587,18 @@ PrintInspect:
 	;NSD present: print the ">4GiB methods:" summary; the full command
 	;list follows only with VERBOSE.
 	bsr.w	pi_methods		;">4GiB methods:" summary (reads DV_CmdFlags)
-	bsr	PageLine
+	bsr	PageFlush
+	tst.l	d0
+	beq.w	pi_end			;reader stopped the listing
 	move.l	ArgArray+40(a4),d0	;VERBOSE switch (slot 10)
 	beq.w	pi_after_nsd		;not verbose: skip the command list
-	move.l	ConsoleO(a4),d1
 	lea	fi_cmds(pc),a0
 	move.l	a0,d2
 	moveq.l	#0,d3
-	CALLDOS	VFPrintf
-	bsr	PageLine
+	bsr	PageFmt
+	bsr	PageFlush
+	tst.l	d0
+	beq.w	pi_end			;reader stopped the listing
 	;walk SupportedCommands list, print "$HEX (name)" per entry
 	move.l	QueryResult+QR_SupportedCmds(a4),a3	;temporarily use a3 as iterator
 	move.l	a3,d0
@@ -2655,16 +2613,15 @@ pi_walk:
 	move.w	d4,d0
 	bsr.w	WordToHex		;d4 -> a0 = "$XXXX"
 	move.l	a0,-(sp)		;arg1: hex string
-	move.l	ConsoleO(a4),d1
 	lea	fi_cmdline(pc),a0
 	move.l	a0,d2
 	move.l	sp,d3
-	CALLDOS	VFPrintf
+	bsr	PageFmt
 	addq.l	#8,sp
 	move.l	(sp)+,a3		;restore iterator
-	bsr	PageLine
+	bsr	PageFlush
 	tst.l	d0
-	beq.w	pi_after_nsd		;reader stopped the listing
+	beq.w	pi_end			;reader stopped the listing
 	bra.w	pi_walk
 pi_after_nsd:
 	lea	SourceVec(a4),a3	;restore a3 (may have been used as iterator)
@@ -2707,17 +2664,27 @@ pi_c_cmd:
 pi_c_emit:
 	bsr.w	CmdToStr
 	move.l	a0,-(sp)		;arg1: read command name
-	move.l	ConsoleO(a4),d1
 	lea	fi_via(pc),a0
 	move.l	a0,d2
 	move.l	sp,d3
-	CALLDOS	VFPrintf
+	bsr	PageFmt
 	addq.l	#8,sp
-	bsr	PageLine
+	bsr	PageFlush
+	tst.l	d0
+	beq.w	pi_end			;reader stopped the listing
 pi_end:
 	bsr	PageEnd
-	movem.l	(sp)+,d2-d3/a3
+	movem.l	(sp)+,d2-d3/a2-a3
 	rts
+
+;value offset in the frame, format offset from pi_fields
+pi_fields:
+	dc.w	SourceVec+DV_BlockSize,fi_sect-pi_fields
+	dc.w	SourceVec+DV_NumBlocks,fi_total-pi_fields
+	dc.w	DriveGeometry+DG_Cylinders,fi_cyl-pi_fields
+	dc.w	DriveGeometry+DG_Heads,fi_heads-pi_fields
+	dc.w	DriveGeometry+DG_TrackSectors,fi_spt-pi_fields
+	dc.w	0
 
 ;--- format strings ----------------------------------------
 fi_hdr:		dc.b	'%s unit %ld:',LF,0
