@@ -566,15 +566,19 @@ s_rwrite:
 	move.l	#MODE_NEWFILE,d2
 	CALLDOS	Open
 	move.l	d0,File2(a4)
-	beq.s	s_rend
+	beq.w	s_nowrite2
 
 	move.l	d0,d1
 	move.l	TextBuffer(a4),d2
 	move.l	TextSize(a4),d3
 	CALLDOS	Write
+	move.l	d0,-(sp)
 	move.l	File2(a4),d1
 	CALLDOS	Close
 	clr.l	File2(a4)
+	move.l	(sp)+,d0
+	cmp.l	TextSize(a4),d0
+	bne.w	s_nowrite2
 s_rend:
 	bra.w	s_freebuf
 
@@ -607,7 +611,7 @@ s_writetext:
 	CALLDOS	Open
 s_w1:
 	move.l	d0,File2(a4)
-	beq.w	s_wend
+	beq.w	s_notext2
 
 	move.l	d0,d1
 	move.l	TextBuffer(a4),d2
@@ -620,7 +624,7 @@ s_w1:
 	CALLDOS	Close
 	clr.l	File2(a4)
 	move.l	TextSize(a4),d0
-	bmi.w	s_wend
+	bmi.w	s_notext2
 
 	move.l	TextBuffer(a4),a0
 	clr.b	(a0,d0.l)		;avoid file length check
@@ -846,15 +850,19 @@ s_ww1:
 	move.l	#MODE_NEWFILE,d2
 	CALLDOS	Open
 	move.l	d0,File3(a4)
-	beq.s	s_wend
+	beq.w	s_nowrite3
 
 	move.l	d0,d1
 	move.l	Buffer(a4),d2
 	move.l	Size3(a4),d3
 	CALLDOS	Write			;overwrite object file
+	move.l	d0,-(sp)
 	move.l	File3(a4),d1
 	CALLDOS	Close
 	clr.l	File3(a4)
+	move.l	(sp)+,d0
+	cmp.l	Size3(a4),d0
+	bne.w	s_nowrite3
 s_wend:
 
 ;- - and party  - - - - - - - - - - - - - - - - - - - - - -
@@ -903,6 +911,21 @@ s_bogus3:
 	lea	Bogus3Str(pc),a0
 	bsr.s	ReportError
 	bra.s	s_freebuf
+
+s_nowrite3:
+	lea	NoWrite3Str(pc),a0
+	bsr.s	ReportError
+	bra.w	s_freebuf
+
+s_notext2:
+	lea	NoText2Str(pc),a0
+	bsr.s	ReportError
+	bra.w	s_freebuf
+
+s_nowrite2:
+	lea	NoWrite2Str(pc),a0
+	bsr.s	ReportError
+	bra.w	s_freebuf
 
 
 ;--- report error ------------------------------------------
@@ -1292,6 +1315,9 @@ HelpStr:	dc.b	'usage: install95 <r|w> <language>', LF, 0
 NoFile3Str:	dc.b	'file "l:fat95" not found.', LF, 0
 TooLarge3Str:	dc.b	'file "l:fat95" too large.', LF, 0
 Bogus3Str:	dc.b	'file "l:fat95" is incomatible.', LF, 0
+NoWrite3Str:	dc.b	'cannot write "l:fat95".', LF, 0
+NoText2Str:	dc.b	'cannot read the language file.', LF, 0
+NoWrite2Str:	dc.b	'cannot write the language file.', LF, 0
 FileHeadStr:	dc.b	';fat95 locale file', LF, 0
 InstStr:	dc.b	'[installer]',0
 LocaStr:	dc.b	'[locale]', 0

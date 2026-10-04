@@ -67,6 +67,10 @@
   * Improved paging: in a narrow window, long lines no longer scroll the listing
     away before it pauses.
 
+@{b}'install95 3.20'@{ub}
+  * A missing language file or a failed write of the language file or L:fat95 is
+    reported and returns 10.
+
 ----------------------------------------
 @{"<< Prev" link Main}  @{"Contents" link Main}  @{"Next >>" link 20260930}
 
