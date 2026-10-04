@@ -22,6 +22,9 @@ _Components in this release_:
 ##### 'lsfsres 1.3'
 - Improved paging: in a narrow window, long lines no longer scroll the listing away before it pauses.
 
+##### 'install95 3.20'
+- A missing language file or a failed write of the language file or L:fat95 is reported and returns 10.
+
 ## 20260930
 
 _Components in this release_:
