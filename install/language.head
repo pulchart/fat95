@@ -1,0 +1,3 @@
+; $VER: Language-fat95 @VERSION@ (@DATE@)
+(set @default-dest "SYS:")
+(welcome "Changes the language of the installed L:fat95.")

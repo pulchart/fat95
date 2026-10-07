@@ -1,0 +1,15 @@
+; fat95: CPU tier, handler
+(set fat95-cpu (database "cpu"))
+(set fat95-tier
+  (select
+    (askchoice
+      (prompt "CPU for fat95")
+      (help (cat "68000: A500, A600, A2000.\n\n68020: 68020 or higher.\n\n68080: Apollo " "68080 only."))
+      (choices "68000/68010" "68020 or higher" "Apollo 68080")
+      (default
+        (if (or (= fat95-cpu "68000") (= fat95-cpu "68010")) 0 1)))
+    "68000" "68020" "68080"))
+(set ptable-cpu (if (= fat95-tier "68000") "68000" "68020"))
+(set copy-src (cat "l/" fat95-tier "/fat95"))
+(set copy-dest "L:")
+(P_COPY)
