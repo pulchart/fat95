@@ -17,10 +17,20 @@ COMPONENTS IN THIS RELEASE
 WHAT'S NEW (@DATE@)
 =======================
 
+Install:
+
+* New Installer and Language scripts.
+* Language folders replaced by locale/ files.
+* Reworked icon positions.
+
+ptable.library 2.2, lsptres 1.2:
+
+* Synced with amigaos-ptable, ptable.library ships in small and full
+  variants.
+
 Tools 'dd 2.7', 'lsfsres 1.3':
 
-* Improved paging: in a narrow window, long lines no longer scroll the
-  listing away before it pauses.
+* Improved paging.
 
 Purpose
 =======
@@ -34,8 +44,27 @@ System requirements
 * every AMIGA, OS 1.3+ (OS 2.0+ for full functionality)
 * a suitable device file for low level disk access, like the
   mfm.device for floppies, compactflash.device for CF in PCMCIA
-* ptable.library (bundled; install to LIBS:) for partition auto-detect;
+* ptable.library (bundled, install to LIBS:) for partition auto-detect,
   explicit-geometry mountlist entries do not need it
+* Installer 43.3 or newer for Install (without it, see Installation in
+  fat95.guide)
+
+Installation
+============
+
+* Double-click Install. It detects the CPU tier, copies L:fat95 and
+  ptable.library (small variant, full in Expert mode), writes the
+  chosen language into L:fat95, and offers the tools and the floppy
+  mountlists MS0 and MS1.
+
+  In Expert mode it also adds a LoadModule L:fat95 line at the top of
+  S:User-Startup. cfd and fat95 share one LoadModule line. Adapt that
+  line to your system as needed.
+
+  I recommend putting fat95 and ptable.library in ROM as resident
+  modules instead of LoadModule.
+
+* Double-click Language to change the language of an installed L:fat95.
 
 Features
 ========
@@ -60,7 +89,7 @@ See fat95.guide for full documentation.
   (readable as file comment text; off by default, Control "+d+D" enables)
 * Volume serial number as name for unnamed volumes
 * Automatic directory optimization
-* Written entirely in assembly language
+* Installer script for automated installation (Installer 43.3 or newer)
 
 SOURCE CODE
 ===========
@@ -85,15 +114,17 @@ CHECKSUMS
 
 CONTENTS
 ========
+fat95/Install            - Installer script
+fat95/Language           - Change the language of L:fat95
 fat95/docs/fat95.guide   - FAT95 filesystem handler documentation
 fat95/docs/changes.guide - Release notes and original fat95 history
 fat95/docs/dd.guide      - dd raw block transfer tool documentation
 fat95/docs/lsfsres.guide - lsfsres FileSystem.resource lister documentation
 fat95/docs/lsptres.guide - lsptres partition.resource lister documentation
 
-fat95/l/68080/fat95 - FAT95 filesystem handler, Apollo 68080 cpu tier
-fat95/l/68020/fat95 - FAT95 filesystem handler, 68020+ cpu tier
-fat95/l/68000/fat95 - FAT95 filesystem handler, 68000+ cpu tier
+fat95/l/68080/fat95 - Filesystem handler, Apollo 68080 CPU tier
+fat95/l/68020/fat95 - Filesystem handler, 68020+ CPU tier
+fat95/l/68000/fat95 - Filesystem handler, 68000+ CPU tier
 fat95/l/install95 - Locale installer tool (read/write locale files)
 fat95/c/dd - Raw block transfer tool
 fat95/c/debug95 - Debug information tool
@@ -102,19 +133,13 @@ fat95/c/boot95 - Boot partition creation tool
 fat95/c/lsfsres - FileSystem.resource entry lister
 fat95/c/lsptres - partition.resource entry lister (from ptable.library)
 
-fat95/libs/68020/ptable.library - partition scan/automount library, 68020+ (small)
-fat95/libs/68000/ptable.library - partition scan/automount library, 68000+ (small)
+fat95/libs/<small|full>/68020/ptable.library - partition scan/automount library, 68020+
+fat95/libs/<small|full>/68000/ptable.library - partition scan/automount library, 68000+
 
 fat95/DOSDrivers/ - Mount list examples
 
 fat95/src/ - Full source code
 
-fat95/english/ - English documentation and examples
-fat95/deutsch/ - German documentation and examples
-fat95/français/ - French documentation
-fat95/español/ - Spanish documentation
-fat95/magyar/ - Hungarian documentation
-fat95/polska/ - Polish documentation
-fat95/russian/ - Russian documentation
+fat95/locale/ - Localization texts and code pages per language
 
 fat95/LICENSE - GNU LGPL v2.1

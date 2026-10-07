@@ -1,29 +1,39 @@
-## 20261003-dev
+## 20261007
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
 
 - `fat95 4.1 (30.09.2026)`
-- `install95 3.19 (25.01.2026)`
+- `install95 3.20 (04.10.2026)` _(new)_
 - `dd 2.7 (03.10.2026)` _(new)_
 - `debug95 3.19 (25.01.2026)`
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
 - `lsfsres 1.3 (03.10.2026)` _(new)_
-- `ptable.library 2.1 (30.09.2026)`
-- `lsptres 1.1 (30.09.2026)`
+- `ptable.library 2.2 (03.10.2026)` _(new)_
+- `lsptres 1.2 (03.10.2026)` _(new)_
 <!-- COMPONENTS:END -->
+
+#### Install
+
+- New Installer and Language scripts.
+- Language folders replaced by `locale/` files.
+- Reworked icon positions.
+
+#### ptable.library 2.2, lsptres 1.2
+
+- Synced with amigaos-ptable, ptable.library ships in small and full variants.
 
 #### Tools
 
 ##### 'dd 2.7'
-- Improved paging: in a narrow window, long lines no longer scroll the listing away before it pauses.
+- Improved paging.
 
 ##### 'lsfsres 1.3'
-- Improved paging: in a narrow window, long lines no longer scroll the listing away before it pauses.
+- Improved paging.
 
 ##### 'install95 3.20'
-- A missing language file or a failed write of the language file or L:fat95 is reported and returns 10.
+- Reports a missing language file or a failed write and returns 10.
 
 ## 20260930
 

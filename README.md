@@ -74,26 +74,23 @@ These two components are connected via a **mountlist** - a configuration file th
 
 **Installation**
 
-1. Pick the CPU tier that matches your machine (see [CPU tiers](#cpu-tiers)) and copy the matching `l/<tier>/fat95` to `L:fat95`:
-   ```
-   # Any board with an Apollo core 68080
-   Copy fat95/l/68080/fat95 L:fat95
+- Double-click `Install`. It detects the CPU tier, copies `L:fat95` and `ptable.library` (small variant, full in Expert mode), writes the chosen language into `L:fat95`, and offers the tools and the floppy mountlists `MS0` and `MS1`. Needs Installer 43.3 or newer.
 
-   # A1200 stock or any 68020+/030/040/060 accelerator
-   Copy fat95/l/68020/fat95 L:fat95
+  In Expert mode it also adds a `LoadModule L:fat95` line at the top of `S:User-Startup`. cfd and fat95 share one `LoadModule` line. Adapt that line to your system as needed.
 
-   # Stock A500 / A600 / A1000 / A2000 / CDTV (68000)
-   Copy fat95/l/68000/fat95 L:fat95
-   ```
-2. Edit the `install_fat95` text file for your language.
-3. Double-click the `install_fat95` icon to activate the changes.
-4. Optionally double-click example mountlist icons in `DOSDrivers/`:
+  I recommend putting fat95 and `ptable.library` in ROM as resident modules instead of `LoadModule`.
+
+- Double-click `Language` to change the language of an installed `L:fat95`.
+
+By hand:
+
+1. Copy `l/<tier>/fat95` to `L:fat95` (see [CPU tiers](#cpu-tiers)).
+2. Copy `libs/<small|full>/<68000|68020>/ptable.library` to `LIBS:`.
+3. Set the language: `l/install95 w locale/<language>`. Languages: english, deutsch, espanol, francais, magyar, polski, russian.
+4. Optional: copy mountlists from `DOSDrivers/` to `DEVS:DOSDrivers/` (mount at boot) or `SYS:Storage/DOSDrivers/` (mount by hand):
    - `MS0`/`MS1` - FAT-formatted PC DD 720k floppy (mfm.device)
    - `CF0` - FAT partition on CompactFlash in PCMCIA slot (compactflash.device), supports MBR and GPT
    For custom configurations, see the [Mountlist Configuration](#mountlist-configuration) section.
-5. Copy mountlists to:
-   - `DEVS:DOSDrivers/` for automatic mounting at boot, or
-   - `SYS:Storage/DOSDrives/` for manual mounting via shell command (Method A: Shell Command)
 
 ### CPU tiers
 
@@ -486,7 +483,7 @@ The exact status shown may depend on the order of disk insertion and reinsertion
 | `c/boot95` | Boot partition creation tool |
 | `c/lsfsres` | FileSystem.resource entry lister |
 | `c/lsptres` | partition.resource entry lister (from ptable.library) |
-| `libs/<cpu>/ptable.library` | partition scan/automount library (small), bundled |
+| `libs/<small|full>/<cpu>/ptable.library` | partition scan/automount library, bundled |
 
 `ptable.library` and `lsptres` are built from the companion [amigaos-ptable](https://github.com/pulchart/amigaos-ptable) repo and bundled here so whole-disk auto-detect works without a separate install; `lsptres` lists `partition.resource` (the partition-side companion to `lsfsres`).
 
@@ -519,6 +516,10 @@ Lists `FileSystem.resource` entries. See [docs/lsfsres.md](docs/lsfsres.md) for 
 ### lsptres
 
 Lists `partition.resource` entries (bundled from ptable.library). The partition-side companion to `lsfsres`.
+
+## Building
+
+See [docs/building.md](docs/building.md).
 
 ## License
 

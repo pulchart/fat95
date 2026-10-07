@@ -5,8 +5,8 @@
 
 # Release version: YYYYMMDD package date + optional in-progress suffix
 # (-dev, -rc1, ...). Empty suffix for a final release.
-RELEASE_DATE = 20261003
-VERSION_SUFFIX = -dev
+RELEASE_DATE = 20261007
+VERSION_SUFFIX =
 
 # fat95 filesystem handler version
 FAT95_MAJOR = 4
@@ -97,6 +97,9 @@ LSPTRES_TARGET     = dist/c/lsptres
 # CPU tiers for the handler fan-out (tools stay single-tier).
 CPUS = 68080 68020 68000
 
+# ptable.library variants bundled under libs/<flavor>/<cpu>/.
+PLIB_FLAVORS = small/68020 small/68000 full/68020 full/68000
+
 # Archive drawer per artifact kind; the handler lives in l/, the library in libs/.
 _drawer_handler = l
 _drawer_library = libs
@@ -107,7 +110,7 @@ _drawer_library = libs
 define _artifact_entries
 $(if $(filter tool,$($(1)_KIND)),\
 $($(1)_NAME):$($(1)_TARGET):$($(1)_VERSION):$($(1)_DATE),\
-$(foreach c,$(CPUS),$(_drawer_$($(1)_KIND))/$(c)/$($(1)_NAME):$(DISTDIR)/$(_drawer_$($(1)_KIND))/$(c)/$($(1)_NAME):$($(1)_VERSION):$($(1)_DATE)))
+$(foreach c,$(if $(filter library,$($(1)_KIND)),$(PLIB_FLAVORS),$(CPUS)),$(_drawer_$($(1)_KIND))/$(c)/$($(1)_NAME):$(DISTDIR)/$(_drawer_$($(1)_KIND))/$(c)/$($(1)_NAME):$($(1)_VERSION):$($(1)_DATE)))
 endef
 
 # "PREFIX|name|version|date" per component, fed to tools/components.sh
@@ -226,7 +229,6 @@ RELEASE_NAME = fat95.v$(VERSION)
 ARCHIVE_NAME = $(RELEASE_NAME).lha
 README_NAME = $(RELEASE_NAME).readme
 README_TEMPLATE = dist.readme.in
-README_INFO = dist/fat95.readme.info
 LHA = lha
 
 # ============================================================
@@ -250,7 +252,7 @@ $(VERSION_STAMP): FORCE
 		rm -f $(VERSION_STAMP).tmp; \
 	fi
 
-# Build ptable.library (small) + lsptres in the ptable repo and stage the
+# Build ptable.library (small, full) + lsptres in the ptable repo and stage the
 # built artifacts into dist/ for the release; nothing ptable-owned is rebuilt
 # here, so every release ships the ptable-built bytes. MD2GUIDE/NDK are passed
 # as absolute paths: the submodule's own relative defaults do not resolve from
@@ -259,12 +261,14 @@ $(VERSION_STAMP): FORCE
 ptable-bundle:
 	$(Q)if [ -f "$(PTABLE)/Makefile" ]; then \
 		$(MAKE) -C "$(PTABLE)" all guides MD2GUIDE=$(abspath $(MD2GUIDE)) NDK=$(abspath NDK) >/dev/null; \
-		mkdir -p dist/libs/68020 dist/libs/68000 dist/c $(GUIDE_OUTPUT_DIR); \
-		cp "$(PTABLE)/dist/small/68020/ptable.library" dist/libs/68020/; \
-		cp "$(PTABLE)/dist/small/68000/ptable.library" dist/libs/68000/; \
+		for f in $(PLIB_FLAVORS); do \
+			mkdir -p dist/libs/$$f; \
+			cp "$(PTABLE)/dist/$$f/ptable.library" dist/libs/$$f/; \
+		done; \
+		mkdir -p dist/c $(GUIDE_OUTPUT_DIR); \
 		cp "$(PTABLE)/dist/c/lsptres" dist/c/lsptres; \
 		cp "$(PTABLE)/dist/docs/lsptres.guide" $(GUIDE_OUTPUT_DIR)/; \
-		echo "  bundled ptable.library (small) + lsptres from $(PTABLE)"; \
+		echo "  bundled ptable.library (small, full) + lsptres from $(PTABLE)"; \
 	else \
 		echo "  NOTE: $(PTABLE) absent - ptable.library / lsptres not bundled"; \
 	fi
@@ -518,39 +522,37 @@ check-lha:
 	@command -v $(LHA) >/dev/null 2>&1 || { echo "ERROR: lha not found (sudo dnf install lha)"; exit 1; }
 
 # Create Aminet-compatible LHA release
-release: check-vasm version-readme all $(README_NAME) guide check-lha
+# Archive tree: binaries, Installer scripts and the laid-out icons/ tree.
+STAGE   = build/stage
+INSTALL = install
+LOCALES       = english deutsch espanol francais magyar polski russian
+
+stage: check-vasm version-readme all $(README_NAME) guide
+	$(Q)rm -rf $(STAGE)
+	$(Q)mkdir -p $(STAGE)/fat95/c $(STAGE)/fat95/src $(STAGE)/fat95/docs $(STAGE)/fat95/locale
+	$(Q)for c in $(CPUS); do mkdir -p $(STAGE)/fat95/l/$$c; cp $(OUTDIR)/$$c/fat95 $(STAGE)/fat95/l/$$c/; done
+	$(Q)cp $(TARGET_INSTALL95) $(STAGE)/fat95/l/
+	$(Q)cp dist/c/* $(STAGE)/fat95/c/
+	$(Q)cp src/*.s src/*.i $(STAGE)/fat95/src/
+	$(Q)cp $(README_NAME) $(STAGE)/fat95/fat95.readme
+	$(Q)cp LICENSE $(STAGE)/fat95/
+	$(Q)cp -r dist/libs $(STAGE)/fat95/
+	$(Q)cp $(GUIDE_FAT95) $(GUIDE_CHANGES) $(GUIDE_DD) $(GUIDE_LSFSRES) $(STAGE)/fat95/docs/
+	$(Q)[ ! -f $(GUIDE_LSPTRES) ] || cp $(GUIDE_LSPTRES) $(STAGE)/fat95/docs/
+	$(Q)for l in $(LOCALES); do cp dist/locale/$$l $(STAGE)/fat95/locale/; done
+	$(Q)cp -r dist/DOSDrivers $(STAGE)/fat95/
+	$(Q)cp -r icons/. $(STAGE)/
+	$(Q)[ -f $(PTABLE)/install/common.inc ] || { echo "ERROR: $(PTABLE) has no install/; build with PTABLE=<amigaos-ptable checkout>"; exit 1; }
+	$(Q)cat $(INSTALL)/fat95.head $(PTABLE)/install/common.inc $(INSTALL)/language.inc $(INSTALL)/fat95.pre \
+	    $(PTABLE)/install/ptable.inc $(INSTALL)/fat95.post $(INSTALL)/fat95.tail | sed -e "s|@VERSION@|$(VERSION)|" -e "s|@DATE@|$(DATE)|" > $(STAGE)/fat95/Install
+	$(Q)cat $(INSTALL)/language.head $(INSTALL)/language.inc $(INSTALL)/language.tail | sed -e "s|@VERSION@|$(VERSION)|" -e "s|@DATE@|$(DATE)|" > $(STAGE)/fat95/Language
+
+release: check-lha stage
 	@echo "Creating $(ARCHIVE_NAME)..."
-	@S=$$(mktemp -d); \
-	mkdir -p "$$S/fat95/l/68080" "$$S/fat95/l/68020" "$$S/fat95/l/68000" "$$S/fat95/c" "$$S/fat95/src"; \
-	cp $(TARGET_080) "$$S/fat95/l/68080/"; \
-	cp $(TARGET_020) "$$S/fat95/l/68020/"; \
-	cp $(TARGET_000) "$$S/fat95/l/68000/"; \
-	cp $(TARGET_INSTALL95) "$$S/fat95/l/"; \
-	cp dist/c/* "$$S/fat95/c/"; \
-	cp src/*.s src/*.i "$$S/fat95/src/"; \
-	cp $(README_NAME) "$$S/fat95/fat95.readme"; \
-	cp $(README_INFO) LICENSE "$$S/fat95/"; \
-	if [ -d dist/libs ]; then \
-		cp -r dist/libs "$$S/fat95/"; \
-		echo "  bundled ptable.library (small) + lsptres (staged by ptable-bundle)"; \
-	else \
-		echo "  NOTE: $(PTABLE) absent - ptable.library / lsptres not bundled"; \
-	fi; \
-	mkdir -p "$$S/fat95/docs"; \
-	cp $(GUIDE_FAT95)   "$$S/fat95/docs/"; \
-	cp $(GUIDE_CHANGES) "$$S/fat95/docs/"; \
-	cp $(GUIDE_DD)      "$$S/fat95/docs/"; \
-	cp $(GUIDE_LSFSRES) "$$S/fat95/docs/"; \
-	[ -f $(GUIDE_LSPTRES) ] && cp $(GUIDE_LSPTRES) "$$S/fat95/docs/" || true; \
-	cp dist.info "$$S/fat95.info"; \
-	for d in dist/DOSDrivers dist/english dist/deutsch dist/magyar dist/polska dist/russian dist/espa* dist/fran*; do \
-		[ -d "$$d" ] && cp -r "$$d" "$$S/fat95/"; \
-	done; \
-	for f in dist/*.info; do [ -f "$$f" ] && cp "$$f" "$$S/fat95/"; done; \
-	(cd "$$S" && LC_ALL=C $(LHA) c "$(ARCHIVE_NAME)" fat95 fat95.info 2>&1 | grep -v "iconv\|multibyte\|Invalid"); \
-	mv "$$S/$(ARCHIVE_NAME)" . && rm -rf "$$S"; \
-	echo "Created: $(ARCHIVE_NAME)" && $(LHA) l "$(ARCHIVE_NAME)"; \
-	echo ""; echo "For Aminet upload:"; echo "  1. $(ARCHIVE_NAME)"; echo "  2. $(README_NAME)"
+	@rm -f "$(ARCHIVE_NAME)"
+	@cd $(STAGE) && LC_ALL=C $(LHA) c "../../$(ARCHIVE_NAME)" fat95 fat95.info >/dev/null
+	@echo "Created: $(ARCHIVE_NAME)" && $(LHA) l "$(ARCHIVE_NAME)"
+	@echo ""; echo "For Aminet upload:"; echo "  1. $(ARCHIVE_NAME)"; echo "  2. $(README_NAME)"
 
 # ============================================================
 # Utility targets
@@ -558,6 +560,7 @@ release: check-vasm version-readme all $(README_NAME) guide check-lha
 
 # Clean build artifacts
 clean:
+	rm -rf build
 	rm -f $(DRIVER_TARGETS) $(TARGET_INSTALL95) $(TARGET_DD) $(TARGET_DEBUG95) $(TARGET_SETFILESIZE) $(TARGET_BOOT95) $(TARGET_LSFSRES)
 	rm -f $(VERSION_FAT95_INC) $(VERSION_INSTALL95_INC) $(VERSION_DD_INC) $(VERSION_DEBUG95_INC) $(VERSION_SETFILESIZE_INC) $(VERSION_BOOT95_INC) $(VERSION_LSFSRES_INC) $(VERSION_STAMP)
 	rm -rf dist/libs dist/c/lsptres $(GUIDE_LSPTRES)
@@ -664,4 +667,4 @@ $(GUIDE_LSFSRES): docs/lsfsres.md $(MD2GUIDE) $(VERSION_STAMP)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) docs/lsfsres.md $@ --version $(LSFSRES_VERSION) --date $(LSFSRES_DATE) --title "lsfsres" --ver-title "lsfsres guide"
 
-.PHONY: all fat95 fat95-080 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide guides help version-readme FORCE test test-amifuse test-list-update check-test-deps
+.PHONY: all fat95 fat95-080 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide guides help version-readme stage FORCE test test-amifuse test-list-update check-test-deps

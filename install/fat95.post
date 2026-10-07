@@ -1,0 +1,57 @@
+; fat95: language, tools, mountlists
+(P_LANGUAGE)
+(set fat95-tools
+  (askoptions
+    (prompt "Tools to copy to C:")
+    (help (cat "lsfsres: lists the filesystems in FileSystem.resource.\n\n"
+               "lsptres: lists the partitions in partition.resource.\n\n"
+               "dd: copies raw blocks between devices and files.\n\n"
+               "boot95: creates a boot partition.\n\n"
+               "SetFileSize: changes the size of a file.\n\n"
+               "debug95: shows fat95 debug information.\n\n"
+               "lsfsres, lsptres and dd are ticked by default."))
+    (choices "lsfsres: filesystems in FileSystem.resource"
+             "lsptres: partitions in partition.resource"
+             "dd: raw block transfer"
+             "boot95: create a boot partition"
+             "SetFileSize: change the size of a file"
+             "debug95: fat95 debug information")
+    (default 7)))
+(if (in fat95-tools 0) (copyfiles (source "c/lsfsres") (dest "C:")))
+(if (in fat95-tools 1) (copyfiles (source "c/lsptres") (dest "C:")))
+(if (in fat95-tools 2) (copyfiles (source "c/dd") (dest "C:")))
+(if (in fat95-tools 3) (copyfiles (source "c/boot95") (dest "C:")))
+(if (in fat95-tools 4) (copyfiles (source "c/SetFileSize") (dest "C:")))
+(if (in fat95-tools 5) (copyfiles (source "c/debug95") (dest "C:")))
+(set fa-file "S:User-Startup")
+(set fa-pattern "LoadModule#?L:fat95")
+(P_FIRST_ACTIVE)
+(set fat95-us-active fa-active)
+(set fat95-opts
+  (askoptions
+    (prompt "Optional parts")
+    (help (cat "Mountlists: MS0 and MS1 mount PC floppies on mfm.device units 0 and 1 "
+               "at boot.\n\n"
+               "Off by default."))
+    (choices "Mountlists MS0, MS1 to DEVS:DOSDrivers")
+    (default 0)))
+(if (in fat95-opts 0)
+  (copyfiles (source "DOSDrivers") (dest "DEVS:DOSDrivers") (choices "MS0" "MS1") (infos)))
+(if (= @user-level 2)
+  (
+    (set fat95-expert
+      (askoptions
+        (prompt "Expert options")
+        (help (cat "LoadModule: L:fat95 is loaded at boot from one LoadModule line at the "
+                   "top of S:User-Startup, so fat95 is registered for automounted FAT "
+                   "cards. Leave it off when fat95 is in ROM.\n\n"
+                   "cfd and fat95 share that line, because a second LoadModule replaces "
+                   "the modules of the first. The modules of the other package are kept. "
+                   "Unticked: L:fat95 is removed from it. Not added when S:User-Startup "
+                   "already has another LoadModule line.\n\n"
+                   "Ticked by default when S:User-Startup already has an active line."))
+        (choices "LoadModule L:fat95 line in S:User-Startup")
+        (default (if fat95-us-active 1 0))))
+    (set lm-self "fat95")
+    (set lm-on (in fat95-expert 0))
+    (P_LOADMODULE)))

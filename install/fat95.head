@@ -1,0 +1,8 @@
+; $VER: Install-fat95 @VERSION@ (@DATE@)
+(set @default-dest "SYS:")
+(welcome "Installs the fat95 filesystem and ptable.library and sets the language "
+         "of the fat95 requesters.")
+(set ptable-src "libs/")
+(set ptable-libdir "/")
+(set ptable-ask-cpu 0)
+(set ptable-ask-lsptres 0)

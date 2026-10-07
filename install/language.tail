@@ -1,0 +1,4 @@
+(if (not (exists "L:fat95"))
+  (abort "L:fat95 not found. Install fat95 first."))
+(P_LANGUAGE)
+(exit "The language of L:fat95 is changed." (quiet))
