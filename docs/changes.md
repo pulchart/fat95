@@ -1,9 +1,9 @@
-## 20261008-dev
+## 20261025-dev
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
 
-- `fat95 4.1 (30.09.2026)`
+- `fat95 4.2-dev (25.10.2026)` _(new)_
 - `install95 3.20 (04.10.2026)`
 - `dd 2.7 (03.10.2026)`
 - `debug95 3.19 (25.01.2026)`
