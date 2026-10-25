@@ -14,7 +14,8 @@ _Components in this release_:
 - `lsptres 1.2 (03.10.2026)`
 <!-- COMPONENTS:END -->
 
-TBD
+##### 'fat95 4.2'
+- The boot code of formatted volumes no longer looks for DOS system files. It shows `Not a bootable disk`, waits for a key and reboots. The System ID is `FAT95`.
 
 ## 20261007
 

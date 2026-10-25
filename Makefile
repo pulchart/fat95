@@ -456,6 +456,7 @@ test-amifuse: check-vasm $(TARGET_020)
 	}
 	$(Q)$(PYTHON) $(TESTDIR)/amifuse_suite.py --cycles $(AMIFUSE_CYCLES)
 	$(Q)$(PYTHON) $(TESTDIR)/amifuse_media.py --suite
+	$(Q)$(PYTHON) $(TESTDIR)/amifuse_format.py
 
 # Per-test inventory in tests/INVENTORY.md, built from the docstrings
 test-list-update:

@@ -248,11 +248,12 @@ SerializeDisk must propagate the result of flushing its changes.
 
 Not collected by `unittest`; each one is run on its own.
 
-`gated` runs under `make test` and must exit 0. `handler-in-the-loop tier` is the tier `make test-amifuse` drives: `amifuse_suite.py` and `amifuse_media.py --suite` run there; other image scripts run by hand. `library` entries are imported by the others, never run.
+`gated` runs under `make test` and must exit 0. `handler-in-the-loop tier` is the tier `make test-amifuse` drives: `amifuse_suite.py`, `amifuse_media.py --suite` and `amifuse_format.py` run there; other image scripts run by hand. `library` entries are imported by the others, never run.
 
 | file | status | what it checks |
 |---|---|---|
 | `amifuse_bridge.py` | library for the handler-in-the-loop tier | Raw-FAT adapter between AmiFUSE's HandlerBridge and the fat95 handler, with the observer that records what reaches the device. Patches nothing on disk; the changes are made to the imported objects at runtime. |
+| `amifuse_format.py` | handler-in-the-loop tier | ACTION_FORMAT on FAT12, FAT16 and FAT32 images: fsck.fat accepts the result and the boot sectors carry the boot code stub. |
 | `amifuse_fuse.py` | handler-in-the-loop tier | Real FUSE mount, write, unmount and remount of the built handler, one run per image profile. |
 | `amifuse_images.py` | library for the handler-in-the-loop tier | Reproducible FAT fixtures and the independent oracle that checks them: a pure-Python FAT parser plus fsck.fat and mtools. Images are unpartitioned regular files; never pass a device path. |
 | `amifuse_io_ab.py` | handler-in-the-loop tier | A/B device-request counts between two handler binaries. Counts requests, not Amiga wall-clock time. |
