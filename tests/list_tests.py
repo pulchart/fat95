@@ -63,7 +63,7 @@ def render():
             'Not collected by `unittest`; each one is run on its own.\n\n'
             '`gated` runs under `make test` and must exit 0. '
             '`handler-in-the-loop tier` is the tier `make test-amifuse` drives: '
-            '`amifuse_suite.py` and `amifuse_media.py --suite` run there; other '
+            '`amifuse_suite.py`, `amifuse_media.py --suite` and `amifuse_format.py` run there; other '
             'image scripts run by hand. '
             '`library` entries are imported by the others, never run.', '',
             '| file | status | what it checks |', '|---|---|---|']
