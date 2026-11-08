@@ -56,11 +56,16 @@
   * @{fg shine}SetFileSize 1.1 (25.01.2026)@{fg text}
   * @{fg shine}boot95 3.19 (25.01.2026)@{fg text}
   * @{fg shine}lsfsres 1.3 (03.10.2026)@{fg text}
-  * @{fg shine}ptable.library 2.2 (03.10.2026)@{fg text}
-  * @{fg shine}lsptres 1.2 (03.10.2026)@{fg text}
+  * @{fg shine}ptable.library 2.3-dev (08.11.2026)@{fg text} @{i}(new)@{ui}
+  * @{fg shine}lsptres 1.3-dev (08.11.2026)@{fg text} @{i}(new)@{ui}
 
 @{b}'fat95 4.2'@{ub}
-TBD
+  * Formatted volumes get a minimal boot sector instead of the PC DOS/Win95 boot
+    stub.
+  * Characters outside the code page in long names show as escapes such as @{fg shine}%880@{fg text}
+    instead of being cut or garbled.
+  * @{fg shine}lsptres VERBOSE@{fg text} shows whether a mounted partition is FAT12, FAT16 or FAT32
+    (ptable.library 2.3).
 
 ----------------------------------------
 @{"<< Prev" link Main}  @{"Contents" link Main}  @{"Next >>" link 20261007}

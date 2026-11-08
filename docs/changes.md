@@ -10,11 +10,14 @@ _Components in this release_:
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
 - `lsfsres 1.3 (03.10.2026)`
-- `ptable.library 2.2 (03.10.2026)`
-- `lsptres 1.2 (03.10.2026)`
+- `ptable.library 2.3-dev (08.11.2026)` _(new)_
+- `lsptres 1.3-dev (08.11.2026)` _(new)_
 <!-- COMPONENTS:END -->
 
-TBD
+##### 'fat95 4.2'
+- Formatted volumes get a minimal boot sector instead of the PC DOS/Win95 boot stub.
+- Characters outside the code page in long names show as escapes such as `%880` instead of being cut or garbled.
+- `lsptres VERBOSE` shows whether a mounted partition is FAT12, FAT16 or FAT32 (ptable.library 2.3).
 
 ## 20261007
 
