@@ -239,6 +239,12 @@ Partition selection from DosType bytes and device-name suffixes.
 
 | test | what it guards |
 |---|---|
+| `test_fat_type_names` | FATType 0/1/-1 name FAT12/FAT16/FAT32, an undecided 2 none. |
+| `test_registered_row_gets_the_name` | SetPartitionFs gets the registered start, the name and the node. |
+| `test_older_library_is_not_called` | A ptable.library without the LVO is left alone. |
+
+| test | what it guards |
+|---|---|
 | `test_init_registers_fat0_to_fat12_and_the_device_scheme` | FAT\0..FAT\12 cover partition indexes 0..11, then 0x464154FF. |
 
 #### `test_serialize.py`

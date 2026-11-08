@@ -189,6 +189,57 @@ class BlockSizeTests(unittest.TestCase):
         self.assertEqual(calls, [('register', 2048), ('unregister', 2048)])
 
 
+class FsTypeTests(unittest.TestCase):
+    """The FAT type of a mounted volume goes to ptable through SetPartitionFs."""
+    @classmethod
+    def setUpClass(cls):
+        tmp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(tmp.cleanup)
+        cls.image = load(Path(tmp.name) / 'handler.hunk')
+
+    def cstr(self, h, addr):
+        out = bytearray()
+        while addr and h.mem.r8(addr):
+            out.append(h.mem.r8(addr))
+            addr += 1
+        return out.decode()
+
+    def test_fat_type_names(self):
+        """FATType 0/1/-1 name FAT12/FAT16/FAT32, an undecided 2 none."""
+        h = Handler(self.image)
+        self.addCleanup(h.close)
+        names = []
+        for fat_type in (0, 1, -1, 2):
+            h.set('FATType', fat_type & 0xFFFF, 2)
+            h.run('FatFsType')
+            names.append(self.cstr(h, h.cpu.r_reg(8)))
+        self.assertEqual(names, ['FAT12', 'FAT16', 'FAT32', ''])
+
+    def call(self, neg_size):
+        h = Handler(self.image)
+        self.addCleanup(h.close)
+        lib, calls = 0x60000, []
+        h.set('ExecBase', 0x70000)
+        h.trap(0x70000 + C['OpenLibrary'], lambda: h.result(lib))
+        h.trap(0x70000 + C['CloseLibrary'], lambda: None)
+        h.mem.w16(lib + 16, neg_size)
+        h.trap(lib - 72, lambda: (calls.append((h.cpu.r_reg(1), self.cstr(h, h.cpu.r_reg(8)),
+                                                h.cpu.r_reg(10))), h.result(1)))
+        h.set('DeviceNode', 0x51000)
+        h.set('RegStart', 2048)
+        h.mem.w_block(0x53000, b'FAT32\0')
+        h.run('FsTypeViaPtable', a0=0x53000)
+        return calls
+
+    def test_registered_row_gets_the_name(self):
+        """SetPartitionFs gets the registered start, the name and the node."""
+        self.assertEqual(self.call(72), [(2048, 'FAT32', 0x51000)])
+
+    def test_older_library_is_not_called(self):
+        """A ptable.library without the LVO is left alone."""
+        self.assertEqual(self.call(68), [])
+
+
 class RegistrationTests(unittest.TestCase):
     """A ROM-resident fat95 registers one FileSysEntry per DosType it serves."""
     @classmethod

@@ -2448,6 +2448,8 @@ cd_current:
 	tst.l	d0
 	bne.s	cd_noabsent
 
+	sub.l	a0,a0
+	bsr	FsTypeViaPtable		;no volume: no filesystem name
 	bsr	MarkAbsentViaPtable	;media gone: clear PRESENT in partition.resource
 cd_noabsent:
 	move.l	VolumeNode(a4),d0
@@ -6207,6 +6209,7 @@ _LVOScanPartitions    = -36
 _LVORegisterPartition = -54
 _LVOMarkAbsent        = -60
 _LVOUnregisterPartition = -66
+_LVOSetPartitionFs    = -72
 
 ;-- partition.resource / PartEntry offsets, mirror of ptable_pub.i,
 ;   The resource ABI is append-only, fields are only ever added at the
@@ -6485,6 +6488,62 @@ uvp_close:
 	move.l	a3,a1
 	CALLEXEC CloseLibrary
 uvp_done:
+	movem.l	(sp)+,d0-d2/a0-a3/a6
+	rts
+
+;===========================================================
+; FatFsType - a0 = name of the mounted volume's FAT from FATType, 0 when
+; it is not decided. Clobbers d0.
+;===========================================================
+FatFsType:
+	move.w	FATType(a4),d0
+	bpl.s	ffs_pos
+	not.w	d0			;-1 FAT32
+	addq.w	#2,d0
+	bra.s	ffs_pick
+ffs_pos:
+	cmp.w	#1,d0
+	bhi.s	ffs_none		;2 = not decided yet
+ffs_pick:
+	mulu.w	#6,d0			;0 FAT12, 1 FAT16, 2 FAT32
+	lea	ffs_names(pc),a0
+	add.w	d0,a0
+	rts
+ffs_none:
+	sub.l	a0,a0
+	rts
+ffs_names:
+	dc.b	"FAT12",0,"FAT16",0,"FAT32",0
+	even
+
+;===========================================================
+; FsTypeViaPtable - record a0 = filesystem name (0 = no volume) on the
+; row this handler registered. Like UnregisterViaPtable: silent no-op
+; without ptable.library, without the LVO (older library), or when we
+; never registered. Preserves all registers.
+;===========================================================
+FsTypeViaPtable:
+	movem.l	d0-d2/a0-a3/a6,-(sp)
+	move.l	a0,d2			;d2 = name
+	bsr	_OpenPtable		;open ptable.library (ROM bootstrap if needed)
+	move.l	d0,a3			;a3 = ptable.library base
+	tst.l	d0
+	beq.s	ftv_done
+	move.l	d0,a6
+	cmp.w	#-_LVOSetPartitionFs,16(a6)	;LIB_NegSize covers the LVO?
+	blo.s	ftv_close
+	move.l	DeviceNode(a4),d0
+	beq.s	ftv_close		;no node -> nothing registered
+	move.l	d0,a2			;devNode (the registrant identity)
+	move.l	DevName(a4),a1
+	move.l	UnitNumber(a4),d0
+	move.l	RegStart(a4),d1		;the start it was registered with
+	move.l	d2,a0
+	jsr	_LVOSetPartitionFs(a6)
+ftv_close:
+	move.l	a3,a1
+	CALLEXEC CloseLibrary
+ftv_done:
 	movem.l	(sp)+,d0-d2/a0-a3/a6
 	rts
 
@@ -6803,6 +6862,8 @@ gdp_ok:
 	move.l	d0,EnvecBuf+DE_MaxTransfer(a4)	;..observe Read10 limit
 gdp_7:
 	move.l	DosType(a4),DiskType(a4) ;eg. `FAT\0`
+	bsr	FatFsType
+	bsr	FsTypeViaPtable		;tell ptable which FAT this volume is
 	bsr	ReportGeometry
 gdp_end:
 	bsr	DoTimer
