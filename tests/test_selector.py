@@ -136,6 +136,110 @@ class PickTests(unittest.TestCase):
         self.assertEqual(self.pick(5, [(4, FAT, 0, 0, 7), (4, FAT, 1, 0, 5000)]), 5000)
 
 
+class BlockSizeTests(unittest.TestCase):
+    """FirstBlock follows a block size switch; RegisterPartition and
+    UnregisterPartition get the same start."""
+    @classmethod
+    def setUpClass(cls):
+        tmp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(tmp.cleanup)
+        cls.image = load(Path(tmp.name) / 'handler.hunk')
+
+    def rescale(self, first, old_shift, new_size):
+        h = Handler(self.image)
+        try:
+            h.set('FirstBlock', first)
+            h.set('BlockShift', old_shift, 2)
+            h.run('RescaleFirst', d0=new_size)
+            return h.get('FirstBlock'), not h.cpu.r_sr() & 4
+        finally:
+            h.close()
+
+    def test_first_block_follows_the_block_size(self):
+        """512 to 4096 divides, 4096 to 512 multiplies, both exactly."""
+        self.assertEqual(self.rescale(2048, 9, 4096), (256, True))
+        self.assertEqual(self.rescale(0, 9, 4096), (0, True))
+        self.assertEqual(self.rescale(256, 12, 512), (2048, True))
+        self.assertEqual(self.rescale(2048, 9, 1024), (1024, True))
+
+    def test_unaligned_or_too_large_start_is_refused(self):
+        """A start that is no whole number of new blocks, or that overflows, is kept and refused."""
+        self.assertEqual(self.rescale(2049, 9, 4096), (2049, False))
+        self.assertEqual(self.rescale(0x20000000, 12, 512), (0x20000000, False))
+
+    def test_unregister_passes_the_registered_start(self):
+        """After the switch, UnregisterPartition still names the row's start."""
+        h = Handler(self.image)
+        self.addCleanup(h.close)
+        lib, calls = 0x60000, []
+        h.set('ExecBase', 0x70000)
+        h.trap(0x70000 + C['OpenLibrary'], lambda: h.result(lib))
+        h.trap(0x70000 + C['CloseLibrary'], lambda: None)
+        h.mem.w16(lib + 16, 66)                       # lib_NegSize covers -66
+        h.trap(lib - 54, lambda: (calls.append(('register', h.cpu.r_reg(1))), h.result(1)))
+        h.trap(lib - 66, lambda: (calls.append(('unregister', h.cpu.r_reg(1))), h.result(1)))
+        h.set('DeviceNode', 0x51000)
+        h.mem.w32(0x51000 + C['DOL_Name'], 0x52000 >> 2)
+        h.mem.w_block(0x52000, b'\x03CF0')
+        h.set('PartitionNum', 1, 2)
+        h.set('FirstBlock', 2048)
+        h.run('PublishViaPtable')
+        h.set('FirstBlock', 256)
+        h.run('UnregisterViaPtable')
+        self.assertEqual(calls, [('register', 2048), ('unregister', 2048)])
+
+
+class FsTypeTests(unittest.TestCase):
+    """The FAT type of a mounted volume goes to ptable through SetPartitionFs."""
+    @classmethod
+    def setUpClass(cls):
+        tmp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(tmp.cleanup)
+        cls.image = load(Path(tmp.name) / 'handler.hunk')
+
+    def cstr(self, h, addr):
+        out = bytearray()
+        while addr and h.mem.r8(addr):
+            out.append(h.mem.r8(addr))
+            addr += 1
+        return out.decode()
+
+    def test_fat_type_names(self):
+        """FATType 0/1/-1 name FAT12/FAT16/FAT32, an undecided 2 none."""
+        h = Handler(self.image)
+        self.addCleanup(h.close)
+        names = []
+        for fat_type in (0, 1, -1, 2):
+            h.set('FATType', fat_type & 0xFFFF, 2)
+            h.run('FatFsType')
+            names.append(self.cstr(h, h.cpu.r_reg(8)))
+        self.assertEqual(names, ['FAT12', 'FAT16', 'FAT32', ''])
+
+    def call(self, neg_size):
+        h = Handler(self.image)
+        self.addCleanup(h.close)
+        lib, calls = 0x60000, []
+        h.set('ExecBase', 0x70000)
+        h.trap(0x70000 + C['OpenLibrary'], lambda: h.result(lib))
+        h.trap(0x70000 + C['CloseLibrary'], lambda: None)
+        h.mem.w16(lib + 16, neg_size)
+        h.trap(lib - 72, lambda: (calls.append((h.cpu.r_reg(1), self.cstr(h, h.cpu.r_reg(8)),
+                                                h.cpu.r_reg(10))), h.result(1)))
+        h.set('DeviceNode', 0x51000)
+        h.set('RegStart', 2048)
+        h.mem.w_block(0x53000, b'FAT32\0')
+        h.run('FsTypeViaPtable', a0=0x53000)
+        return calls
+
+    def test_registered_row_gets_the_name(self):
+        """SetPartitionFs gets the registered start, the name and the node."""
+        self.assertEqual(self.call(72), [(2048, 'FAT32', 0x51000)])
+
+    def test_older_library_is_not_called(self):
+        """A ptable.library without the LVO is left alone."""
+        self.assertEqual(self.call(68), [])
+
+
 class RegistrationTests(unittest.TestCase):
     """A ROM-resident fat95 registers one FileSysEntry per DosType it serves."""
     @classmethod

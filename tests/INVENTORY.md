@@ -206,6 +206,28 @@ Failed FAT access stops mutation and reports failure to file operations.
 | `test_failed_predecessor_write_reports_failure_after_allocating_cluster` | A failed predecessor-window reload reports failure; the allocated cluster stays counted. |
 | `test_entry_write_failure_latches_and_replaces_stale_disk_full` | A refused mutation invalidates scan success and replaces stale disk-full status. |
 
+#### `test_name_escapes.py`
+
+Long names: characters outside the code page as %-escapes.
+
+| test | what it guards |
+|---|---|
+| `test_escape_matches_the_reference_form` | ExPutEscape writes the same characters as the reference encoder for 0x80 and above, in all three lengths. |
+| `test_escape_stops_at_the_end_of_the_name` | ExPutEscape writes nothing and returns 0 when the escape does not fit the 104 bytes of name. |
+| `test_parse_is_the_inverse_and_rejects_what_the_rules_reject` | ExParseEscape returns the code point and moves past the escape, or returns -1 and leaves a1 alone, exactly like the reference decoder on valid, odd-cased, overlong, truncated and random digit strings. |
+| `test_count_units` | ExCountUnits counts a valid escape as one unit, an escape above 0xFFFF as two and a stray % as itself. |
+| `test_units_to_name_without_a_code_page` | ExAddUnit keeps Latin-1 characters, escapes the rest, joins surrogate pairs into one escape and hides names it cannot show. |
+| `test_name_longer_than_the_limit_is_hidden` | ExAddUnit accepts 104 bytes of name and fails on the 105th, escapes included. |
+| `test_units_to_name_with_a_code_page` | With a code page ExAddUnit maps through the inverse table and escapes a character that is missing, also when its page exists and the slot holds the filler '_'. |
+| `test_name_to_units_with_a_code_page` | ExNextUnit turns code page characters above 0x7F into their Unicode value without the bit that 2*index leaves in the low byte, and decodes escapes including a surrogate pair. |
+| `test_parse_limits_of_every_form` | ExParseEscape agrees with the reference decoder at every limit: smallest and largest code point of each form, the form below and above, surrogate and noncharacter edges, 0x10FFFF and 0x110000, in all forms that can hold the value, upper and lower case. |
+| `test_parse_rejects_the_characters_next_to_the_digit_ranges` | ExParseEscape does not read ':' '@' '[' '`' '{' and other neighbours of 0-9, A-V, a-v as digits, in any position. |
+| `test_add_unit_surrogate_and_range_edges` | ExAddUnit at the edges of the surrogate ranges: first and last pair, 0xD800 pending, 0xDC00 alone, a second unit just below/above the low range, 0xD7FF and 0xE000 as characters, 0xFFFD ok and 0xFFFF hidden. |
+| `test_add_unit_pair_to_escape_values` | Every pair edge gives the escape of the right code point (low, high and middle values of the 10+10 bit split). |
+| `test_add_unit_hides_an_ascii_character_missing_from_the_code_page` | With a code page that lacks an ASCII character, ExAddUnit hides the name instead of writing an escape for a value below 0x80. |
+| `test_add_unit_code_page_filler_and_page_lookup` | With a code page, a character whose page exists but whose slot holds the filler, or whose page does not exist, is escaped, also if its low byte looks like '_' or like a high byte that has a page. |
+| `test_escape_routines_keep_the_registers_the_callers_use` | ExPutEscape and ExAddUnit leave d1-d6 and a0, a2-a6 alone (rxms_conv keeps its counters in d3/d5), ExParseEscape leaves d1-d7 and a0, a2-a6 (ExNextUnit keeps the pending surrogate in d4), on success and on failure. |
+
 #### `test_resize.py`
 
 File handles follow the replacement chain after truncate-to-zero and growth.
@@ -233,6 +255,18 @@ Partition selection from DosType bytes and device-name suffixes.
 
 | test | what it guards |
 |---|---|
+| `test_first_block_follows_the_block_size` | 512 to 4096 divides, 4096 to 512 multiplies, both exactly. |
+| `test_unaligned_or_too_large_start_is_refused` | A start that is no whole number of new blocks, or that overflows, is kept and refused. |
+| `test_unregister_passes_the_registered_start` | After the switch, UnregisterPartition still names the row's start. |
+
+| test | what it guards |
+|---|---|
+| `test_fat_type_names` | FATType 0/1/-1 name FAT12/FAT16/FAT32, an undecided 2 none. |
+| `test_registered_row_gets_the_name` | SetPartitionFs gets the registered start, the name and the node. |
+| `test_older_library_is_not_called` | A ptable.library without the LVO is left alone. |
+
+| test | what it guards |
+|---|---|
 | `test_init_registers_fat0_to_fat12_and_the_device_scheme` | FAT\0..FAT\12 cover partition indexes 0..11, then 0x464154FF. |
 
 #### `test_serialize.py`
@@ -248,11 +282,13 @@ SerializeDisk must propagate the result of flushing its changes.
 
 Not collected by `unittest`; each one is run on its own.
 
-`gated` runs under `make test` and must exit 0. `handler-in-the-loop tier` is the tier `make test-amifuse` drives: `amifuse_suite.py` and `amifuse_media.py --suite` run there; other image scripts run by hand. `library` entries are imported by the others, never run.
+`gated` runs under `make test` and must exit 0. `handler-in-the-loop tier` is the tier `make test-amifuse` drives: `amifuse_suite.py`, `amifuse_media.py --suite` and `amifuse_format.py` run there; other image scripts run by hand. `library` entries are imported by the others, never run.
 
 | file | status | what it checks |
 |---|---|---|
 | `amifuse_bridge.py` | library for the handler-in-the-loop tier | Raw-FAT adapter between AmiFUSE's HandlerBridge and the fat95 handler, with the observer that records what reaches the device. Patches nothing on disk; the changes are made to the imported objects at runtime. |
+| `amifuse_fat_names.py` | handler-in-the-loop tier | FAT long names with characters outside the code page: the built handler shows them as %-escapes and opens, creates, renames and deletes the right file; a Python parser and fsck.fat read the result back. |
+| `amifuse_format.py` | handler-in-the-loop tier | ACTION_FORMAT on FAT12, FAT16 and FAT32 images: fsck.fat accepts the result and the boot sectors carry the boot code stub. |
 | `amifuse_fuse.py` | handler-in-the-loop tier | Real FUSE mount, write, unmount and remount of the built handler, one run per image profile. |
 | `amifuse_images.py` | library for the handler-in-the-loop tier | Reproducible FAT fixtures and the independent oracle that checks them: a pure-Python FAT parser plus fsck.fat and mtools. Images are unpartitioned regular files; never pass a device path. |
 | `amifuse_io_ab.py` | handler-in-the-loop tier | A/B device-request counts between two handler binaries. Counts requests, not Amiga wall-clock time. |

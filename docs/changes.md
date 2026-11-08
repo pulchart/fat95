@@ -1,6 +1,26 @@
-## 20261007
+## 20261108-dev
 
 <!-- COMPONENTS:BEGIN -->
+_Components in this release_:
+
+- `fat95 4.2-dev (08.11.2026)` _(new)_
+- `install95 3.20 (04.10.2026)`
+- `dd 2.7 (03.10.2026)`
+- `debug95 3.19 (25.01.2026)`
+- `SetFileSize 1.1 (25.01.2026)`
+- `boot95 3.19 (25.01.2026)`
+- `lsfsres 1.3 (03.10.2026)`
+- `ptable.library 2.3-dev (08.11.2026)` _(new)_
+- `lsptres 1.3-dev (08.11.2026)` _(new)_
+<!-- COMPONENTS:END -->
+
+##### 'fat95 4.2'
+- Formatted volumes get a minimal boot sector instead of the PC DOS/Win95 boot stub.
+- Characters outside the code page in long names show as escapes such as `%880` instead of being cut or garbled.
+- `lsptres VERBOSE` shows whether a mounted partition is FAT12, FAT16 or FAT32 (ptable.library 2.3).
+
+## 20261007
+
 _Components in this release_:
 
 - `fat95 4.1 (30.09.2026)`
@@ -12,7 +32,6 @@ _Components in this release_:
 - `lsfsres 1.3 (03.10.2026)` _(new)_
 - `ptable.library 2.2 (03.10.2026)` _(new)_
 - `lsptres 1.2 (03.10.2026)` _(new)_
-<!-- COMPONENTS:END -->
 
 #### Install
 

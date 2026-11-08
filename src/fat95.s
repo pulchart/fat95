@@ -1017,7 +1017,9 @@ DirtyReady      = 898
 DirtyEligible   = 900
 DirtyCycle      = 902
 DirtyIO         = 904
-VarsSizeof      = 906
+RegStart	= 906		;start block given to RegisterPartition, in the
+				;row's blocks; UnregisterPartition passes it back
+VarsSizeof      = 910
 
 ;*** Here we go!! ******************************************
 
@@ -2446,6 +2448,8 @@ cd_current:
 	tst.l	d0
 	bne.s	cd_noabsent
 
+	sub.l	a0,a0
+	bsr	FsTypeViaPtable		;no volume: no filesystem name
 	bsr	MarkAbsentViaPtable	;media gone: clear PRESENT in partition.resource
 cd_noabsent:
 	move.l	VolumeNode(a4),d0
@@ -4082,6 +4086,12 @@ ReadLE_W	macro			;\3 = LE word at (\1)(\2), zero-extended
 		endif
 		endm
 
+WriteLE_W	macro			;LE word at (\1)(\2) = \3.w, \3 destroyed
+		move.b	\3,\1(\2)
+		lsr.w	#8,\3
+		move.b	\3,\1+1(\2)
+		endm
+
 ;--- copy a little-endian longword from (a1)+ to a host-endian
 ; longword field at \1(a4), using \2 as scratch on 68020+. On 68000
 ; we keep the original four-move.b sequence so the 68000 binary does
@@ -4446,21 +4456,10 @@ fmd_u5:
 	move.l	a2,a0
 	bsr	_WBlock			;FAT32: Boot block duplicate
 
-;- - Boot routine continuation - - - - - - - - - - - - - - -
+;- - Extended boot block - - - - - - - - - - - - - - - - - -
 
-	lea	ExtBoot32(pc),a0
-	move.l	a2,a1
-	moveq.l	#(ExtBootEnd-ExtBoot32)/8-1,d0
-fmd_xbcopy:
-	move.l	(a0)+,(a1)+
-	move.l	(a0)+,(a1)+
-	dbf	d0,fmd_xbcopy
-
-	moveq.l	#(ExtBoot32+508-ExtBootEnd)/4-1,d0
-	moveq.l	#0,d1
-fmd_xbfill:
-	move.l	d1,(a1)+
-	dbf	d0,fmd_xbfill
+	bsr	fmd_clrbuf
+	move.l	#$000055aa,508(a2)	;signature only
 
 	moveq.l	#2,d0
 	move.l	a2,a0
@@ -6081,6 +6080,42 @@ sdr_end:
 ;--- set initial parameters --------------------------------
 ;preserve all registers
 
+;--- FirstBlock in another block size --------------------------
+; d0.w = new block size (power of two). FirstBlock counts blocks of
+; BlockSize/BlockShift; it is converted to blocks of d0.w.
+; Out: Z clear on success; Z set when FirstBlock is not a whole number of
+; new blocks or does not fit 32 bits (FirstBlock unchanged).
+
+RescaleFirst:
+	movem.l	d0-d1/d3,-(sp)
+	and.l	#$ffff,d0
+	LOG2
+	sub.w	BlockShift(a4),d0	;d0 = new shift - old shift
+	move.l	FirstBlock(a4),d1
+	move.l	d1,d3
+	tst.w	d0
+	bmi.s	rsf_smaller
+	lsr.l	d0,d1			;larger blocks: divide..
+	move.l	d1,d3
+	lsl.l	d0,d3			;..exactly
+	bra.s	rsf_check
+rsf_smaller:
+	neg.w	d0
+	lsl.l	d0,d1			;smaller blocks: multiply..
+	move.l	d1,d3
+	lsr.l	d0,d3			;..without losing bits
+rsf_check:
+	cmp.l	FirstBlock(a4),d3
+	bne.s	rsf_fail
+	move.l	d1,FirstBlock(a4)
+	moveq.l	#1,d0			;Z clear
+	movem.l	(sp)+,d0-d1/d3
+	rts
+rsf_fail:
+	moveq.l	#0,d0			;Z set
+	movem.l	(sp)+,d0-d1/d3
+	rts
+
 SetIntParams:
 	movem.l	d0-d1,-(sp)
 	moveq.l	#0,d0
@@ -6180,6 +6215,7 @@ _LVOScanPartitions    = -36
 _LVORegisterPartition = -54
 _LVOMarkAbsent        = -60
 _LVOUnregisterPartition = -66
+_LVOSetPartitionFs    = -72
 
 ;-- partition.resource / PartEntry offsets, mirror of ptable_pub.i,
 ;   The resource ABI is append-only, fields are only ever added at the
@@ -6399,6 +6435,7 @@ pvp_overlay:
 	move.l	EnvecBuf+DE_Control(a4),d4	;de_Control BPTR (0 = none)
 	lsl.l	#2,d4			;-> APTR to control BSTR
 	move.l	DosType(a4),d5		;the DosType this mount really carries
+	move.l	d1,RegStart(a4)		;FirstBlock is rescaled with the block size
 	move.l	a3,a6			;a6 = ptable base (a3 kept for CloseLibrary)
 	jsr	_LVORegisterPartition(a6)
 pvp_close:
@@ -6451,12 +6488,68 @@ UnregisterViaPtable:
 	move.l	d0,a2			;devNode (the registrant identity)
 	move.l	DevName(a4),a1
 	move.l	UnitNumber(a4),d0
-	move.l	FirstBlock(a4),d1
+	move.l	RegStart(a4),d1		;the start it was registered with
 	jsr	_LVOUnregisterPartition(a6)
 uvp_close:
 	move.l	a3,a1
 	CALLEXEC CloseLibrary
 uvp_done:
+	movem.l	(sp)+,d0-d2/a0-a3/a6
+	rts
+
+;===========================================================
+; FatFsType - a0 = name of the mounted volume's FAT from FATType, 0 when
+; it is not decided. Clobbers d0.
+;===========================================================
+FatFsType:
+	move.w	FATType(a4),d0
+	bpl.s	ffs_pos
+	not.w	d0			;-1 FAT32
+	addq.w	#2,d0
+	bra.s	ffs_pick
+ffs_pos:
+	cmp.w	#1,d0
+	bhi.s	ffs_none		;2 = not decided yet
+ffs_pick:
+	mulu.w	#6,d0			;0 FAT12, 1 FAT16, 2 FAT32
+	lea	ffs_names(pc),a0
+	add.w	d0,a0
+	rts
+ffs_none:
+	sub.l	a0,a0
+	rts
+ffs_names:
+	dc.b	"FAT12",0,"FAT16",0,"FAT32",0
+	even
+
+;===========================================================
+; FsTypeViaPtable - record a0 = filesystem name (0 = no volume) on the
+; row this handler registered. Like UnregisterViaPtable: silent no-op
+; without ptable.library, without the LVO (older library), or when we
+; never registered. Preserves all registers.
+;===========================================================
+FsTypeViaPtable:
+	movem.l	d0-d2/a0-a3/a6,-(sp)
+	move.l	a0,d2			;d2 = name
+	bsr	_OpenPtable		;open ptable.library (ROM bootstrap if needed)
+	move.l	d0,a3			;a3 = ptable.library base
+	tst.l	d0
+	beq.s	ftv_done
+	move.l	d0,a6
+	cmp.w	#-_LVOSetPartitionFs,16(a6)	;LIB_NegSize covers the LVO?
+	blo.s	ftv_close
+	move.l	DeviceNode(a4),d0
+	beq.s	ftv_close		;no node -> nothing registered
+	move.l	d0,a2			;devNode (the registrant identity)
+	move.l	DevName(a4),a1
+	move.l	UnitNumber(a4),d0
+	move.l	RegStart(a4),d1		;the start it was registered with
+	move.l	d2,a0
+	jsr	_LVOSetPartitionFs(a6)
+ftv_close:
+	move.l	a3,a1
+	CALLEXEC CloseLibrary
+ftv_done:
 	movem.l	(sp)+,d0-d2/a0-a3/a6
 	rts
 
@@ -6684,6 +6777,9 @@ gdp_4:
 	cmp.w	BlockSize(a4),d2
 	beq.s	gdp_5			;keep Block size or..
 
+	move.w	d2,d0
+	bsr	RescaleFirst		;FirstBlock in the new block size
+	beq	gdp_ndos		;volume not on a block boundary
 	bsr	CacheFree
 	move.w	d2,BlockSize(a4)
 	bsr	SetIntParams
@@ -6772,6 +6868,8 @@ gdp_ok:
 	move.l	d0,EnvecBuf+DE_MaxTransfer(a4)	;..observe Read10 limit
 gdp_7:
 	move.l	DosType(a4),DiskType(a4) ;eg. `FAT\0`
+	bsr	FatFsType
+	bsr	FsTypeViaPtable		;tell ptable which FAT this volume is
 	bsr	ReportGeometry
 gdp_end:
 	bsr	DoTimer
@@ -7936,6 +8034,9 @@ lob_fncopy:
 	moveq.l	#-12,d1
 	add.l	d0,d1
 	move.b	d1,XMSDE_FNLength(a2)	;BStr length
+	lea	XMSDE_FullName(a2),a0
+	bsr	ExCountUnits		;UTF-16 units
+	add.w	#12,d0
 	divu.w	#13,d0
 	move.b	d0,XMSDE_ExtNum(a2)	;extension count
 
@@ -8606,9 +8707,12 @@ fdp_done\@:
 
 ; <- struct ExtMSDirEntry *entry, struct DiskKey *next entry or 0;
 
+WXU_BUF		= -8*13*2
+
 WriteXMSDE:
+	link.w	a5,#WXU_BUF
 	movem.l	d2-d5/a2-a3,-(sp)
-	move.l	28(sp),a3		;&source
+	move.l	8(a5),a3		;&source
 	move.l	XMSDE_ExtKey(a3),d2
 	beq.s	wxms_standard
 
@@ -8619,6 +8723,15 @@ WriteXMSDE:
 	moveq.l	#$40,d4
 	or.b	XMSDE_ExtNum(a3),d4	;# extensions + start flag
 	move.w	XMSDE_ExtOffset(a3),d3
+	cmp.b	#MSDEB_DELETED,(a3)
+	beq.s	wxms_block		;no name needed
+
+	moveq.l	#0,d0
+	move.b	XMSDE_ExtNum(a3),d0
+	mulu.w	#13,d0			;units in all entries
+	lea	XMSDE_FullName(a3),a0
+	lea	WXU_BUF(a5),a1
+	bsr	FatLfnUnits
 	bra.s	wxms_block
 
 wxms_standard:
@@ -8650,59 +8763,12 @@ wxms_next:
 	clr.b	MSDE_unused1(a2)
 	move.b	XMSDE_FNCheck(a3),MSDE_CheckSum(a2)
 	clr.w	MSDE_1L(a2)		;no Cluster chain
-	lea	XMSDE_FullName(a3),a0
+	lea	WXU_BUF(a5),a0
 	move.w	d4,d0
 	subq.w	#1,d0
-	mulu.w	#13,d0
-	add.w	d0,a0			;&source Name portion
-	move.l	#$f1f98000,d5
-	moveq.l	#-1,d1
-	lea	1(a2),a1
-	move.l	CodePage(a4),d0
-	bne.s	wxms_uwrite
-wxms_cwrite1:
-	clr.b	1(a1)
-	move.b	(a0)+,(a1)+		;write UTF16 char
-	beq.s	wxms_cskip2
-wxms_cskip1:
-	addq.l	#1,a1
-	add.l	d5,d5
-	bcs.s	wxms_cwrite1
-	bne.s	wxms_cskip1
-	bra.s	wxms_bready
-wxms_cwrite2:
-	move.b	d1,(a1)+
-	move.b	d1,(a1)			;$ffff pad
-wxms_cskip2:
-	addq.l	#1,a1
-	add.l	d5,d5
-	bcs.s	wxms_cwrite2
-	bne.s	wxms_cskip2
-	bra.s	wxms_bready
-
-wxms_uwrite:
-	move.l	d0,a6			;&forward table
-wxms_uchar:
-	moveq.l	#0,d0
-	moveq.l	#0,d1
-	move.b	(a0)+,d1
-	beq.s	wxms_uput
-
-	lsl.w	#1,d1
-	move.b	(a6,d1.l),d0
-	move.b	1(a6,d1.l),d1
-wxms_uput:
-	move.b	d1,(a1)+
-	move.b	d0,(a1)			;write Unicode char
-	or.b	d1,d0
-	moveq.l	#-1,d1
-	tst.b	d0
-	beq.s	wxms_cskip2
-wxms_uskip:
-	addq.l	#1,a1
-	add.l	d5,d5
-	bcs.s	wxms_uchar
-	bne.s	wxms_uskip
+	mulu.w	#13*2,d0
+	add.w	d0,a0			;&source units of this entry
+	bsr	PutLfnUnits
 	bra.s	wxms_bready
 
 wxms_deleted:
@@ -8729,7 +8795,7 @@ wxms_update:
 	tst.w	d4
 	bpl.w	wxms_block
 wxms_end:
-	move.l	32(sp),d0
+	move.l	12(a5),d0
 	beq.s	wxms_exit		;nobody wanted to know...
 
 	move.l	d0,a0
@@ -8737,16 +8803,96 @@ wxms_end:
 	move.w	d3,(a0)
 wxms_exit:
 	movem.l	(sp)+,d2-d5/a2-a3
+	unlk	a5
+	rts
+
+; a2 <- entry, a1 <- 13 units of a name portion (host order)
+
+GetLfnUnits:
+	movem.l	d0-d1/a0-a1,-(sp)
+	lea	1(a2),a0
+	moveq.l	#5-1,d1
+	bsr.s	glu_run
+	lea	14(a2),a0
+	moveq.l	#6-1,d1
+	bsr.s	glu_run
+	lea	28(a2),a0
+	moveq.l	#2-1,d1
+	bsr.s	glu_run
+	movem.l	(sp)+,d0-d1/a0-a1
+	rts
+glu_run:
+	ReadLE_W 0,a0,d0
+	move.w	d0,(a1)+
+	addq.l	#2,a0
+	dbf	d1,glu_run
+	rts
+
+; a0 <- 13 units of a name portion (host order), a2 <- entry
+
+PutLfnUnits:
+	movem.l	d0-d1/a0-a1,-(sp)
+	lea	1(a2),a1
+	moveq.l	#5-1,d1
+	bsr.s	plu_run
+	lea	14(a2),a1
+	moveq.l	#6-1,d1
+	bsr.s	plu_run
+	lea	28(a2),a1
+	moveq.l	#2-1,d1
+	bsr.s	plu_run
+	movem.l	(sp)+,d0-d1/a0-a1
+	rts
+plu_run:
+	move.w	(a0)+,d0
+	WriteLE_W 0,a1,d0
+	addq.l	#2,a1
+	dbf	d1,plu_run
+	rts
+
+; a0 <- name, a1 <- buffer, d0.w <- number of units to fill;
+; the units of the name, a terminator, then $ffff; registers kept
+
+FatLfnUnits:
+	movem.l	d0-d4/a0-a1/a6,-(sp)
+	exg	a0,a1			;a1 = name, a0 = buffer
+	move.w	d0,d3
+	moveq.l	#0,d4			;no pending low surrogate
+	move.l	CodePage(a4),a6
+fl_loop:
+	subq.w	#1,d3
+	bmi.s	fl_end
+	tst.w	d4
+	bne.s	fl_unit
+	tst.b	(a1)
+	beq.s	fl_term
+fl_unit:
+	bsr	ExNextUnit
+	move.w	d0,(a0)+
+	bra.s	fl_loop
+fl_term:
+	clr.w	(a0)+			;terminator..
+	moveq.l	#-1,d2
+fl_pad:
+	subq.w	#1,d3
+	bmi.s	fl_end
+	move.w	d2,(a0)+		;..and padding
+	bra.s	fl_pad
+fl_end:
+	movem.l	(sp)+,d0-d4/a0-a1/a6
 	rts
 
 ;--- read (extended) dir entry -----------------------------
 ; <- struct DiskKey *location, struct ExtMSDirEntry *target;
 ; -> BOOL ok;
 
+RXU_BUF		= -8*13*2
+
 ReadXMSDE:
+	link.w	a5,#RXU_BUF
 	movem.l	d2-d5/a2-a3,-(sp)
-	move.l	32(sp),a3		;&target
-	move.l	28(sp),a0		;&DiskKey
+	move.l	12(a5),a3		;&target
+	move.l	8(a5),a0		;&DiskKey
 	move.l	(a0)+,d2
 	move.w	(a0),d3			;old position
 	clr.l	XMSDE_ExtKey(a3)
@@ -8806,32 +8952,10 @@ rxms_xread:
 	cmp.b	#(XMSDE_Sizeof-XMSDE_FullName)/13,d0
 	bcc.s	rxms_xnext		;Name too long for struct ExtMSDirEntry
 
-	mulu.w	#13,d0
-	lea	XMSDE_FullName(a3),a1
-	add.l	d0,a1			;&target Name portion
-	move.l	#$f1f98000,d5
-	lea	1(a2),a0
-	move.l	InvCodePage(a4),d0
-	bne.s	rxms_uread
-rxms_xcread:
-	move.b	(a0)+,(a1)+		;read long Name
-	beq.s	rxms_xcstop
-rxms_xcskip:
-	addq.l	#1,a0
-	add.l	d5,d5
-	bcs.s	rxms_xcread
-	bne.s	rxms_xcskip
-rxms_xcdone:
-	tst.l	d4			;if Name length is a multiple of 13..
-	bmi.s	rxms_xnext
-
-	clr.b	(a1)+			;..add string termination
-rxms_xcstop:
-	moveq.l	#-XMSDE_FullName-1,d0
-	add.l	a1,d0
-	sub.l	a3,d0
-	move.b	d0,XMSDE_FNLength(a3)	;BStr length
-	bset	#31,d4			;"Name end marked"
+	mulu.w	#13*2,d0
+	lea	RXU_BUF(a5),a1
+	add.l	d0,a1			;&target unit portion
+	bsr	GetLfnUnits
 rxms_xnext:
 	add.w	#MSDE_Sizeof,a2
 	bsr	NextMSDE
@@ -8839,36 +8963,45 @@ rxms_xnext:
 	bne.w	rxms_next		;on in same..
 	bra.w	rxms_loop		;..or next Block
 
-;- - an extended entry with UTF decoding - - - - - - - - - -
+;- - the long name from the units of all extended entries - -
 
-rxms_uread:
-	move.l	d0,a6			;&reverse table
-rxms_uchar:
-	move.b	(a0)+,d1
-	move.b	(a0),d0
-	or.b	d1,d0
-	beq.s	rxms_uwrite
-
+rxms_conv:
+	movem.l	d6-d7/a6,-(sp)
+	moveq.l	#0,d5
+	move.b	XMSDE_ExtNum(a3),d5
+	mulu.w	#13,d5			;units to go
+	cmp.w	#(XMSDE_Sizeof-XMSDE_FullName)/13*13,d5
+	bhi.s	rxcv_none		;some entries were skipped
+	lea	RXU_BUF(a5),a0
+	lea	XMSDE_FullName(a3),a1
+	move.l	InvCodePage(a4),a6
+	moveq.l	#0,d7			;no pending high surrogate
+rxcv_loop:
+	subq.w	#1,d5
+	bmi.s	rxcv_end
 	moveq.l	#0,d0
-	move.b	(a0),d0
-	move.b	(a6,d0.l),d0
-	beq.s	rxms_udummy
-
-	lsl.w	#8,d0
-	move.b	d1,d0
-	move.b	(a6,d0.l),d0
-	bra.s	rxms_uwrite
-rxms_udummy:
-	moveq.l	#'_',d0
-rxms_uwrite:
-	move.b	d0,(a1)+
-	beq.s	rxms_xcstop
-rxms_uskip:
-	addq.l	#1,a0
-	add.l	d5,d5
-	bcs.s	rxms_uchar
-	bne.s	rxms_uskip
-	bra.s	rxms_xcdone
+	move.w	(a0)+,d0
+	beq.s	rxcv_end		;terminator
+	bsr	ExAddUnit
+	tst.w	d0
+	beq.s	rxcv_none		;cannot be shown: short name only
+	bra.s	rxcv_loop
+rxcv_end:
+	tst.w	d7
+	bne.s	rxcv_none
+	clr.b	(a1)
+	move.l	a1,d0
+	sub.l	a3,d0
+	moveq.l	#XMSDE_FullName,d1
+	sub.w	d1,d0
+	move.b	d0,XMSDE_FNLength(a3)	;BStr length
+	bra.s	rxcv_ret
+rxcv_none:
+	clr.b	XMSDE_FullName(a3)
+	clr.b	XMSDE_FNLength(a3)
+rxcv_ret:
+	movem.l	(sp)+,d6-d7/a6
+	rts
 
 ;- - a standard entry  - - - - - - - - - - - - - - - - - - -
 
@@ -8889,27 +9022,343 @@ rxms_normal:
 	LFN_CHECKSUM
 
 	cmp.b	XMSDE_FNCheck(a3),d0
-	beq.s	rxms_ok			;..fits standard Name
+	beq.s	rxms_named		;..fits standard Name
 rxms_delete:
-	move.l	28(sp),a0		;&DiskKey
+	move.l	8(a5),a0		;&DiskKey
 	move.l	(a0)+,d2		;error: return to old position..
 	move.w	(a0),d3
 	clr.l	XMSDE_ExtKey(a3)	;..and treat like..
 	move.b	#MSDEB_DELETED,(a3)	;..deleted
+	bra.s	rxms_ok
+rxms_named:
+	bsr	rxms_conv
 rxms_ok:
 	bsr	NextMSDE
 	moveq.l	#1,d0			;"OK"
 
 rxms_end:
-	move.l	28(sp),a0		;&DiskKey
+	move.l	8(a5),a0		;&DiskKey
 	move.l	d2,(a0)+
 	move.w	d3,(a0)			;new position
 	movem.l	(sp)+,d2-d5/a2-a3
+	unlk	a5
 	rts
 
 rxms_error:
 	moveq.l	#0,d0
 	bra.s	rxms_end
+
+;--- names: characters outside the code page --------------
+; Such a character is shown as % and its code point in base 32:
+; %880 is U+0100, %90M is U+0416. Code points below
+; $800 take 3 digits, below $10000 4, the rest 5; the last digit of
+; the longer forms is even. A % that starts no valid escape stands for itself.
+
+; a1 <- digit; d0 -> 0..31 or -1; a1 advanced
+
+ExDigit:
+	moveq.l	#0,d0
+	move.b	(a1)+,d0
+	cmp.b	#'0',d0
+	bcs	exd_bad
+	cmp.b	#'9',d0
+	bhi	exd_alpha
+	sub.w	#'0',d0
+	rts
+exd_alpha:
+	and.b	#$df,d0
+	cmp.b	#'A',d0
+	bcs	exd_bad
+	cmp.b	#'V',d0
+	bhi	exd_bad
+	sub.w	#'A'-10,d0
+	rts
+exd_bad:
+	moveq.l	#-1,d0
+	rts
+
+; a1 <- text behind a %; d0 -> code point or -1;
+; a1 is advanced behind a valid escape only
+
+ExParseEscape:
+	movem.l	d2-d5,-(sp)
+	move.l	a1,-(sp)
+	bsr	ExDigit
+	bmi	epe_bad
+	move.w	d0,d5
+	lsr.w	#2,d5			;digits to follow
+	cmp.w	#2,d5
+	bcs	epe_bad
+	cmp.w	#4,d5
+	bhi	epe_bad
+	and.l	#3,d0
+	move.w	d5,d2
+	move.w	d5,d4
+	lsl.w	#2,d4
+	add.w	d5,d4			;shift of the 1st digit: 5 per digit
+	lsl.l	d4,d0
+	move.l	d0,d3			;value so far
+epe_more:
+	subq.w	#5,d4
+	bsr	ExDigit
+	bmi	epe_bad
+	lsl.l	d4,d0
+	or.l	d0,d3
+	subq.w	#1,d2
+	bne	epe_more
+	cmp.w	#2,d5
+	beq	epe_form
+	btst	#0,d3
+	bne	epe_bad			;last digit is odd
+	lsr.l	#1,d3			;the long forms hold 2*code point
+epe_form:
+	move.l	#$80,d0
+	cmp.w	#2,d5
+	beq	epe_range
+	move.l	#$800,d0
+	cmp.w	#3,d5
+	beq	epe_range
+	move.l	#$10000,d0
+epe_range:
+	cmp.l	d0,d3
+	bcs	epe_bad			;shorter form exists
+	cmp.l	#$110000,d3
+	bcc	epe_bad
+	cmp.l	#$d800,d3
+	bcs	epe_ok
+	cmp.l	#$e000,d3
+	bcs	epe_bad			;surrogate
+	cmp.l	#$fffe,d3
+	beq	epe_bad
+	cmp.l	#$ffff,d3
+	beq	epe_bad
+epe_ok:
+	move.l	d3,d0
+	addq.l	#4,sp
+	movem.l	(sp)+,d2-d5
+	rts
+epe_bad:
+	move.l	(sp)+,a1
+	moveq.l	#-1,d0
+	movem.l	(sp)+,d2-d5
+	rts
+
+; d0 <- code point from $80; a1 <-> end of the name, a3 <- entry;
+; d0 -> 0: it does not fit the name, else the escape is written
+
+ExPutEscape:
+	movem.l	d1-d4,-(sp)
+	move.l	d0,d2
+	moveq.l	#3,d3			;digits behind the %
+	moveq.l	#10,d1			;shift of the 1st digit
+	cmp.l	#$800,d2
+	bcs	epc_room
+	moveq.l	#4,d3
+	moveq.l	#15,d1
+	cmp.l	#$10000,d2
+	bcs	epc_long
+	moveq.l	#5,d3
+	moveq.l	#20,d1
+epc_long:
+	add.l	d2,d2			;the last digit is even: 2*code point
+epc_room:
+	move.w	d3,d0
+	addq.w	#1,d0			;with the %
+	bsr	ExRoom
+	bcc	epc_none
+	move.b	#'%',(a1)+
+	move.w	d3,d4
+	subq.w	#1,d4
+	lsl.w	#2,d4			;class of the 1st digit: 8, 12, 16
+epc_digit:
+	move.l	d2,d0
+	lsr.l	d1,d0
+	add.w	d4,d0
+	moveq.l	#0,d4
+	and.w	#31,d0
+	add.b	#'0',d0
+	cmp.b	#'9',d0
+	bls	epc_store
+	addq.b	#7,d0
+epc_store:
+	move.b	d0,(a1)+
+	subq.w	#5,d1
+	subq.w	#1,d3
+	bne	epc_digit
+	moveq.l	#1,d0
+	bra	epc_end
+epc_none:
+	moveq.l	#0,d0
+epc_end:
+	movem.l	(sp)+,d1-d4
+	rts
+
+; d0.w <- bytes to add at a1; a3 <- entry; cs: they fit the name, d1 kept
+
+ExRoom:
+	movem.l	d1,-(sp)
+	move.l	a1,d1
+	sub.l	a3,d1
+	add.w	d0,d1
+	cmp.w	#XMSDE_FullName+MAXNAMELEN+1,d1
+	movem.l	(sp)+,d1
+	rts
+
+; d0.w <- UTF-16 code unit; d7 <-> pending high surrogate or 0;
+; a1 <-> end of the name, a3 <- entry, a6 <- InvCodePage or 0;
+; d0 -> 0: the name cannot be shown
+
+ExAddUnit:
+	movem.l	d1-d2/a0,-(sp)
+	and.l	#$ffff,d0
+	move.l	d0,d2
+	tst.w	d7
+	bne	eau_second
+	cmp.w	#$d800,d2
+	bcs	eau_char
+	cmp.w	#$e000,d2
+	bcc	eau_char
+	cmp.w	#$dc00,d2
+	bcc	eau_bad			;low surrogate first
+	move.w	d2,d7			;wait for the low one
+	bra	eau_ok
+eau_second:
+	cmp.w	#$dc00,d2
+	bcs	eau_bad
+	cmp.w	#$e000,d2
+	bcc	eau_bad
+	moveq.l	#0,d0
+	move.w	d7,d0
+	sub.w	#$d800,d0
+	lsl.l	#8,d0
+	lsl.l	#2,d0
+	sub.w	#$dc00,d2
+	add.l	d2,d0
+	add.l	#$10000,d0
+	moveq.l	#0,d7
+	bra	eau_esc
+eau_char:
+	tst.w	d2
+	beq	eau_bad
+	cmp.w	#$fffe,d2
+	bcc	eau_bad
+	move.l	a6,d1
+	beq	eau_latin
+	moveq.l	#0,d1
+	move.w	d2,d1
+	lsr.w	#8,d1
+	move.b	(a6,d1.l),d1		;page of the high byte
+	beq	eau_unit
+	lsl.w	#8,d1
+	move.b	d2,d1
+	move.b	(a6,d1.l),d1
+	beq	eau_unit
+	cmp.b	#'_',d1
+	bne	eau_put			;an unused slot holds '_' as well
+	move.l	CodePage(a4),a0
+	move.w	d2,d1
+	lsr.w	#8,d1
+	cmp.b	$be(a0),d1		;the table entry of '_'
+	bne	eau_unit
+	cmp.b	$bf(a0),d2
+	bne	eau_unit
+	moveq.l	#'_',d1
+	bra	eau_put
+eau_latin:
+	cmp.w	#$100,d2
+	bcc	eau_unit
+	move.b	d2,d1
+eau_put:
+	moveq.l	#1,d0
+	bsr	ExRoom
+	bcc	eau_bad
+	move.b	d1,(a1)+
+	bra	eau_ok
+eau_unit:
+	move.l	d2,d0
+eau_esc:
+	cmp.l	#$80,d0
+	bcs	eau_bad
+	bsr	ExPutEscape
+	bra	eau_end
+eau_ok:
+	moveq.l	#1,d0
+	bra	eau_end
+eau_bad:
+	moveq.l	#0,d0
+eau_end:
+	movem.l	(sp)+,d1-d2/a0
+	rts
+
+; a1 <-> next character of the name, a6 <- CodePage or 0;
+; d4 <-> pending low surrogate or 0; d0 -> UTF-16 code unit
+
+ExNextUnit:
+	move.l	d1,-(sp)
+	tst.w	d4
+	beq	enu_new
+	moveq.l	#0,d0
+	move.w	d4,d0
+	moveq.l	#0,d4
+	bra	enu_end
+enu_new:
+	moveq.l	#0,d1
+	move.b	(a1)+,d1
+	cmp.b	#'%',d1
+	bne	enu_plain
+	bsr	ExParseEscape
+	tst.l	d0
+	bmi	enu_plain		;a % of its own
+	cmp.l	#$10000,d0
+	bcs	enu_end
+	sub.l	#$10000,d0
+	move.w	d0,d4
+	and.w	#$3ff,d4
+	or.w	#$dc00,d4		;low surrogate for later
+	lsr.l	#8,d0
+	lsr.l	#2,d0
+	or.w	#$d800,d0
+	bra	enu_end
+enu_plain:
+	move.l	a6,d0
+	bne	enu_table
+	moveq.l	#0,d0
+	move.b	d1,d0
+	bra	enu_end
+enu_table:
+	add.w	d1,d1
+	moveq.l	#0,d0
+	move.b	(a6,d1.w),d0		;Unicode char of the codepage
+	lsl.w	#8,d0
+	move.b	1(a6,d1.w),d0
+enu_end:
+	move.l	(sp)+,d1
+	rts
+
+; a0 <- name; d0 -> its length in UTF-16 units
+
+ExCountUnits:
+	movem.l	d1/a1,-(sp)
+	move.l	a0,a1
+	moveq.l	#0,d1
+ecnt_loop:
+	move.b	(a1)+,d0
+	beq	ecnt_end
+	addq.w	#1,d1
+	cmp.b	#'%',d0
+	bne	ecnt_loop
+	bsr	ExParseEscape
+	tst.l	d0
+	bmi	ecnt_loop
+	cmp.l	#$10000,d0
+	bcs	ecnt_loop
+	addq.w	#1,d1			;a surrogate pair
+	bra	ecnt_loop
+ecnt_end:
+	moveq.l	#0,d0
+	move.w	d1,d0
+	movem.l	(sp)+,d1/a1
+	rts
 
 ;--- go to next dir entry ----------------------------------
 ; !ATTENTION!
@@ -14369,8 +14818,8 @@ _AutoRequest:
 ;*** constants and initialzed vars *************************
 
 BootSample12:				;FAT12 and FAT16
-	dc.b	$EB,$3E,$90		;branch to boot routine (i80x86-Code)
-	dc.b	")GZ.,IHC"		;System ID (Win95)
+	dc.b	$EB,$3C,$90		;branch to boot routine (i80x86-Code)
+	dc.b	"FAT95   "		;System ID
 	dc.b	$00,$02			;bytes/sector (little endian)
 	dc.b	$02			;sectors/cluster
 	dc.b	$01,$00			;# reserved sectors
@@ -14388,68 +14837,35 @@ BootSample12:				;FAT12 and FAT16
 	dc.b	$6D,$29,$F4,$0F		;serial #
 	dc.b	"           "		;volume name duplicate
 	dc.b	"FAT12   "		;file system ID
-	dc.b	$F1,$7D			;boot routine
-	dc.b	$FA,$33,$C9,$8E,$D1,$BC,$FC,$7B
-	dc.b	$16,$07,$BD,$78,$00,$C5,$76,$00
-	dc.b	$1E,$56,$16,$55,$BF,$22,$05,$89
-	dc.b	$7E,$00,$89,$4E,$02,$B1,$0B,$FC
-	dc.b	$F3,$A4,$06,$1F,$BD,$00,$7C,$C6
-	dc.b	$45,$FE,$0F,$8B,$46,$18,$88,$45
-	dc.b	$F9,$FB,$38,$66,$24,$7C,$04,$CD
-	dc.b	$13,$72,$3C,$8A,$46,$10,$98,$F7
-	dc.b	$66,$16,$03,$46,$1C,$13,$56,$1E
-	dc.b	$03,$46,$0E,$13,$D1,$50,$52,$89
-	dc.b	$46,$FC,$89,$56,$FE,$B8,$20,$00
-	dc.b	$8B,$76,$11,$F7,$E6,$8B,$5E,$0B
-	dc.b	$03,$C3,$48,$F7,$F3,$01,$46,$FC
-	dc.b	$11,$4E,$FE,$5A,$58,$BB,$00,$07
-	dc.b	$8B,$FB,$B1,$01,$E8,$94,$00,$72
-	dc.b	$47,$38,$2D,$74,$19,$B1,$0B,$56
-	dc.b	$8B,$76,$3E,$F3,$A6,$5E,$74,$4A
-	dc.b	$4E,$74,$0B,$03,$F9,$83,$C7,$15
-	dc.b	$3B,$FB,$72,$E5,$EB,$D7,$2B,$C9
-	dc.b	$B8,$D8,$7D,$87,$46,$3E,$3C,$D8
-	dc.b	$75,$99,$BE,$80,$7D,$AC,$98,$03
-	dc.b	$F0,$AC,$84,$C0,$74,$17,$3C,$FF
-	dc.b	$74,$09,$B4,$0E,$BB,$07,$00,$CD
-	dc.b	$10,$EB,$EE,$BE,$83,$7D,$EB,$E5
-	dc.b	$BE,$81,$7D,$EB,$E0,$33,$C0,$CD
-	dc.b	$16,$5E,$1F,$8F,$04,$8F,$44,$02
-	dc.b	$CD,$19,$BE,$82,$7D,$8B,$7D,$0F
-	dc.b	$83,$FF,$02,$72,$C8,$8B,$C7,$48
-	dc.b	$48,$8A,$4E,$0D,$F7,$E1,$03,$46
-	dc.b	$FC,$13,$56,$FE,$BB,$00,$07,$53
-	dc.b	$B1,$04,$E8,$16,$00,$5B,$72,$C8
-	dc.b	$81,$3F,$4D,$5A,$75,$A7,$81,$BF
-	dc.b	$00,$02,$42,$4A,$75,$9F,$EA,$00
-	dc.b	$02,$70,$00,$50,$52,$51,$91,$92
-	dc.b	$33,$D2,$F7,$76,$18,$91,$F7,$76
-	dc.b	$18,$42,$87,$CA,$F7,$76,$1A,$8A
-	dc.b	$F2,$8A,$56,$24,$8A,$E8,$D0,$CC
-	dc.b	$D0,$CC,$0A,$CC,$B8,$01,$02,$CD
-	dc.b	$13,$59,$5A,$58,$72,$09,$40,$75
-	dc.b	$01,$42,$03,$5E,$0B,$E2,$CC,$C3
-	dc.b	$03,$18,$01,$27,$0D,$0A,$55,$6E
-	dc.b	$67,$75,$65,$6C,$74,$69,$67,$65
-	dc.b	$73,$20,$53,$79,$73,$74,$65,$6D
-	dc.b	$20,$FF,$0D,$0A,$45,$2F,$41,$2D
-	dc.b	$46,$65,$68,$6C,$65,$72,$20,$20
-	dc.b	$20,$20,$FF,$0D,$0A,$44,$61,$74
-	dc.b	$65,$6E,$74,$72,$61,$65,$67,$65
-	dc.b	$72,$20,$77,$65,$63,$68,$73,$65
-	dc.b	$6C,$6E,$20,$75,$6E,$64,$20,$54
-	dc.b	$61,$73,$74,$65,$20,$64,$72,$75
-	dc.b	$65,$63,$6B,$65,$6E,$0D,$0A,$00
-	dc.b	$49,$4F,$20,$20,$20,$20,$20,$20
-	dc.b	$53,$59,$53,$4D,$53,$44,$4F,$53
-	dc.b	$20,$20,$20,$53,$59,$53,$80,$01
-	dc.b	$00,$57,$49,$4E,$42,$4F,$4F,$54
-	dc.b	$20,$53,$59,$53
-	dc.b	$00,$00,$55,$AA		;"magic number"
+	dc.b	$FA		;cli
+	dc.b	$31,$C0		;xor ax,ax
+	dc.b	$8E,$D0		;mov ss,ax
+	dc.b	$BC,$00,$7C	;mov sp,0x7c00
+	dc.b	$FB		;sti
+	dc.b	$0E		;push cs
+	dc.b	$1F		;pop ds
+	dc.b	$E8,$00,$00	;call 0xe
+	dc.b	$5E		;pop si
+	dc.b	$83,$C6,$18	;add si,0x18
+	dc.b	$AC		;lodsb
+	dc.b	$84,$C0		;test al,al
+	dc.b	$74,$09		;jz 0x20
+	dc.b	$B4,$0E		;mov ah,0xe
+	dc.b	$BB,$07,$00	;mov bx,0x7
+	dc.b	$CD,$10		;int 0x10
+	dc.b	$EB,$F2		;jmp 0x12
+	dc.b	$31,$C0		;xor ax,ax
+	dc.b	$CD,$16		;int 0x16
+	dc.b	$CD,$19		;int 0x19
+	dc.b	"Not a bootable disk",$0D,$0A
+	dc.b	"Press a key to reboot",$0D,$0A
+	dc.b	0
+	dcb.b	510-(*-BootSample12),0	;unused
+	dc.b	$55,$AA		;"magic number"
 
 BootSample32:				;FAT32
 	dc.b	$EB,$58,$90		;branch to boot routine (i80x86-Code)
-	dc.b	"MSWIN4.1"		;System ID (Win98)
+	dc.b	"FAT95   "		;System ID
 	dc.b	$00,$02			;bytes/sector (little endian)
 	dc.b	$08			;sectors/cluster
 	dc.b	$20,$00			;# reserved sectors (32)
@@ -14476,111 +14892,31 @@ BootSample32:				;FAT32
 	dc.b	$F2,$18,$35,$14		;serial #
 	dc.b	"           "		;volume name duplicate
 	dc.b	"FAT32   "		;file system ID
-	dc.b	$FA,$33,$C9,$8E,$D1,$BC
-	dc.b	$F8,$7B,$8E,$C1,$BD,$78,$00,$C5
-	dc.b	$76,$00,$1E,$56,$16,$55,$BF,$22
-	dc.b	$05,$89,$7E,$00,$89,$4E,$02,$B1
-	dc.b	$0B,$FC,$F3,$A4,$8E,$D9,$BD,$00
-	dc.b	$7C,$C6,$45,$FE,$0F,$8B,$46,$18
-	dc.b	$88,$45,$F9,$38,$4E,$40,$7D,$25
-	dc.b	$8B,$C1,$99,$BB,$00,$07,$E8,$97
-	dc.b	$00,$72,$1A,$83,$EB,$3A,$66,$A1
-	dc.b	$1C,$7C,$66,$3B,$07,$8A,$57,$FC
-	dc.b	$75,$06,$80,$CA,$02,$88,$56,$02
-	dc.b	$80,$C3,$10,$73,$ED,$BF,$02,$00
-	dc.b	$83,$7E,$16,$00,$75,$45,$8B,$46
-	dc.b	$1C,$8B,$56,$1E,$B9,$03,$00,$49
-	dc.b	$40,$75,$01,$42,$BB,$00,$7E,$E8
-	dc.b	$5F,$00,$73,$26,$B0,$F8,$4F,$74
-	dc.b	$1D,$8B,$46,$32,$33,$D2,$B9,$03
-	dc.b	$00,$3B,$C8,$77,$1E,$8B,$76,$0E
-	dc.b	$3B,$CE,$73,$17,$2B,$F1,$03,$46
-	dc.b	$1C,$13,$56,$1E,$EB,$D1,$73,$0B
-	dc.b	$EB,$27,$83,$7E,$2A,$00,$77,$03
-	dc.b	$E9,$FD,$02,$BE,$7E,$7D,$AC,$98
-	dc.b	$03,$F0,$AC,$84,$C0,$74,$17,$3C
-	dc.b	$FF,$74,$09,$B4,$0E,$BB,$07,$00
-	dc.b	$CD,$10,$EB,$EE,$BE,$81,$7D,$EB
-	dc.b	$E5,$BE,$7F,$7D,$EB,$E0,$98,$CD
-	dc.b	$16,$5E,$1F,$66,$8F,$04,$CD,$19
-	dc.b	$41,$56,$66,$6A,$00,$52,$50,$06
-	dc.b	$53,$6A,$01,$6A,$10,$8B,$F4,$60
-	dc.b	$80,$7E,$02,$0E,$75,$04,$B4,$42
-	dc.b	$EB,$1D,$91,$92,$33,$D2,$F7,$76
-	dc.b	$18,$91,$F7,$76,$18,$42,$87,$CA
-	dc.b	$F7,$76,$1A,$8A,$F2,$8A,$E8,$C0
-	dc.b	$CC,$02,$0A,$CC,$B8,$01,$02,$8A
-	dc.b	$56,$40,$CD,$13,$61,$8D,$64,$10
-	dc.b	$5E,$72,$0A,$40,$75,$01,$42,$03
-	dc.b	$5E,$0B,$49,$75,$B4,$C3,$03,$18
-	dc.b	$01,$27,$0D,$0A,$55,$6E,$67,$75
-	dc.b	$65,$6C,$74,$69,$67,$65,$73,$20
-	dc.b	$53,$79,$73,$74,$65,$6D,$20,$FF
-	dc.b	$0D,$0A,$45,$2F,$41,$2D,$46,$65
-	dc.b	$68,$6C,$65,$72,$20,$20,$20,$20
-	dc.b	$FF,$0D,$0A,$44,$61,$74,$65,$6E
-	dc.b	$74,$72,$61,$65,$67,$65,$72,$20
-	dc.b	$77,$65,$63,$68,$73,$65,$6C,$6E
-	dc.b	$20,$75,$6E,$64,$20,$54,$61,$73
-	dc.b	$74,$65,$20,$64,$72,$75,$65,$63
-	dc.b	$6B,$65,$6E,$0D,$0A,$00,$00,$00
-	dc.b	$49,$4F,$20,$20,$20,$20,$20,$20
-	dc.b	$53,$59,$53,$4D,$53,$44,$4F,$53
-	dc.b	$20,$20,$20,$53,$59,$53,$7E,$01
-	dc.b	$00,$57,$49,$4E,$42,$4F,$4F,$54
-	dc.b	$20,$53,$59,$53,$00,$00,$55,$AA
-
-ExtBoot32:				;FAT32 boot routine continued
-	dc.b	$FA,$66,$0F,$B6,$46,$10,$66,$8B
-	dc.b	$4E,$24,$66,$F7,$E1,$66,$03,$46
-	dc.b	$1C,$66,$0F,$B7,$56,$0E,$66,$03
-	dc.b	$C2,$33,$C9,$66,$89,$46,$FC,$66
-	dc.b	$C7,$46,$F8,$FF,$FF,$FF,$FF,$FA
-	dc.b	$66,$8B,$46,$2C,$66,$83,$F8,$02
-	dc.b	$0F,$82,$CF,$FC,$66,$3D,$F8,$FF
-	dc.b	$FF,$0F,$0F,$83,$C5,$FC,$66,$0F
-	dc.b	$A4,$C2,$10,$FB,$52,$50,$FA,$66
-	dc.b	$C1,$E0,$10,$66,$0F,$AC,$D0,$10
-	dc.b	$66,$83,$E8,$02,$66,$0F,$B6,$5E
-	dc.b	$0D,$8B,$F3,$66,$F7,$E3,$66,$03
-	dc.b	$46,$FC,$66,$0F,$A4,$C2,$10,$FB
-	dc.b	$BB,$00,$07,$8B,$FB,$B9,$01,$00
-	dc.b	$E8,$BE,$FC,$0F,$82,$AA,$FC,$38
-	dc.b	$2D,$74,$1E,$B1,$0B,$56,$BE,$D8
-	dc.b	$7D,$F3,$A6,$5E,$74,$19,$03,$F9
-	dc.b	$83,$C7,$15,$3B,$FB,$72,$E8,$4E
-	dc.b	$75,$D6,$58,$5A,$E8,$66,$00,$72
-	dc.b	$AB,$83,$C4,$04,$E9,$64,$FC,$83
-	dc.b	$C4,$04,$8B,$75,$09,$8B,$7D,$0F
-	dc.b	$8B,$C6,$FA,$66,$C1,$E0,$10,$8B
-	dc.b	$C7,$66,$83,$F8,$02,$72,$3B,$66
-	dc.b	$3D,$F8,$FF,$FF,$0F,$73,$33,$66
-	dc.b	$48,$66,$48,$66,$0F,$B6,$4E,$0D
-	dc.b	$66,$F7,$E1,$66,$03,$46,$FC,$66
-	dc.b	$0F,$A4,$C2,$10,$FB,$BB,$00,$07
-	dc.b	$53,$B9,$04,$00,$E8,$52,$FC,$5B
-	dc.b	$0F,$82,$3D,$FC,$81,$3F,$4D,$5A
-	dc.b	$75,$08,$81,$BF,$00,$02,$42,$4A
-	dc.b	$74,$06,$BE,$80,$7D,$E9,$0E,$FC
-	dc.b	$EA,$00,$02,$70,$00,$03,$C0,$13
-	dc.b	$D2,$03,$C0,$13,$D2,$E8,$18,$00
-	dc.b	$FA,$26,$66,$8B,$01,$66,$25,$FF
-	dc.b	$FF,$FF,$0F,$66,$0F,$A4,$C2,$10
-	dc.b	$66,$3D,$F8,$FF,$FF,$0F,$FB,$C3
-	dc.b	$BF,$00,$7E,$FA,$66,$C1,$E0,$10
-	dc.b	$66,$0F,$AC,$D0,$10,$66,$0F,$B7
-	dc.b	$4E,$0B,$66,$33,$D2,$66,$F7,$F1
-	dc.b	$66,$3B,$46,$F8,$74,$44,$66,$89
-	dc.b	$46,$F8,$66,$03,$46,$1C,$66,$0F
-	dc.b	$B7,$4E,$0E,$66,$03,$C1,$66,$0F
-	dc.b	$B7,$5E,$28,$83,$E3,$0F,$74,$16
-	dc.b	$3A,$5E,$10,$0F,$83,$A4,$FB,$52
-	dc.b	$66,$8B,$C8,$66,$8B,$46,$24,$66
-	dc.b	$F7,$E3,$66,$03,$C1,$5A,$52,$66
-	dc.b	$0F,$A4,$C2,$10,$FB,$8B,$DF,$B9
-	dc.b	$01,$00,$E8,$B4,$FB,$5A,$0F,$82
-	dc.b	$9F,$FB,$FB,$8B,$DA,$C3,$00,$00
-ExtBootEnd:
+	dc.b	$FA		;cli
+	dc.b	$31,$C0		;xor ax,ax
+	dc.b	$8E,$D0		;mov ss,ax
+	dc.b	$BC,$00,$7C	;mov sp,0x7c00
+	dc.b	$FB		;sti
+	dc.b	$0E		;push cs
+	dc.b	$1F		;pop ds
+	dc.b	$E8,$00,$00	;call 0xe
+	dc.b	$5E		;pop si
+	dc.b	$83,$C6,$18	;add si,0x18
+	dc.b	$AC		;lodsb
+	dc.b	$84,$C0		;test al,al
+	dc.b	$74,$09		;jz 0x20
+	dc.b	$B4,$0E		;mov ah,0xe
+	dc.b	$BB,$07,$00	;mov bx,0x7
+	dc.b	$CD,$10		;int 0x10
+	dc.b	$EB,$F2		;jmp 0x12
+	dc.b	$31,$C0		;xor ax,ax
+	dc.b	$CD,$16		;int 0x16
+	dc.b	$CD,$19		;int 0x19
+	dc.b	"Not a bootable disk",$0D,$0A
+	dc.b	"Press a key to reboot",$0D,$0A
+	dc.b	0
+	dcb.b	510-(*-BootSample32),0	;unused
+	dc.b	$55,$AA		;"magic number"
 	cnop	0,4
 
 ;--- Text for den Nutzer -----------------------------------

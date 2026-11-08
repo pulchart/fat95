@@ -1,6 +1,7 @@
 """Raw-FAT adapter between AmiFUSE's HandlerBridge and the fat95 handler, with the observer that records what reaches the device. Patches nothing on disk; the changes are made to the imported objects at runtime.
 
 Status: library for the handler-in-the-loop tier. Pinned to amifuse 0.6.0."""
+import contextlib
 import os
 import time
 from pathlib import Path
@@ -155,3 +156,47 @@ class RawFatBridge(HandlerBridge):
                 return
             time.sleep(.002)
         raise AssertionError(f'Handler did not exit after ACTION_DIE: {self.snapshot()}')
+
+
+def okay(result):
+    assert result[0] != 0, result
+    return result[0]
+
+
+def escaped(text):
+    """What the handler shows for names outside Latin-1: % and the code point in base 32."""
+    digits = '0123456789ABCDEFGHIJKLMNOPQRSTUV'
+    out = ''
+    for char in text:
+        cp = ord(char)
+        if cp < 0x100:
+            out += char
+        elif cp < 0x800:
+            out += '%' + digits[8 | cp >> 10] + digits[cp >> 5 & 31] + digits[cp & 31]
+        elif cp < 0x10000:
+            out += '%' + digits[12 | cp >> 14] + digits[cp >> 9 & 31] + digits[cp >> 4 & 31] + digits[cp << 1 & 31]
+        else:
+            out += '%' + digits[16 | cp >> 19] + digits[cp >> 14 & 31] + digits[cp >> 9 & 31] + digits[cp >> 4 & 31] + digits[cp << 1 & 31]
+    return out
+
+
+MEMF_CLEAR = 0x10000
+
+
+@contextlib.contextmanager
+def dirty_memory():
+    """Memory from AllocMem without MEMF_CLEAR holds garbage, as on a real machine."""
+    from amitools.vamos.lib.ExecLibrary import ExecLibrary
+    original = ExecLibrary.AllocMem
+
+    def alloc(self, ctx):
+        size, flags = ctx.cpu.r_reg(0), ctx.cpu.r_reg(1)
+        addr = original(self, ctx)
+        if addr and not flags & MEMF_CLEAR:
+            ctx.mem.clear_block(addr, (size + 3) & ~3, 0xA5)
+        return addr
+    ExecLibrary.AllocMem = alloc
+    try:
+        yield
+    finally:
+        ExecLibrary.AllocMem = original
