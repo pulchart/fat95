@@ -5,7 +5,7 @@ Type:         disk/misc
 Version:      @VERSION@
 Requires:     AmigaOS 1.3+ (2.0+ for full functionality), a block device such as compactflash.device, ptable.library for auto-detect
 Architecture: m68k-amigaos
-Replaces:     disk/misc/fat95.v20260930.lha
+Replaces:     disk/misc/fat95.v20261007.lha
 Kurz:         fat12/16/32 Dateisystem-Handler
 
 fat95 - FAT12/16/32 filesystem handler for AmigaOS. Fork of disk/misc/fat95.lha.
@@ -17,20 +17,7 @@ COMPONENTS IN THIS RELEASE
 WHAT'S NEW (@DATE@)
 =======================
 
-Install:
-
-* New Installer and Language scripts.
-* Language folders replaced by locale/ files.
-* Reworked icon positions.
-
-ptable.library 2.2, lsptres 1.2:
-
-* Synced with amigaos-ptable, ptable.library ships in small and full
-  variants.
-
-Tools 'dd 2.7', 'lsfsres 1.3':
-
-* Improved paging.
+TBD
 
 Purpose
 =======
