@@ -1,17 +1,17 @@
-## 20261115-dev
+## 20261115
 
 <!-- COMPONENTS:BEGIN -->
 _Components in this release_:
 
-- `fat95 4.2-dev (15.11.2026)` _(new)_
+- `fat95 4.2 (15.11.2026)` _(new)_
 - `install95 3.20 (04.10.2026)`
 - `dd 2.7 (03.10.2026)`
 - `debug95 3.19 (25.01.2026)`
 - `SetFileSize 1.1 (25.01.2026)`
 - `boot95 3.19 (25.01.2026)`
 - `lsfsres 1.3 (03.10.2026)`
-- `ptable.library 2.3-dev (15.11.2026)` _(new)_
-- `lsptres 1.3-dev (15.11.2026)` _(new)_
+- `ptable.library 2.3 (15.11.2026)` _(new)_
+- `lsptres 1.3 (15.11.2026)` _(new)_
 <!-- COMPONENTS:END -->
 
 ##### 'fat95 4.2'
