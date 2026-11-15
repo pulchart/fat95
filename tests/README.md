@@ -47,6 +47,8 @@ disk-full recovery and remounts. It also runs 18 bounded media-removal,
 replacement and write/flush-failure cases; restart cycles do not repeat these.
 `amifuse_format.py` formats FAT12, FAT16 and FAT32 images, then checks them with `fsck.fat` and compares the boot code with the stub (byte comparison needs nasm).
 
+`amifuse_fat_names.py` mounts FAT16 and FAT32 images with long names outside the code page; it needs dosfstools and mtools.
+
 Other image scripts run separately; see [INVENTORY.md](INVENTORY.md).
 Only `amifuse_fuse.py` needs fuse3 and access to `/dev/fuse`.
 Set `FAT95_BASELINE_DRIVER` to a second handler binary for A/B comparisons.

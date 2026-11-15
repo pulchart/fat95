@@ -4086,6 +4086,12 @@ ReadLE_W	macro			;\3 = LE word at (\1)(\2), zero-extended
 		endif
 		endm
 
+WriteLE_W	macro			;LE word at (\1)(\2) = \3.w, \3 destroyed
+		move.b	\3,\1(\2)
+		lsr.w	#8,\3
+		move.b	\3,\1+1(\2)
+		endm
+
 ;--- copy a little-endian longword from (a1)+ to a host-endian
 ; longword field at \1(a4), using \2 as scratch on 68020+. On 68000
 ; we keep the original four-move.b sequence so the 68000 binary does
@@ -8028,6 +8034,9 @@ lob_fncopy:
 	moveq.l	#-12,d1
 	add.l	d0,d1
 	move.b	d1,XMSDE_FNLength(a2)	;BStr length
+	lea	XMSDE_FullName(a2),a0
+	bsr	ExCountUnits		;UTF-16 units
+	add.w	#12,d0
 	divu.w	#13,d0
 	move.b	d0,XMSDE_ExtNum(a2)	;extension count
 
@@ -8698,9 +8707,12 @@ fdp_done\@:
 
 ; <- struct ExtMSDirEntry *entry, struct DiskKey *next entry or 0;
 
+WXU_BUF		= -8*13*2
+
 WriteXMSDE:
+	link.w	a5,#WXU_BUF
 	movem.l	d2-d5/a2-a3,-(sp)
-	move.l	28(sp),a3		;&source
+	move.l	8(a5),a3		;&source
 	move.l	XMSDE_ExtKey(a3),d2
 	beq.s	wxms_standard
 
@@ -8711,6 +8723,15 @@ WriteXMSDE:
 	moveq.l	#$40,d4
 	or.b	XMSDE_ExtNum(a3),d4	;# extensions + start flag
 	move.w	XMSDE_ExtOffset(a3),d3
+	cmp.b	#MSDEB_DELETED,(a3)
+	beq.s	wxms_block		;no name needed
+
+	moveq.l	#0,d0
+	move.b	XMSDE_ExtNum(a3),d0
+	mulu.w	#13,d0			;units in all entries
+	lea	XMSDE_FullName(a3),a0
+	lea	WXU_BUF(a5),a1
+	bsr	FatLfnUnits
 	bra.s	wxms_block
 
 wxms_standard:
@@ -8742,59 +8763,12 @@ wxms_next:
 	clr.b	MSDE_unused1(a2)
 	move.b	XMSDE_FNCheck(a3),MSDE_CheckSum(a2)
 	clr.w	MSDE_1L(a2)		;no Cluster chain
-	lea	XMSDE_FullName(a3),a0
+	lea	WXU_BUF(a5),a0
 	move.w	d4,d0
 	subq.w	#1,d0
-	mulu.w	#13,d0
-	add.w	d0,a0			;&source Name portion
-	move.l	#$f1f98000,d5
-	moveq.l	#-1,d1
-	lea	1(a2),a1
-	move.l	CodePage(a4),d0
-	bne.s	wxms_uwrite
-wxms_cwrite1:
-	clr.b	1(a1)
-	move.b	(a0)+,(a1)+		;write UTF16 char
-	beq.s	wxms_cskip2
-wxms_cskip1:
-	addq.l	#1,a1
-	add.l	d5,d5
-	bcs.s	wxms_cwrite1
-	bne.s	wxms_cskip1
-	bra.s	wxms_bready
-wxms_cwrite2:
-	move.b	d1,(a1)+
-	move.b	d1,(a1)			;$ffff pad
-wxms_cskip2:
-	addq.l	#1,a1
-	add.l	d5,d5
-	bcs.s	wxms_cwrite2
-	bne.s	wxms_cskip2
-	bra.s	wxms_bready
-
-wxms_uwrite:
-	move.l	d0,a6			;&forward table
-wxms_uchar:
-	moveq.l	#0,d0
-	moveq.l	#0,d1
-	move.b	(a0)+,d1
-	beq.s	wxms_uput
-
-	lsl.w	#1,d1
-	move.b	(a6,d1.l),d0
-	move.b	1(a6,d1.l),d1
-wxms_uput:
-	move.b	d1,(a1)+
-	move.b	d0,(a1)			;write Unicode char
-	or.b	d1,d0
-	moveq.l	#-1,d1
-	tst.b	d0
-	beq.s	wxms_cskip2
-wxms_uskip:
-	addq.l	#1,a1
-	add.l	d5,d5
-	bcs.s	wxms_uchar
-	bne.s	wxms_uskip
+	mulu.w	#13*2,d0
+	add.w	d0,a0			;&source units of this entry
+	bsr	PutLfnUnits
 	bra.s	wxms_bready
 
 wxms_deleted:
@@ -8821,7 +8795,7 @@ wxms_update:
 	tst.w	d4
 	bpl.w	wxms_block
 wxms_end:
-	move.l	32(sp),d0
+	move.l	12(a5),d0
 	beq.s	wxms_exit		;nobody wanted to know...
 
 	move.l	d0,a0
@@ -8829,16 +8803,96 @@ wxms_end:
 	move.w	d3,(a0)
 wxms_exit:
 	movem.l	(sp)+,d2-d5/a2-a3
+	unlk	a5
+	rts
+
+; a2 <- entry, a1 <- 13 units of a name portion (host order)
+
+GetLfnUnits:
+	movem.l	d0-d1/a0-a1,-(sp)
+	lea	1(a2),a0
+	moveq.l	#5-1,d1
+	bsr.s	glu_run
+	lea	14(a2),a0
+	moveq.l	#6-1,d1
+	bsr.s	glu_run
+	lea	28(a2),a0
+	moveq.l	#2-1,d1
+	bsr.s	glu_run
+	movem.l	(sp)+,d0-d1/a0-a1
+	rts
+glu_run:
+	ReadLE_W 0,a0,d0
+	move.w	d0,(a1)+
+	addq.l	#2,a0
+	dbf	d1,glu_run
+	rts
+
+; a0 <- 13 units of a name portion (host order), a2 <- entry
+
+PutLfnUnits:
+	movem.l	d0-d1/a0-a1,-(sp)
+	lea	1(a2),a1
+	moveq.l	#5-1,d1
+	bsr.s	plu_run
+	lea	14(a2),a1
+	moveq.l	#6-1,d1
+	bsr.s	plu_run
+	lea	28(a2),a1
+	moveq.l	#2-1,d1
+	bsr.s	plu_run
+	movem.l	(sp)+,d0-d1/a0-a1
+	rts
+plu_run:
+	move.w	(a0)+,d0
+	WriteLE_W 0,a1,d0
+	addq.l	#2,a1
+	dbf	d1,plu_run
+	rts
+
+; a0 <- name, a1 <- buffer, d0.w <- number of units to fill;
+; the units of the name, a terminator, then $ffff; registers kept
+
+FatLfnUnits:
+	movem.l	d0-d4/a0-a1/a6,-(sp)
+	exg	a0,a1			;a1 = name, a0 = buffer
+	move.w	d0,d3
+	moveq.l	#0,d4			;no pending low surrogate
+	move.l	CodePage(a4),a6
+fl_loop:
+	subq.w	#1,d3
+	bmi.s	fl_end
+	tst.w	d4
+	bne.s	fl_unit
+	tst.b	(a1)
+	beq.s	fl_term
+fl_unit:
+	bsr	ExNextUnit
+	move.w	d0,(a0)+
+	bra.s	fl_loop
+fl_term:
+	clr.w	(a0)+			;terminator..
+	moveq.l	#-1,d2
+fl_pad:
+	subq.w	#1,d3
+	bmi.s	fl_end
+	move.w	d2,(a0)+		;..and padding
+	bra.s	fl_pad
+fl_end:
+	movem.l	(sp)+,d0-d4/a0-a1/a6
 	rts
 
 ;--- read (extended) dir entry -----------------------------
 ; <- struct DiskKey *location, struct ExtMSDirEntry *target;
 ; -> BOOL ok;
 
+RXU_BUF		= -8*13*2
+
 ReadXMSDE:
+	link.w	a5,#RXU_BUF
 	movem.l	d2-d5/a2-a3,-(sp)
-	move.l	32(sp),a3		;&target
-	move.l	28(sp),a0		;&DiskKey
+	move.l	12(a5),a3		;&target
+	move.l	8(a5),a0		;&DiskKey
 	move.l	(a0)+,d2
 	move.w	(a0),d3			;old position
 	clr.l	XMSDE_ExtKey(a3)
@@ -8898,32 +8952,10 @@ rxms_xread:
 	cmp.b	#(XMSDE_Sizeof-XMSDE_FullName)/13,d0
 	bcc.s	rxms_xnext		;Name too long for struct ExtMSDirEntry
 
-	mulu.w	#13,d0
-	lea	XMSDE_FullName(a3),a1
-	add.l	d0,a1			;&target Name portion
-	move.l	#$f1f98000,d5
-	lea	1(a2),a0
-	move.l	InvCodePage(a4),d0
-	bne.s	rxms_uread
-rxms_xcread:
-	move.b	(a0)+,(a1)+		;read long Name
-	beq.s	rxms_xcstop
-rxms_xcskip:
-	addq.l	#1,a0
-	add.l	d5,d5
-	bcs.s	rxms_xcread
-	bne.s	rxms_xcskip
-rxms_xcdone:
-	tst.l	d4			;if Name length is a multiple of 13..
-	bmi.s	rxms_xnext
-
-	clr.b	(a1)+			;..add string termination
-rxms_xcstop:
-	moveq.l	#-XMSDE_FullName-1,d0
-	add.l	a1,d0
-	sub.l	a3,d0
-	move.b	d0,XMSDE_FNLength(a3)	;BStr length
-	bset	#31,d4			;"Name end marked"
+	mulu.w	#13*2,d0
+	lea	RXU_BUF(a5),a1
+	add.l	d0,a1			;&target unit portion
+	bsr	GetLfnUnits
 rxms_xnext:
 	add.w	#MSDE_Sizeof,a2
 	bsr	NextMSDE
@@ -8931,36 +8963,45 @@ rxms_xnext:
 	bne.w	rxms_next		;on in same..
 	bra.w	rxms_loop		;..or next Block
 
-;- - an extended entry with UTF decoding - - - - - - - - - -
+;- - the long name from the units of all extended entries - -
 
-rxms_uread:
-	move.l	d0,a6			;&reverse table
-rxms_uchar:
-	move.b	(a0)+,d1
-	move.b	(a0),d0
-	or.b	d1,d0
-	beq.s	rxms_uwrite
-
+rxms_conv:
+	movem.l	d6-d7/a6,-(sp)
+	moveq.l	#0,d5
+	move.b	XMSDE_ExtNum(a3),d5
+	mulu.w	#13,d5			;units to go
+	cmp.w	#(XMSDE_Sizeof-XMSDE_FullName)/13*13,d5
+	bhi.s	rxcv_none		;some entries were skipped
+	lea	RXU_BUF(a5),a0
+	lea	XMSDE_FullName(a3),a1
+	move.l	InvCodePage(a4),a6
+	moveq.l	#0,d7			;no pending high surrogate
+rxcv_loop:
+	subq.w	#1,d5
+	bmi.s	rxcv_end
 	moveq.l	#0,d0
-	move.b	(a0),d0
-	move.b	(a6,d0.l),d0
-	beq.s	rxms_udummy
-
-	lsl.w	#8,d0
-	move.b	d1,d0
-	move.b	(a6,d0.l),d0
-	bra.s	rxms_uwrite
-rxms_udummy:
-	moveq.l	#'_',d0
-rxms_uwrite:
-	move.b	d0,(a1)+
-	beq.s	rxms_xcstop
-rxms_uskip:
-	addq.l	#1,a0
-	add.l	d5,d5
-	bcs.s	rxms_uchar
-	bne.s	rxms_uskip
-	bra.s	rxms_xcdone
+	move.w	(a0)+,d0
+	beq.s	rxcv_end		;terminator
+	bsr	ExAddUnit
+	tst.w	d0
+	beq.s	rxcv_none		;cannot be shown: short name only
+	bra.s	rxcv_loop
+rxcv_end:
+	tst.w	d7
+	bne.s	rxcv_none
+	clr.b	(a1)
+	move.l	a1,d0
+	sub.l	a3,d0
+	moveq.l	#XMSDE_FullName,d1
+	sub.w	d1,d0
+	move.b	d0,XMSDE_FNLength(a3)	;BStr length
+	bra.s	rxcv_ret
+rxcv_none:
+	clr.b	XMSDE_FullName(a3)
+	clr.b	XMSDE_FNLength(a3)
+rxcv_ret:
+	movem.l	(sp)+,d6-d7/a6
+	rts
 
 ;- - a standard entry  - - - - - - - - - - - - - - - - - - -
 
@@ -8981,27 +9022,343 @@ rxms_normal:
 	LFN_CHECKSUM
 
 	cmp.b	XMSDE_FNCheck(a3),d0
-	beq.s	rxms_ok			;..fits standard Name
+	beq.s	rxms_named		;..fits standard Name
 rxms_delete:
-	move.l	28(sp),a0		;&DiskKey
+	move.l	8(a5),a0		;&DiskKey
 	move.l	(a0)+,d2		;error: return to old position..
 	move.w	(a0),d3
 	clr.l	XMSDE_ExtKey(a3)	;..and treat like..
 	move.b	#MSDEB_DELETED,(a3)	;..deleted
+	bra.s	rxms_ok
+rxms_named:
+	bsr	rxms_conv
 rxms_ok:
 	bsr	NextMSDE
 	moveq.l	#1,d0			;"OK"
 
 rxms_end:
-	move.l	28(sp),a0		;&DiskKey
+	move.l	8(a5),a0		;&DiskKey
 	move.l	d2,(a0)+
 	move.w	d3,(a0)			;new position
 	movem.l	(sp)+,d2-d5/a2-a3
+	unlk	a5
 	rts
 
 rxms_error:
 	moveq.l	#0,d0
 	bra.s	rxms_end
+
+;--- names: characters outside the code page --------------
+; Such a character is shown as % and its code point in base 32:
+; %880 is U+0100, %90M is U+0416. Code points below
+; $800 take 3 digits, below $10000 4, the rest 5; the last digit of
+; the longer forms is even. A % that starts no valid escape stands for itself.
+
+; a1 <- digit; d0 -> 0..31 or -1; a1 advanced
+
+ExDigit:
+	moveq.l	#0,d0
+	move.b	(a1)+,d0
+	cmp.b	#'0',d0
+	bcs	exd_bad
+	cmp.b	#'9',d0
+	bhi	exd_alpha
+	sub.w	#'0',d0
+	rts
+exd_alpha:
+	and.b	#$df,d0
+	cmp.b	#'A',d0
+	bcs	exd_bad
+	cmp.b	#'V',d0
+	bhi	exd_bad
+	sub.w	#'A'-10,d0
+	rts
+exd_bad:
+	moveq.l	#-1,d0
+	rts
+
+; a1 <- text behind a %; d0 -> code point or -1;
+; a1 is advanced behind a valid escape only
+
+ExParseEscape:
+	movem.l	d2-d5,-(sp)
+	move.l	a1,-(sp)
+	bsr	ExDigit
+	bmi	epe_bad
+	move.w	d0,d5
+	lsr.w	#2,d5			;digits to follow
+	cmp.w	#2,d5
+	bcs	epe_bad
+	cmp.w	#4,d5
+	bhi	epe_bad
+	and.l	#3,d0
+	move.w	d5,d2
+	move.w	d5,d4
+	lsl.w	#2,d4
+	add.w	d5,d4			;shift of the 1st digit: 5 per digit
+	lsl.l	d4,d0
+	move.l	d0,d3			;value so far
+epe_more:
+	subq.w	#5,d4
+	bsr	ExDigit
+	bmi	epe_bad
+	lsl.l	d4,d0
+	or.l	d0,d3
+	subq.w	#1,d2
+	bne	epe_more
+	cmp.w	#2,d5
+	beq	epe_form
+	btst	#0,d3
+	bne	epe_bad			;last digit is odd
+	lsr.l	#1,d3			;the long forms hold 2*code point
+epe_form:
+	move.l	#$80,d0
+	cmp.w	#2,d5
+	beq	epe_range
+	move.l	#$800,d0
+	cmp.w	#3,d5
+	beq	epe_range
+	move.l	#$10000,d0
+epe_range:
+	cmp.l	d0,d3
+	bcs	epe_bad			;shorter form exists
+	cmp.l	#$110000,d3
+	bcc	epe_bad
+	cmp.l	#$d800,d3
+	bcs	epe_ok
+	cmp.l	#$e000,d3
+	bcs	epe_bad			;surrogate
+	cmp.l	#$fffe,d3
+	beq	epe_bad
+	cmp.l	#$ffff,d3
+	beq	epe_bad
+epe_ok:
+	move.l	d3,d0
+	addq.l	#4,sp
+	movem.l	(sp)+,d2-d5
+	rts
+epe_bad:
+	move.l	(sp)+,a1
+	moveq.l	#-1,d0
+	movem.l	(sp)+,d2-d5
+	rts
+
+; d0 <- code point from $80; a1 <-> end of the name, a3 <- entry;
+; d0 -> 0: it does not fit the name, else the escape is written
+
+ExPutEscape:
+	movem.l	d1-d4,-(sp)
+	move.l	d0,d2
+	moveq.l	#3,d3			;digits behind the %
+	moveq.l	#10,d1			;shift of the 1st digit
+	cmp.l	#$800,d2
+	bcs	epc_room
+	moveq.l	#4,d3
+	moveq.l	#15,d1
+	cmp.l	#$10000,d2
+	bcs	epc_long
+	moveq.l	#5,d3
+	moveq.l	#20,d1
+epc_long:
+	add.l	d2,d2			;the last digit is even: 2*code point
+epc_room:
+	move.w	d3,d0
+	addq.w	#1,d0			;with the %
+	bsr	ExRoom
+	bcc	epc_none
+	move.b	#'%',(a1)+
+	move.w	d3,d4
+	subq.w	#1,d4
+	lsl.w	#2,d4			;class of the 1st digit: 8, 12, 16
+epc_digit:
+	move.l	d2,d0
+	lsr.l	d1,d0
+	add.w	d4,d0
+	moveq.l	#0,d4
+	and.w	#31,d0
+	add.b	#'0',d0
+	cmp.b	#'9',d0
+	bls	epc_store
+	addq.b	#7,d0
+epc_store:
+	move.b	d0,(a1)+
+	subq.w	#5,d1
+	subq.w	#1,d3
+	bne	epc_digit
+	moveq.l	#1,d0
+	bra	epc_end
+epc_none:
+	moveq.l	#0,d0
+epc_end:
+	movem.l	(sp)+,d1-d4
+	rts
+
+; d0.w <- bytes to add at a1; a3 <- entry; cs: they fit the name, d1 kept
+
+ExRoom:
+	movem.l	d1,-(sp)
+	move.l	a1,d1
+	sub.l	a3,d1
+	add.w	d0,d1
+	cmp.w	#XMSDE_FullName+MAXNAMELEN+1,d1
+	movem.l	(sp)+,d1
+	rts
+
+; d0.w <- UTF-16 code unit; d7 <-> pending high surrogate or 0;
+; a1 <-> end of the name, a3 <- entry, a6 <- InvCodePage or 0;
+; d0 -> 0: the name cannot be shown
+
+ExAddUnit:
+	movem.l	d1-d2/a0,-(sp)
+	and.l	#$ffff,d0
+	move.l	d0,d2
+	tst.w	d7
+	bne	eau_second
+	cmp.w	#$d800,d2
+	bcs	eau_char
+	cmp.w	#$e000,d2
+	bcc	eau_char
+	cmp.w	#$dc00,d2
+	bcc	eau_bad			;low surrogate first
+	move.w	d2,d7			;wait for the low one
+	bra	eau_ok
+eau_second:
+	cmp.w	#$dc00,d2
+	bcs	eau_bad
+	cmp.w	#$e000,d2
+	bcc	eau_bad
+	moveq.l	#0,d0
+	move.w	d7,d0
+	sub.w	#$d800,d0
+	lsl.l	#8,d0
+	lsl.l	#2,d0
+	sub.w	#$dc00,d2
+	add.l	d2,d0
+	add.l	#$10000,d0
+	moveq.l	#0,d7
+	bra	eau_esc
+eau_char:
+	tst.w	d2
+	beq	eau_bad
+	cmp.w	#$fffe,d2
+	bcc	eau_bad
+	move.l	a6,d1
+	beq	eau_latin
+	moveq.l	#0,d1
+	move.w	d2,d1
+	lsr.w	#8,d1
+	move.b	(a6,d1.l),d1		;page of the high byte
+	beq	eau_unit
+	lsl.w	#8,d1
+	move.b	d2,d1
+	move.b	(a6,d1.l),d1
+	beq	eau_unit
+	cmp.b	#'_',d1
+	bne	eau_put			;an unused slot holds '_' as well
+	move.l	CodePage(a4),a0
+	move.w	d2,d1
+	lsr.w	#8,d1
+	cmp.b	$be(a0),d1		;the table entry of '_'
+	bne	eau_unit
+	cmp.b	$bf(a0),d2
+	bne	eau_unit
+	moveq.l	#'_',d1
+	bra	eau_put
+eau_latin:
+	cmp.w	#$100,d2
+	bcc	eau_unit
+	move.b	d2,d1
+eau_put:
+	moveq.l	#1,d0
+	bsr	ExRoom
+	bcc	eau_bad
+	move.b	d1,(a1)+
+	bra	eau_ok
+eau_unit:
+	move.l	d2,d0
+eau_esc:
+	cmp.l	#$80,d0
+	bcs	eau_bad
+	bsr	ExPutEscape
+	bra	eau_end
+eau_ok:
+	moveq.l	#1,d0
+	bra	eau_end
+eau_bad:
+	moveq.l	#0,d0
+eau_end:
+	movem.l	(sp)+,d1-d2/a0
+	rts
+
+; a1 <-> next character of the name, a6 <- CodePage or 0;
+; d4 <-> pending low surrogate or 0; d0 -> UTF-16 code unit
+
+ExNextUnit:
+	move.l	d1,-(sp)
+	tst.w	d4
+	beq	enu_new
+	moveq.l	#0,d0
+	move.w	d4,d0
+	moveq.l	#0,d4
+	bra	enu_end
+enu_new:
+	moveq.l	#0,d1
+	move.b	(a1)+,d1
+	cmp.b	#'%',d1
+	bne	enu_plain
+	bsr	ExParseEscape
+	tst.l	d0
+	bmi	enu_plain		;a % of its own
+	cmp.l	#$10000,d0
+	bcs	enu_end
+	sub.l	#$10000,d0
+	move.w	d0,d4
+	and.w	#$3ff,d4
+	or.w	#$dc00,d4		;low surrogate for later
+	lsr.l	#8,d0
+	lsr.l	#2,d0
+	or.w	#$d800,d0
+	bra	enu_end
+enu_plain:
+	move.l	a6,d0
+	bne	enu_table
+	moveq.l	#0,d0
+	move.b	d1,d0
+	bra	enu_end
+enu_table:
+	add.w	d1,d1
+	moveq.l	#0,d0
+	move.b	(a6,d1.w),d0		;Unicode char of the codepage
+	lsl.w	#8,d0
+	move.b	1(a6,d1.w),d0
+enu_end:
+	move.l	(sp)+,d1
+	rts
+
+; a0 <- name; d0 -> its length in UTF-16 units
+
+ExCountUnits:
+	movem.l	d1/a1,-(sp)
+	move.l	a0,a1
+	moveq.l	#0,d1
+ecnt_loop:
+	move.b	(a1)+,d0
+	beq	ecnt_end
+	addq.w	#1,d1
+	cmp.b	#'%',d0
+	bne	ecnt_loop
+	bsr	ExParseEscape
+	tst.l	d0
+	bmi	ecnt_loop
+	cmp.l	#$10000,d0
+	bcs	ecnt_loop
+	addq.w	#1,d1			;a surrogate pair
+	bra	ecnt_loop
+ecnt_end:
+	moveq.l	#0,d0
+	move.w	d1,d0
+	movem.l	(sp)+,d1/a1
+	rts
 
 ;--- go to next dir entry ----------------------------------
 ; !ATTENTION!

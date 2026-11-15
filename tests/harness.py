@@ -178,10 +178,11 @@ class Handler:
         self.mem.w32(req + C['IO_Actual'], 0 if self.short else length)
         self.result(0)
 
-    def run(self, name, d0=0, d1=0, a0=0, a1=0, a2=None):
+    def run(self, name, d0=0, d1=0, a0=0, a1=0, a2=None, regs=None):
         """Call a routine by name and return d0.
 
-        d0, d1, a0, a1 and a2 seed the registers. The scratch registers are
+        d0, d1, a0, a1 and a2 seed the registers, regs maps further register
+        numbers (d0-d7 = 0-7, a0-a7 = 8-15) to values. The scratch registers are
         seeded with 0x13570000 plus their number so a test can assert they came
         back unchanged, and a4 always points at the globals.
         """
@@ -194,6 +195,8 @@ class Handler:
             self.cpu.w_reg(reg, value)
         if a2 is not None:
             self.cpu.w_reg(10, a2)
+        for reg, value in (regs or {}).items():
+            self.cpu.w_reg(reg, value)
         self.m.prepare(self.syms[name], STACK)
         for _ in range(200):
             result = self.m.execute(10000)
