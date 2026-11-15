@@ -6,12 +6,12 @@
 # Release version: YYYYMMDD package date + optional in-progress suffix
 # (-dev, -rc1, ...). Empty suffix for a final release.
 RELEASE_DATE = 20261115
-VERSION_SUFFIX = -dev
+VERSION_SUFFIX =
 
 # fat95 filesystem handler version
 FAT95_MAJOR = 4
 FAT95_MINOR = 2
-FAT95_VERSION_SUFFIX = -dev
+FAT95_VERSION_SUFFIX =
 FAT95_DATE = 15.11.2026
 
 # Tools versions
