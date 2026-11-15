@@ -136,6 +136,59 @@ class PickTests(unittest.TestCase):
         self.assertEqual(self.pick(5, [(4, FAT, 0, 0, 7), (4, FAT, 1, 0, 5000)]), 5000)
 
 
+class BlockSizeTests(unittest.TestCase):
+    """FirstBlock follows a block size switch; RegisterPartition and
+    UnregisterPartition get the same start."""
+    @classmethod
+    def setUpClass(cls):
+        tmp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(tmp.cleanup)
+        cls.image = load(Path(tmp.name) / 'handler.hunk')
+
+    def rescale(self, first, old_shift, new_size):
+        h = Handler(self.image)
+        try:
+            h.set('FirstBlock', first)
+            h.set('BlockShift', old_shift, 2)
+            h.run('RescaleFirst', d0=new_size)
+            return h.get('FirstBlock'), not h.cpu.r_sr() & 4
+        finally:
+            h.close()
+
+    def test_first_block_follows_the_block_size(self):
+        """512 to 4096 divides, 4096 to 512 multiplies, both exactly."""
+        self.assertEqual(self.rescale(2048, 9, 4096), (256, True))
+        self.assertEqual(self.rescale(0, 9, 4096), (0, True))
+        self.assertEqual(self.rescale(256, 12, 512), (2048, True))
+        self.assertEqual(self.rescale(2048, 9, 1024), (1024, True))
+
+    def test_unaligned_or_too_large_start_is_refused(self):
+        """A start that is no whole number of new blocks, or that overflows, is kept and refused."""
+        self.assertEqual(self.rescale(2049, 9, 4096), (2049, False))
+        self.assertEqual(self.rescale(0x20000000, 12, 512), (0x20000000, False))
+
+    def test_unregister_passes_the_registered_start(self):
+        """After the switch, UnregisterPartition still names the row's start."""
+        h = Handler(self.image)
+        self.addCleanup(h.close)
+        lib, calls = 0x60000, []
+        h.set('ExecBase', 0x70000)
+        h.trap(0x70000 + C['OpenLibrary'], lambda: h.result(lib))
+        h.trap(0x70000 + C['CloseLibrary'], lambda: None)
+        h.mem.w16(lib + 16, 66)                       # lib_NegSize covers -66
+        h.trap(lib - 54, lambda: (calls.append(('register', h.cpu.r_reg(1))), h.result(1)))
+        h.trap(lib - 66, lambda: (calls.append(('unregister', h.cpu.r_reg(1))), h.result(1)))
+        h.set('DeviceNode', 0x51000)
+        h.mem.w32(0x51000 + C['DOL_Name'], 0x52000 >> 2)
+        h.mem.w_block(0x52000, b'\x03CF0')
+        h.set('PartitionNum', 1, 2)
+        h.set('FirstBlock', 2048)
+        h.run('PublishViaPtable')
+        h.set('FirstBlock', 256)
+        h.run('UnregisterViaPtable')
+        self.assertEqual(calls, [('register', 2048), ('unregister', 2048)])
+
+
 class RegistrationTests(unittest.TestCase):
     """A ROM-resident fat95 registers one FileSysEntry per DosType it serves."""
     @classmethod
