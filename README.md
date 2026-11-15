@@ -258,7 +258,7 @@ The partition number is its place in the partition table, as `lsptres` shows in 
 | 2, 3 | empty | none | none |
 | in slot 1 | 1st, 2nd FAT logical drive | `CF4:`, `CF5:` | `FAT\5`, `FAT\6` |
 
-**Limits** (ptable.library 2.1): partition numbers go up to 99 (`CF99:`, `FAT\100`), and a card yields at most 12 FAT partitions. A higher number, or one past the card's last partition, fails the mount.
+**Limits** (ptable.library 2.3): partition numbers go up to 99 (`CF99:`, `FAT\100`). A higher number, or one past the card's last partition, fails the mount.
 
 The whole trailing digit run is read as one decimal number. To mount several partitions from one card, copy the mountlist to `CF0`, `CF1`, `CF4`. The DosType stays the same; only the leading device name differs.
 
@@ -278,6 +278,7 @@ For MBR disks, fat95 recognizes these partition types:
 | 0x0B | FAT32 |
 | 0x0C | FAT32, LBA |
 | 0x0E | FAT16, LBA |
+| 0x07 | NTFS/exFAT type ID: mounted if the volume is FAT (ptable.library 2.3) |
 | 0x05, 0x0F, 0x85 | Extended partition: FAT logical drives inside are found (ptable.library 2.1) |
 
 For GPT disks, fat95 considers only partition entries whose **type GUID** is one of the following:

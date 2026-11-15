@@ -530,9 +530,9 @@ mounting it fails.
   in slot 1  1st, 2nd FAT   @{fg shine}CF4:@{fg text}, @{fg shine}CF5:@{fg text}   @{fg shine}FAT\5@{fg text}, @{fg shine}FAT\6@{fg text}  
              logical drive                             
 
-@{b}Limits@{ub} (ptable.library 2.1): partition numbers go up to 99 ( @{fg shine}CF99:@{fg text} ,
-@{fg shine}FAT\100@{fg text} ), and a card yields at most 12 FAT partitions. A higher number,
-or one past the card's last partition, fails the mount.
+@{b}Limits@{ub} (ptable.library 2.3): partition numbers go up to 99 ( @{fg shine}CF99:@{fg text} ,
+@{fg shine}FAT\100@{fg text} ). A higher number, or one past the card's last partition, fails
+the mount.
 
 The whole trailing digit run is read as one decimal number. To mount
 several partitions from one card, copy the mountlist to @{fg shine}CF0@{fg text} , @{fg shine}CF1@{fg text} , @{fg shine}CF4@{fg text}
@@ -563,6 +563,8 @@ For MBR disks, fat95 recognizes these partition types:
   0x0B              FAT32                                   
   0x0C              FAT32, LBA                              
   0x0E              FAT16, LBA                              
+  0x07              NTFS/exFAT type ID: mounted if the      
+                    volume is FAT (ptable.library 2.3)      
   0x05, 0x0F, 0x85  Extended partition: FAT logical drives  
                     inside are found (ptable.library 2.1)   
 
