@@ -1017,7 +1017,9 @@ DirtyReady      = 898
 DirtyEligible   = 900
 DirtyCycle      = 902
 DirtyIO         = 904
-VarsSizeof      = 906
+RegStart	= 906		;start block given to RegisterPartition, in the
+				;row's blocks; UnregisterPartition passes it back
+VarsSizeof      = 910
 
 ;*** Here we go!! ******************************************
 
@@ -6070,6 +6072,42 @@ sdr_end:
 ;--- set initial parameters --------------------------------
 ;preserve all registers
 
+;--- FirstBlock in another block size --------------------------
+; d0.w = new block size (power of two). FirstBlock counts blocks of
+; BlockSize/BlockShift; it is converted to blocks of d0.w.
+; Out: Z clear on success; Z set when FirstBlock is not a whole number of
+; new blocks or does not fit 32 bits (FirstBlock unchanged).
+
+RescaleFirst:
+	movem.l	d0-d1/d3,-(sp)
+	and.l	#$ffff,d0
+	LOG2
+	sub.w	BlockShift(a4),d0	;d0 = new shift - old shift
+	move.l	FirstBlock(a4),d1
+	move.l	d1,d3
+	tst.w	d0
+	bmi.s	rsf_smaller
+	lsr.l	d0,d1			;larger blocks: divide..
+	move.l	d1,d3
+	lsl.l	d0,d3			;..exactly
+	bra.s	rsf_check
+rsf_smaller:
+	neg.w	d0
+	lsl.l	d0,d1			;smaller blocks: multiply..
+	move.l	d1,d3
+	lsr.l	d0,d3			;..without losing bits
+rsf_check:
+	cmp.l	FirstBlock(a4),d3
+	bne.s	rsf_fail
+	move.l	d1,FirstBlock(a4)
+	moveq.l	#1,d0			;Z clear
+	movem.l	(sp)+,d0-d1/d3
+	rts
+rsf_fail:
+	moveq.l	#0,d0			;Z set
+	movem.l	(sp)+,d0-d1/d3
+	rts
+
 SetIntParams:
 	movem.l	d0-d1,-(sp)
 	moveq.l	#0,d0
@@ -6388,6 +6426,7 @@ pvp_overlay:
 	move.l	EnvecBuf+DE_Control(a4),d4	;de_Control BPTR (0 = none)
 	lsl.l	#2,d4			;-> APTR to control BSTR
 	move.l	DosType(a4),d5		;the DosType this mount really carries
+	move.l	d1,RegStart(a4)		;FirstBlock is rescaled with the block size
 	move.l	a3,a6			;a6 = ptable base (a3 kept for CloseLibrary)
 	jsr	_LVORegisterPartition(a6)
 pvp_close:
@@ -6440,7 +6479,7 @@ UnregisterViaPtable:
 	move.l	d0,a2			;devNode (the registrant identity)
 	move.l	DevName(a4),a1
 	move.l	UnitNumber(a4),d0
-	move.l	FirstBlock(a4),d1
+	move.l	RegStart(a4),d1		;the start it was registered with
 	jsr	_LVOUnregisterPartition(a6)
 uvp_close:
 	move.l	a3,a1
@@ -6673,6 +6712,9 @@ gdp_4:
 	cmp.w	BlockSize(a4),d2
 	beq.s	gdp_5			;keep Block size or..
 
+	move.w	d2,d0
+	bsr	RescaleFirst		;FirstBlock in the new block size
+	beq	gdp_ndos		;volume not on a block boundary
 	bsr	CacheFree
 	move.w	d2,BlockSize(a4)
 	bsr	SetIntParams

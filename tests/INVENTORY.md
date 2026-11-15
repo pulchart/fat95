@@ -233,6 +233,12 @@ Partition selection from DosType bytes and device-name suffixes.
 
 | test | what it guards |
 |---|---|
+| `test_first_block_follows_the_block_size` | 512 to 4096 divides, 4096 to 512 multiplies, both exactly. |
+| `test_unaligned_or_too_large_start_is_refused` | A start that is no whole number of new blocks, or that overflows, is kept and refused. |
+| `test_unregister_passes_the_registered_start` | After the switch, UnregisterPartition still names the row's start. |
+
+| test | what it guards |
+|---|---|
 | `test_init_registers_fat0_to_fat12_and_the_device_scheme` | FAT\0..FAT\12 cover partition indexes 0..11, then 0x464154FF. |
 
 #### `test_serialize.py`
