@@ -4446,21 +4446,10 @@ fmd_u5:
 	move.l	a2,a0
 	bsr	_WBlock			;FAT32: Boot block duplicate
 
-;- - Boot routine continuation - - - - - - - - - - - - - - -
+;- - Extended boot block - - - - - - - - - - - - - - - - - -
 
-	lea	ExtBoot32(pc),a0
-	move.l	a2,a1
-	moveq.l	#(ExtBootEnd-ExtBoot32)/8-1,d0
-fmd_xbcopy:
-	move.l	(a0)+,(a1)+
-	move.l	(a0)+,(a1)+
-	dbf	d0,fmd_xbcopy
-
-	moveq.l	#(ExtBoot32+508-ExtBootEnd)/4-1,d0
-	moveq.l	#0,d1
-fmd_xbfill:
-	move.l	d1,(a1)+
-	dbf	d0,fmd_xbfill
+	bsr	fmd_clrbuf
+	move.l	#$000055aa,508(a2)	;signature only
 
 	moveq.l	#2,d0
 	move.l	a2,a0
@@ -14369,8 +14358,8 @@ _AutoRequest:
 ;*** constants and initialzed vars *************************
 
 BootSample12:				;FAT12 and FAT16
-	dc.b	$EB,$3E,$90		;branch to boot routine (i80x86-Code)
-	dc.b	")GZ.,IHC"		;System ID (Win95)
+	dc.b	$EB,$3C,$90		;branch to boot routine (i80x86-Code)
+	dc.b	"FAT95   "		;System ID
 	dc.b	$00,$02			;bytes/sector (little endian)
 	dc.b	$02			;sectors/cluster
 	dc.b	$01,$00			;# reserved sectors
@@ -14388,68 +14377,35 @@ BootSample12:				;FAT12 and FAT16
 	dc.b	$6D,$29,$F4,$0F		;serial #
 	dc.b	"           "		;volume name duplicate
 	dc.b	"FAT12   "		;file system ID
-	dc.b	$F1,$7D			;boot routine
-	dc.b	$FA,$33,$C9,$8E,$D1,$BC,$FC,$7B
-	dc.b	$16,$07,$BD,$78,$00,$C5,$76,$00
-	dc.b	$1E,$56,$16,$55,$BF,$22,$05,$89
-	dc.b	$7E,$00,$89,$4E,$02,$B1,$0B,$FC
-	dc.b	$F3,$A4,$06,$1F,$BD,$00,$7C,$C6
-	dc.b	$45,$FE,$0F,$8B,$46,$18,$88,$45
-	dc.b	$F9,$FB,$38,$66,$24,$7C,$04,$CD
-	dc.b	$13,$72,$3C,$8A,$46,$10,$98,$F7
-	dc.b	$66,$16,$03,$46,$1C,$13,$56,$1E
-	dc.b	$03,$46,$0E,$13,$D1,$50,$52,$89
-	dc.b	$46,$FC,$89,$56,$FE,$B8,$20,$00
-	dc.b	$8B,$76,$11,$F7,$E6,$8B,$5E,$0B
-	dc.b	$03,$C3,$48,$F7,$F3,$01,$46,$FC
-	dc.b	$11,$4E,$FE,$5A,$58,$BB,$00,$07
-	dc.b	$8B,$FB,$B1,$01,$E8,$94,$00,$72
-	dc.b	$47,$38,$2D,$74,$19,$B1,$0B,$56
-	dc.b	$8B,$76,$3E,$F3,$A6,$5E,$74,$4A
-	dc.b	$4E,$74,$0B,$03,$F9,$83,$C7,$15
-	dc.b	$3B,$FB,$72,$E5,$EB,$D7,$2B,$C9
-	dc.b	$B8,$D8,$7D,$87,$46,$3E,$3C,$D8
-	dc.b	$75,$99,$BE,$80,$7D,$AC,$98,$03
-	dc.b	$F0,$AC,$84,$C0,$74,$17,$3C,$FF
-	dc.b	$74,$09,$B4,$0E,$BB,$07,$00,$CD
-	dc.b	$10,$EB,$EE,$BE,$83,$7D,$EB,$E5
-	dc.b	$BE,$81,$7D,$EB,$E0,$33,$C0,$CD
-	dc.b	$16,$5E,$1F,$8F,$04,$8F,$44,$02
-	dc.b	$CD,$19,$BE,$82,$7D,$8B,$7D,$0F
-	dc.b	$83,$FF,$02,$72,$C8,$8B,$C7,$48
-	dc.b	$48,$8A,$4E,$0D,$F7,$E1,$03,$46
-	dc.b	$FC,$13,$56,$FE,$BB,$00,$07,$53
-	dc.b	$B1,$04,$E8,$16,$00,$5B,$72,$C8
-	dc.b	$81,$3F,$4D,$5A,$75,$A7,$81,$BF
-	dc.b	$00,$02,$42,$4A,$75,$9F,$EA,$00
-	dc.b	$02,$70,$00,$50,$52,$51,$91,$92
-	dc.b	$33,$D2,$F7,$76,$18,$91,$F7,$76
-	dc.b	$18,$42,$87,$CA,$F7,$76,$1A,$8A
-	dc.b	$F2,$8A,$56,$24,$8A,$E8,$D0,$CC
-	dc.b	$D0,$CC,$0A,$CC,$B8,$01,$02,$CD
-	dc.b	$13,$59,$5A,$58,$72,$09,$40,$75
-	dc.b	$01,$42,$03,$5E,$0B,$E2,$CC,$C3
-	dc.b	$03,$18,$01,$27,$0D,$0A,$55,$6E
-	dc.b	$67,$75,$65,$6C,$74,$69,$67,$65
-	dc.b	$73,$20,$53,$79,$73,$74,$65,$6D
-	dc.b	$20,$FF,$0D,$0A,$45,$2F,$41,$2D
-	dc.b	$46,$65,$68,$6C,$65,$72,$20,$20
-	dc.b	$20,$20,$FF,$0D,$0A,$44,$61,$74
-	dc.b	$65,$6E,$74,$72,$61,$65,$67,$65
-	dc.b	$72,$20,$77,$65,$63,$68,$73,$65
-	dc.b	$6C,$6E,$20,$75,$6E,$64,$20,$54
-	dc.b	$61,$73,$74,$65,$20,$64,$72,$75
-	dc.b	$65,$63,$6B,$65,$6E,$0D,$0A,$00
-	dc.b	$49,$4F,$20,$20,$20,$20,$20,$20
-	dc.b	$53,$59,$53,$4D,$53,$44,$4F,$53
-	dc.b	$20,$20,$20,$53,$59,$53,$80,$01
-	dc.b	$00,$57,$49,$4E,$42,$4F,$4F,$54
-	dc.b	$20,$53,$59,$53
-	dc.b	$00,$00,$55,$AA		;"magic number"
+	dc.b	$FA		;cli
+	dc.b	$31,$C0		;xor ax,ax
+	dc.b	$8E,$D0		;mov ss,ax
+	dc.b	$BC,$00,$7C	;mov sp,0x7c00
+	dc.b	$FB		;sti
+	dc.b	$0E		;push cs
+	dc.b	$1F		;pop ds
+	dc.b	$E8,$00,$00	;call 0xe
+	dc.b	$5E		;pop si
+	dc.b	$83,$C6,$18	;add si,0x18
+	dc.b	$AC		;lodsb
+	dc.b	$84,$C0		;test al,al
+	dc.b	$74,$09		;jz 0x20
+	dc.b	$B4,$0E		;mov ah,0xe
+	dc.b	$BB,$07,$00	;mov bx,0x7
+	dc.b	$CD,$10		;int 0x10
+	dc.b	$EB,$F2		;jmp 0x12
+	dc.b	$31,$C0		;xor ax,ax
+	dc.b	$CD,$16		;int 0x16
+	dc.b	$CD,$19		;int 0x19
+	dc.b	"Not a bootable disk",$0D,$0A
+	dc.b	"Press a key to reboot",$0D,$0A
+	dc.b	0
+	dcb.b	510-(*-BootSample12),0	;unused
+	dc.b	$55,$AA		;"magic number"
 
 BootSample32:				;FAT32
 	dc.b	$EB,$58,$90		;branch to boot routine (i80x86-Code)
-	dc.b	"MSWIN4.1"		;System ID (Win98)
+	dc.b	"FAT95   "		;System ID
 	dc.b	$00,$02			;bytes/sector (little endian)
 	dc.b	$08			;sectors/cluster
 	dc.b	$20,$00			;# reserved sectors (32)
@@ -14476,111 +14432,31 @@ BootSample32:				;FAT32
 	dc.b	$F2,$18,$35,$14		;serial #
 	dc.b	"           "		;volume name duplicate
 	dc.b	"FAT32   "		;file system ID
-	dc.b	$FA,$33,$C9,$8E,$D1,$BC
-	dc.b	$F8,$7B,$8E,$C1,$BD,$78,$00,$C5
-	dc.b	$76,$00,$1E,$56,$16,$55,$BF,$22
-	dc.b	$05,$89,$7E,$00,$89,$4E,$02,$B1
-	dc.b	$0B,$FC,$F3,$A4,$8E,$D9,$BD,$00
-	dc.b	$7C,$C6,$45,$FE,$0F,$8B,$46,$18
-	dc.b	$88,$45,$F9,$38,$4E,$40,$7D,$25
-	dc.b	$8B,$C1,$99,$BB,$00,$07,$E8,$97
-	dc.b	$00,$72,$1A,$83,$EB,$3A,$66,$A1
-	dc.b	$1C,$7C,$66,$3B,$07,$8A,$57,$FC
-	dc.b	$75,$06,$80,$CA,$02,$88,$56,$02
-	dc.b	$80,$C3,$10,$73,$ED,$BF,$02,$00
-	dc.b	$83,$7E,$16,$00,$75,$45,$8B,$46
-	dc.b	$1C,$8B,$56,$1E,$B9,$03,$00,$49
-	dc.b	$40,$75,$01,$42,$BB,$00,$7E,$E8
-	dc.b	$5F,$00,$73,$26,$B0,$F8,$4F,$74
-	dc.b	$1D,$8B,$46,$32,$33,$D2,$B9,$03
-	dc.b	$00,$3B,$C8,$77,$1E,$8B,$76,$0E
-	dc.b	$3B,$CE,$73,$17,$2B,$F1,$03,$46
-	dc.b	$1C,$13,$56,$1E,$EB,$D1,$73,$0B
-	dc.b	$EB,$27,$83,$7E,$2A,$00,$77,$03
-	dc.b	$E9,$FD,$02,$BE,$7E,$7D,$AC,$98
-	dc.b	$03,$F0,$AC,$84,$C0,$74,$17,$3C
-	dc.b	$FF,$74,$09,$B4,$0E,$BB,$07,$00
-	dc.b	$CD,$10,$EB,$EE,$BE,$81,$7D,$EB
-	dc.b	$E5,$BE,$7F,$7D,$EB,$E0,$98,$CD
-	dc.b	$16,$5E,$1F,$66,$8F,$04,$CD,$19
-	dc.b	$41,$56,$66,$6A,$00,$52,$50,$06
-	dc.b	$53,$6A,$01,$6A,$10,$8B,$F4,$60
-	dc.b	$80,$7E,$02,$0E,$75,$04,$B4,$42
-	dc.b	$EB,$1D,$91,$92,$33,$D2,$F7,$76
-	dc.b	$18,$91,$F7,$76,$18,$42,$87,$CA
-	dc.b	$F7,$76,$1A,$8A,$F2,$8A,$E8,$C0
-	dc.b	$CC,$02,$0A,$CC,$B8,$01,$02,$8A
-	dc.b	$56,$40,$CD,$13,$61,$8D,$64,$10
-	dc.b	$5E,$72,$0A,$40,$75,$01,$42,$03
-	dc.b	$5E,$0B,$49,$75,$B4,$C3,$03,$18
-	dc.b	$01,$27,$0D,$0A,$55,$6E,$67,$75
-	dc.b	$65,$6C,$74,$69,$67,$65,$73,$20
-	dc.b	$53,$79,$73,$74,$65,$6D,$20,$FF
-	dc.b	$0D,$0A,$45,$2F,$41,$2D,$46,$65
-	dc.b	$68,$6C,$65,$72,$20,$20,$20,$20
-	dc.b	$FF,$0D,$0A,$44,$61,$74,$65,$6E
-	dc.b	$74,$72,$61,$65,$67,$65,$72,$20
-	dc.b	$77,$65,$63,$68,$73,$65,$6C,$6E
-	dc.b	$20,$75,$6E,$64,$20,$54,$61,$73
-	dc.b	$74,$65,$20,$64,$72,$75,$65,$63
-	dc.b	$6B,$65,$6E,$0D,$0A,$00,$00,$00
-	dc.b	$49,$4F,$20,$20,$20,$20,$20,$20
-	dc.b	$53,$59,$53,$4D,$53,$44,$4F,$53
-	dc.b	$20,$20,$20,$53,$59,$53,$7E,$01
-	dc.b	$00,$57,$49,$4E,$42,$4F,$4F,$54
-	dc.b	$20,$53,$59,$53,$00,$00,$55,$AA
-
-ExtBoot32:				;FAT32 boot routine continued
-	dc.b	$FA,$66,$0F,$B6,$46,$10,$66,$8B
-	dc.b	$4E,$24,$66,$F7,$E1,$66,$03,$46
-	dc.b	$1C,$66,$0F,$B7,$56,$0E,$66,$03
-	dc.b	$C2,$33,$C9,$66,$89,$46,$FC,$66
-	dc.b	$C7,$46,$F8,$FF,$FF,$FF,$FF,$FA
-	dc.b	$66,$8B,$46,$2C,$66,$83,$F8,$02
-	dc.b	$0F,$82,$CF,$FC,$66,$3D,$F8,$FF
-	dc.b	$FF,$0F,$0F,$83,$C5,$FC,$66,$0F
-	dc.b	$A4,$C2,$10,$FB,$52,$50,$FA,$66
-	dc.b	$C1,$E0,$10,$66,$0F,$AC,$D0,$10
-	dc.b	$66,$83,$E8,$02,$66,$0F,$B6,$5E
-	dc.b	$0D,$8B,$F3,$66,$F7,$E3,$66,$03
-	dc.b	$46,$FC,$66,$0F,$A4,$C2,$10,$FB
-	dc.b	$BB,$00,$07,$8B,$FB,$B9,$01,$00
-	dc.b	$E8,$BE,$FC,$0F,$82,$AA,$FC,$38
-	dc.b	$2D,$74,$1E,$B1,$0B,$56,$BE,$D8
-	dc.b	$7D,$F3,$A6,$5E,$74,$19,$03,$F9
-	dc.b	$83,$C7,$15,$3B,$FB,$72,$E8,$4E
-	dc.b	$75,$D6,$58,$5A,$E8,$66,$00,$72
-	dc.b	$AB,$83,$C4,$04,$E9,$64,$FC,$83
-	dc.b	$C4,$04,$8B,$75,$09,$8B,$7D,$0F
-	dc.b	$8B,$C6,$FA,$66,$C1,$E0,$10,$8B
-	dc.b	$C7,$66,$83,$F8,$02,$72,$3B,$66
-	dc.b	$3D,$F8,$FF,$FF,$0F,$73,$33,$66
-	dc.b	$48,$66,$48,$66,$0F,$B6,$4E,$0D
-	dc.b	$66,$F7,$E1,$66,$03,$46,$FC,$66
-	dc.b	$0F,$A4,$C2,$10,$FB,$BB,$00,$07
-	dc.b	$53,$B9,$04,$00,$E8,$52,$FC,$5B
-	dc.b	$0F,$82,$3D,$FC,$81,$3F,$4D,$5A
-	dc.b	$75,$08,$81,$BF,$00,$02,$42,$4A
-	dc.b	$74,$06,$BE,$80,$7D,$E9,$0E,$FC
-	dc.b	$EA,$00,$02,$70,$00,$03,$C0,$13
-	dc.b	$D2,$03,$C0,$13,$D2,$E8,$18,$00
-	dc.b	$FA,$26,$66,$8B,$01,$66,$25,$FF
-	dc.b	$FF,$FF,$0F,$66,$0F,$A4,$C2,$10
-	dc.b	$66,$3D,$F8,$FF,$FF,$0F,$FB,$C3
-	dc.b	$BF,$00,$7E,$FA,$66,$C1,$E0,$10
-	dc.b	$66,$0F,$AC,$D0,$10,$66,$0F,$B7
-	dc.b	$4E,$0B,$66,$33,$D2,$66,$F7,$F1
-	dc.b	$66,$3B,$46,$F8,$74,$44,$66,$89
-	dc.b	$46,$F8,$66,$03,$46,$1C,$66,$0F
-	dc.b	$B7,$4E,$0E,$66,$03,$C1,$66,$0F
-	dc.b	$B7,$5E,$28,$83,$E3,$0F,$74,$16
-	dc.b	$3A,$5E,$10,$0F,$83,$A4,$FB,$52
-	dc.b	$66,$8B,$C8,$66,$8B,$46,$24,$66
-	dc.b	$F7,$E3,$66,$03,$C1,$5A,$52,$66
-	dc.b	$0F,$A4,$C2,$10,$FB,$8B,$DF,$B9
-	dc.b	$01,$00,$E8,$B4,$FB,$5A,$0F,$82
-	dc.b	$9F,$FB,$FB,$8B,$DA,$C3,$00,$00
-ExtBootEnd:
+	dc.b	$FA		;cli
+	dc.b	$31,$C0		;xor ax,ax
+	dc.b	$8E,$D0		;mov ss,ax
+	dc.b	$BC,$00,$7C	;mov sp,0x7c00
+	dc.b	$FB		;sti
+	dc.b	$0E		;push cs
+	dc.b	$1F		;pop ds
+	dc.b	$E8,$00,$00	;call 0xe
+	dc.b	$5E		;pop si
+	dc.b	$83,$C6,$18	;add si,0x18
+	dc.b	$AC		;lodsb
+	dc.b	$84,$C0		;test al,al
+	dc.b	$74,$09		;jz 0x20
+	dc.b	$B4,$0E		;mov ah,0xe
+	dc.b	$BB,$07,$00	;mov bx,0x7
+	dc.b	$CD,$10		;int 0x10
+	dc.b	$EB,$F2		;jmp 0x12
+	dc.b	$31,$C0		;xor ax,ax
+	dc.b	$CD,$16		;int 0x16
+	dc.b	$CD,$19		;int 0x19
+	dc.b	"Not a bootable disk",$0D,$0A
+	dc.b	"Press a key to reboot",$0D,$0A
+	dc.b	0
+	dcb.b	510-(*-BootSample32),0	;unused
+	dc.b	$55,$AA		;"magic number"
 	cnop	0,4
 
 ;--- Text for den Nutzer -----------------------------------
