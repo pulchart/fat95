@@ -313,6 +313,95 @@ class NameEscapes(unittest.TestCase):
             self.assertEqual(self.add_units([unit], inverse)[:2], (escape(unit).encode(), 1), hex(unit))
         self.assertEqual(self.add_units([0x5f], inverse)[:2], (b'_', 1))
 
+
+    MAPPED = (list(range(0x61, 0x7b)) + [u for u in range(0xe0, 0xff) if u != 0xf7] + [0xff]
+              + list(range(0x101, 0x130, 2)) + list(range(0x3b1, 0x3ca)) + list(range(0x430, 0x460))
+              + list(range(0x561, 0x587)) + list(range(0xff41, 0xff5b)))
+
+    def upper(self, unit, cache={}):
+        if unit > 0xffff:
+            return unit
+        if unit not in cache:
+            cache[unit] = self.h.run('UpperUnit', d0=unit)
+        return cache[unit]
+
+    def test_upper_unit(self):
+        """UpperUnit maps the lower case letters of Latin, Greek, Cyrillic, Armenian and full-width ASCII to their Unicode upper case and never maps a unit anywhere else."""
+        units = (list(range(0x600)) + list(range(0x1e00, 0x1f00)) + list(range(0x2160, 0x2190))
+                 + list(range(0x24c0, 0x24f0)) + list(range(0xff20, 0xff60)) + [0xd800, 0xfffe, 0xffff])
+        for unit in units:
+            got = self.h.run('UpperUnit', d0=unit)
+            if unit in self.MAPPED:
+                self.assertEqual(got, ord(chr(unit).upper()), hex(unit))
+            elif got != unit:
+                self.assertEqual(chr(got), chr(unit).upper(), hex(unit))
+
+    def write_units(self, units, rng, local=None):
+        """Amiga text for code units: a byte when the code page (Latin-1 without one) has the unit, else an escape, sometimes with lower-case digits."""
+        out = ''
+        for unit in units:
+            if unit < 0x80:
+                out += chr(unit)
+            elif local is not None and unit in local:
+                out += chr(local[unit])
+            elif local is None and unit < 0x100:
+                out += chr(unit)
+            else:
+                e = escape(unit)
+                out += e.lower() if rng.random() < 0.3 else e
+        return out.encode('latin-1')
+
+    def same_rest(self, disk, wanted):
+        """Call ExSameRest the way LocateObj does, at the first byte pair that differs other than by ASCII case; None when the names never get there."""
+        h = self.h
+        stop = wanted.find(b'/')
+        component = wanted if stop < 0 else wanted[:stop]
+        for i in range(min(len(disk), len(component))):
+            a, b = disk[i], component[i]
+            if a == b or (a | 32 == b | 32 and 0x61 <= a | 32 <= 0x7a):
+                continue
+            self.put(ENTRY, disk)
+            self.put(ENTRY + 0x200, wanted)
+            return h.run('ExSameRest', a0=ENTRY + i + 1, a1=ENTRY + 0x200 + i + 1, a2=ENTRY)
+        return None
+
+    def test_same_rest_is_a_case_blind_compare(self):
+        """ExSameRest finds two names equal exactly when their code units are equal after UpperUnit, whether the difference lies inside an escape, in a byte from 0x80 or behind an escape, with or without a code page."""
+        rng = random.Random(17)
+        pool = [0x41, 0x61, 0x5b, 0x7b, 0x40, 0x60, 0x2e, 0x25, 0x31, 0xe9, 0xc9, 0xd7, 0xf7, 0xff, 0x178, 0xdf,
+                0x100, 0x101, 0x131, 0x49, 0x17f, 0x53, 0x3a3, 0x3c2, 0x3c3, 0xb5, 0x39c, 0x3bc, 0x416, 0x436,
+                0x417, 0x450, 0x400, 0x104, 0x105, 0x1e00, 0x1e01, 0xff21, 0xff41, 0x24b6, 0x24d0, 0x2160, 0x2170,
+                0x1f600, 0x1f601]
+        h = self.h
+        for local in (None, {u: i for i, u in enumerate(TABLE[:0x100]) if i >= 0x80}):
+            if local is not None:
+                self.set_codepage(TABLE)
+            checked = 0
+            for _ in range(1500):
+                units = [rng.choice(pool) for _ in range(rng.randrange(1, 6))]
+                if rng.random() < 0.6:
+                    other = [rng.choice((u, self.upper(u))) for u in units]
+                else:
+                    other = list(units)
+                    other[rng.randrange(len(other))] = rng.choice(pool)
+                if rng.random() < 0.1:
+                    other.append(0x7a)
+                elif rng.random() < 0.1:
+                    units.append(rng.choice((0x7a, 0x1f600)))
+                disk = self.write_units(units, rng, local)
+                wanted = self.write_units(other, rng, local) + (b'/next' if rng.random() < 0.3 else b'')
+                got = self.same_rest(disk, wanted)
+                if got is None:
+                    continue
+                checked += 1
+                back = {v: k for k, v in local.items()} if local else {}
+                def meaning(text):
+                    text = text.split(b'/')[0].decode('latin-1')
+                    return [self.upper(back.get(u, u)) for u in decode(text)]
+                want = meaning(disk) == meaning(wanted)
+                self.assertEqual(got, int(want), (disk, wanted))
+            self.assertGreater(checked, 800)
+
     def sentinels(self, regs, outputs):
         regs = dict(regs)
         for r in (1, 2, 3, 4, 5, 6, 7, 8, 10, 13):
@@ -326,7 +415,7 @@ class NameEscapes(unittest.TestCase):
                 self.assertEqual(self.h.cpu.r_reg(r), value, (label, 'register', r))
 
     def test_escape_routines_keep_the_registers_the_callers_use(self):
-        """ExPutEscape and ExAddUnit leave d1-d6 and a0, a2-a6 alone (rxms_conv keeps its counters in d3/d5), ExParseEscape leaves d1-d7 and a0, a2-a6 (ExNextUnit keeps the pending surrogate in d4), on success and on failure."""
+        """ExPutEscape and ExAddUnit leave d1-d6 and a0, a2-a6 alone (rxms_conv keeps its counters in d3/d5), ExParseEscape leaves d1-d7 and a0, a2-a6 (ExNextUnit keeps the pending surrogate in d4), on success and on failure; UpperUnit, ExCutEscape and ExSameRest change only their result."""
         h = self.h
         inverse = self.set_codepage(TABLE)
         for cp, used in ((0x100, 0), (0x1234, 0), (0x1f600, 0), (0x100, 102)):
@@ -345,6 +434,21 @@ class NameEscapes(unittest.TestCase):
             regs = self.sentinels({9: ENTRY}, (0, 9))
             h.run('ExParseEscape', regs=regs)
             self.assert_preserved(regs, (0, 9), ('ExParseEscape', text))
+        for unit in (0x30, 0x61, 0x416, 0x436, 0x1e05, 0xff41):
+            regs = self.sentinels({}, (0,))
+            h.run('UpperUnit', d0=unit, regs=regs)
+            self.assert_preserved(regs, (0,), ('UpperUnit', hex(unit)))
+        for text, cut in (('ab%90M', 5), ('ab%Zq', 4), ('abcdefg', 6)):
+            self.put(ENTRY, text[:cut].encode())
+            regs = self.sentinels({9: ENTRY + cut}, (0, 9))
+            h.run('ExCutEscape', d0=ord(text[cut]), regs=regs)
+            self.assert_preserved(regs, (0, 9), ('ExCutEscape', text))
+        for disk, wanted, at in ((b'a%90M', b'a%91M', 4), (b'ab', b'ac', 2), (b'a\xe9', b'a\xc9', 2)):
+            self.put(ENTRY, disk)
+            self.put(ENTRY + 0x200, wanted)
+            regs = self.sentinels({8: ENTRY + at, 9: ENTRY + 0x200 + at, 10: ENTRY}, (0,))
+            h.run('ExSameRest', regs=regs)
+            self.assert_preserved(regs, (0,), ('ExSameRest', disk))
 
 
     def test_cut_keeps_no_part_of_an_escape(self):
