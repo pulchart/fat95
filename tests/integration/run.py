@@ -27,6 +27,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent  # relative paths in the config start here
 BOOT_LIMIT = 60  # seconds to the first line in OUT:log.txt
 PART_START = 2048
+PART_SLACK = 2048  # blocks after the partition: 3.1 scsi.device loses the CHS remainder
 
 # the repository's own builds, used unless the config names others
 BUILDS = {
@@ -35,7 +36,7 @@ BUILDS = {
     "lsfsres": "dist/c/lsfsres",
     "debug95": "dist/c/debug95",
 }
-PATH_KEYS = ("fat95", "dd", "lsfsres", "debug95", "ptable", "work")
+PATH_KEYS = ("fat95", "dd", "lsfsres", "debug95", "ptable", "work", "fsst")
 OS_PATH_KEYS = ("kickstart", "kickstart_ext", "commands_adf", "workbench_adf", "system_dir")
 SMOKE = ROOT / "build/tools/smoke"  # make smoke
 
@@ -205,7 +206,7 @@ def medium(d, sc, payload, cfg, osc):
         # an unpartitioned medium is as large as the mountlist says
         return hdf, 0, dict(highcyl=sectors - 1, surfaces=1, bpt=1, dostype="0x464154FF")
     with hdf.open("wb") as f:
-        f.truncate((PART_START + sectors) * 512)
+        f.truncate((PART_START + sectors + PART_SLACK) * 512)
     table = "label: dos\nstart=%d, size=%d, type=%x\n" % (PART_START, sectors, mbrtype)
     subprocess.run(
         ["sfdisk", "-q", str(hdf)], input=table, text=True, check=True, capture_output=True
@@ -239,6 +240,26 @@ class Result:
             dev,
         )
         self.payload, self.up = payload, up
+
+    def image_free(self):
+        """Free clusters on the image, None when fsck finds errors."""
+        part = self.d / "check.img"
+        sh("dd", "if=%s" % self.image, "of=%s" % part, "bs=1M", "skip=%d" % (self.start * 512),
+           "iflag=skip_bytes", "conv=sparse", "status=none")  # fmt: skip
+        r = subprocess.run(["fsck.fat", "-n", "-v", str(part)], capture_output=True, text=True)
+        part.unlink()
+        if r.returncode:
+            return None
+        used, total = r.stdout.rsplit(" clusters", 1)[0].rsplit(" ", 1)[1].split("/")
+        return int(total) - int(used)
+
+    def handler_free(self):
+        """FreeClusters from the debug95 dump taken at the end."""
+        try:
+            layout = parse_debug95.Layout(parse_debug95.VARS)
+            return parse_debug95.Dump(self.out / "debug95_end.dump", layout).expr("FreeClusters")
+        except Exception, SystemExit:
+            return None
 
     def text(self, name):
         p = self.out / name
@@ -315,6 +336,8 @@ def run(cfg, osname, osc, boot, work, name, sc):
     (out / "up.bin").write_bytes(up)
     if cfg.get("debug95") and Path(cfg["debug95"]).exists():
         shutil.copyfile(cfg["debug95"], out / "debug95")
+    if "OUT:fsst" in sc["steps"]:
+        shutil.copyfile(cfg["fsst"], out / "fsst")
     steps = sc["steps"].format(dev=dev, wait=cfg["wait"], device=ml["device"], unit=ml["unit"],
                                copy=osc.get("copy", "Copy"))  # fmt: skip
     (out / "steps").write_text(steps)
@@ -407,7 +430,8 @@ def load_config(path):
     if missing:
         sys.exit("%s lacks %s" % (path, ", ".join(missing)))
     for k in PATH_KEYS:
-        cfg[k] = resolve(cfg[k])
+        if k in cfg:
+            cfg[k] = resolve(cfg[k])
     for osc in cfg["os"].values():
         if isinstance(osc.get("commands_adf"), str):
             osc["commands_adf"] = [osc["commands_adf"]]
@@ -463,7 +487,10 @@ def main():
     unknown = [o for o in oses if o not in cfg["os"]]
     if unknown:
         sys.exit("not in the config: %s" % ", ".join(unknown))
-    names = a.scenario or list(SCENARIOS)
+    names = a.scenario or [n for n in SCENARIOS if not SCENARIOS[n].get("request")]
+    stress = [n for n in names if "OUT:fsst" in SCENARIOS[n]["steps"]]
+    if stress and not (cfg.get("fsst") and cfg["fsst"].exists()):
+        sys.exit("%s need FileSystemStressTest (fsst in the config)" % " ".join(stress))
     plan, skipped = [], []
     print("plan:")
     for osname in oses:

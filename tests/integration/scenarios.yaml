@@ -3,7 +3,8 @@
 # fragments: AmigaDOS steps a scenario lists by name; they run from
 # S:Startup-Sequence. {dev} is the fat95 device, {wait} the mount wait from the
 # config, {copy} the command that moves files between OUT: and the volume,
-# {device} and {unit} the disk the mountlist names.
+# {device} and {unit} the disk the mountlist names, {st_*} the stress sizes of
+# the scenario.
 #
 # scenarios:
 #   doc      one line for --list and the report
@@ -14,6 +15,9 @@
 #   steps    fragment names, in order
 #   checks   the check set in scenarios.py
 #   limit    seconds before the scenario counts as hung, if not the config's
+#   stress   sizes for the FileSystemStressTest fragments: small (two writers
+#            each), large (the total) and max (the largest file)
+#   request  runs only when --scenario names it
 
 ---
 fragments:
@@ -38,6 +42,33 @@ fragments:
     {copy} OUT:up.bin {dev}up.bin
     {copy} {dev}up.bin OUT:back0.bin
     Wait 5
+
+  stressdir: |
+    MakeDir {dev}st
+  stress: |  # two FileSystemStressTest writers at once, b from a script (AROS Run drops + lines), then large files
+    Echo >OUT:writer_b "FailAt 200"
+    Echo >>OUT:writer_b "OUT:fsst >OUT:st_b.txt {dev}st -p b -s {st_small} -l 0 -h 10000 -r 0x2222 -% 20 -i 2 -e -v 1 -k f"
+    Echo >>OUT:writer_b "Echo >OUT:st_b.done done"
+    Run >NIL: Execute OUT:writer_b
+    OUT:fsst >OUT:st_a.txt {dev}st -p a -s {st_small} -l 0 -h 10000 -r 0x1111 -% 20 -i 2 -e -v 1 -k f
+    Echo "rc $RC" >>OUT:st_a.txt
+    Lab waitb
+    If NOT EXISTS OUT:st_b.done
+    Wait 5
+    Skip waitb BACK
+    EndIf
+    OUT:fsst >OUT:st_c.txt {dev}st -p c -s {st_large} -l 0 -h {st_max} -r 0x3333 -% 20 -i 2 -e -v 1 -k f
+    Echo "rc $RC" >>OUT:st_c.txt
+  fill: |  # the volume filled up and emptied again
+    OUT:fsst >OUT:st_f.txt {dev}st -p f -a -l 0 -h {st_max} -r 0x4444 -e -v 1 -k f
+    Echo "rc $RC" >>OUT:st_f.txt
+  stressend: |
+    List {dev}st >OUT:st_list.txt
+    Wait 5
+    Info >OUT:info1.txt
+    If EXISTS OUT:debug95
+    OUT:debug95 {dev} OUT:debug95_end.dump
+    EndIf
 
 scenarios:
   floppy_fat12:
@@ -70,3 +101,32 @@ scenarios:
     layout: {fs: fat32, table: rdb, sectors: 131072}
     steps: [rdbmount, snap, read, smoke, write]
     checks: fat
+  stress_fat12:
+    doc: "FileSystemStressTest on a PC 720K floppy, FAT12: two writers, large files, volume filled"
+    medium: floppy
+    os: ["3.1", "3.2.3"]
+    steps: [mount, stressdir, snap, stress, fill, stressend]
+    checks: stress
+    stress: {small: 100000, large: 300000, max: 100000}
+    limit: 3600
+    request: true
+  stress_fat16:
+    doc: "FileSystemStressTest on an MBR FAT16 partition: two writers, large files, volume filled"
+    medium: ide
+    layout: {fs: fat16, table: 0x06, sectors: 262144}
+    steps: [mount, stressdir, snap, stress, fill, stressend]
+    checks: stress
+    stress: {small: 2M, large: 64M, max: 3000000}
+    limit: 1800
+    fast: true
+    request: true
+  stress_fat32:
+    doc: "FileSystemStressTest on an MBR FAT32 partition, 512-byte clusters: two writers, large files, volume filled"
+    medium: ide
+    layout: {fs: fat32, table: 0x0c, sectors: 262144}
+    steps: [mount, stressdir, snap, stress, fill, stressend]
+    checks: stress
+    stress: {small: 2M, large: 64M, max: 3000000}
+    limit: 1800
+    fast: true
+    request: true

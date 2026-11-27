@@ -34,6 +34,8 @@ os:
     stack: 65536
     copy: dd
 ptable: ../amigaos-ptable/dist/full/68020/ptable.library
+# FileSystemStressTest from Aminet (disk/misc), for the stress_ scenarios
+fsst: /opt/AmigaOS/FileSystemStressTest/FileSystemStressTest
 # work: build/integration
 # fsuae: fs-uae
 # vasm: vasmm68k_mot

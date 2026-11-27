@@ -5,8 +5,9 @@ fat95 under AmigaOS 3.1, AmigaOS 3.2.3 and AROS in FS-UAE (A1200): PC floppies t
 ## Running
 
 ```
-make test-integration                                # every scenario on every OS profile
+make test-integration                                # every scenario on every OS profile, except stress_
 make test-integration IT="--os 3.1 --scenario sf_fat32"
+make test-integration IT="--os 3.2.3 --scenario stress_fat32"   # a stress_ scenario runs only when named
 tests/integration/run.py --list                      # scenarios, the OSes they run on, description
 tests/integration/run.py --config FILE               # another configuration (default: config.yaml here, or $FAT95_IT_CONFIG)
 tests/integration/run.py --work DIR                  # a new directory for this run
@@ -54,6 +55,7 @@ Builds:
 |---|---|
 | `fat95`, `dd`, `lsfsres` | this repository's `dist/` |
 | `debug95` | this repository's `dist/`; optional, dumps the handler state into `OUT:` |
+| `fsst` | none: FileSystemStressTest 1.2 from Aminet (disk/misc), for the `stress_` scenarios; run.py stops when a named one lacks it |
 | `ptable` | none: ptable.library build, fat95 reads partition tables through it |
 
 Optional parameters: `work` (`build/integration`), `fsuae` (`fs-uae`), `vasm` (`vasmm68k_mot`), `wait` (`5` seconds after a mount), `limit` (`240` seconds before a scenario counts as hung; a scenario can set its own).
@@ -71,6 +73,9 @@ Optional parameters: `work` (`build/integration`), `fsuae` (`fs-uae`), `vasm` (`
 | `disk_fat32` | all | MBR FAT32 partition: the same |
 | `sf_fat32` | all | FAT32 from block 0, no partition table: the same |
 | `rdb_fat32` | all | RDB that carries fat95 and a FAT32 partition, mounted by the OS at boot: the same |
+| `stress_fat12` | 3.1, 3.2.3 | PC 720K floppy: FileSystemStressTest as below |
+| `stress_fat16` | all | MBR FAT16 partition, 128 MiB, 68040 with JIT: two FileSystemStressTest writers with small files in one directory at once, then large files, then the volume filled; every file validated and removed, the directory empty, fsck clean, the handler's free clusters equal to the image's |
+| `stress_fat32` | all | the same on FAT32 with 512-byte clusters |
 
 ## Host tools
 
@@ -91,6 +96,7 @@ FS-UAE is started a second time when it exits or the guest has not begun its ste
 - Floppies run at 8x (`floppy_drive_speed = 800`).
 - Disks are attached as whole disks (`hard_drive_N_type = rdb`); type `hdf` wraps a disk without an RDB in an RDB that FS-UAE makes up.
 - An unpartitioned medium is as large as its mountlist says, so those mountlists cover the whole disk.
+- An MBR disk has 1 MiB free after its partition. The AmigaOS 3.1 scsi.device addresses the disk through its CHS geometry and cannot reach the last blocks, so a partition up to the end fails when it fills.
 - The RDB filesystem entry carries the stack size; without it the Kickstart starts the handler on its small default stack and writes hang.
 - `noreq` turns requesters off for the shell, so a missing volume fails a step instead of blocking the run.
 
