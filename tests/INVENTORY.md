@@ -148,6 +148,7 @@ Helper outputs, saved registers and condition codes.
 | `test_examine_all_all_attribute_bytes` | ExamineAll skips the volume label for every attribute byte carrying bit 3, emits one record with the same protection bits for all the others, and never writes past the buffer. |
 | `test_open_all_leaves_idle_requests_unqueued` | OpenAll leaves the timer and input requests IOF_QUICK and NT_FREEMSG, so a later WaitIO neither waits nor Remove()s an unqueued node the way AROS WaitIO does for NT_REPLYMSG. |
 | `test_cache_init_list_sentinels_counters_registers_and_ccr` | CacheInit empties both buffer lists to their sentinel form and zeroes the in-use counters, carrying d0, d1 and a1 through with the other registers and the condition codes untouched. |
+| `test_date_to_ms_range` | Date2MS packs a DateStamp as FAT date and time; dates before 1980 become 1 January 1980, after 2107 31 December 2107. |
 | `test_ms_date_string_all_packed_dates` | All 65536 dates yield ten DD.MM.YYYY bytes; a1 advances and saved registers survive. |
 
 #### `test_install95.py`
