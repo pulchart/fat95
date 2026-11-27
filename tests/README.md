@@ -63,7 +63,7 @@ machine may be live at a time.
 
 [harness.py](harness.py) documents routine calls, globals, disk contents,
 I/O events and failure injection. Injection flags persist until cleared.
-Equates come from `src/fat95.s`; renaming one can require test changes.
+Equates come from `src/fat95.s` and the files it includes, such as `src/fat95_vars.i`; renaming one can require test changes.
 The fixed memory map reserves `$24000..$44080` for FAT windows and
 `$48000` for the block buffer. Keep assembler symbols: routine lookup needs them.
 
