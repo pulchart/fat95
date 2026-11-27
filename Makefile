@@ -58,6 +58,11 @@ SETFILESIZE_VERSION = $(SETFILESIZE_MAJOR).$(SETFILESIZE_MINOR)$(SETFILESIZE_VER
 BOOT95_VERSION      = $(BOOT95_MAJOR).$(BOOT95_MINOR)$(BOOT95_VERSION_SUFFIX)
 LSFSRES_VERSION     = $(LSFSRES_MAJOR).$(LSFSRES_MINOR)$(LSFSRES_VERSION_SUFFIX)
 
+# Installer scripts: the package version and the fat95 that install95 fits
+INSTALL_SED = -e "s|@VERSION@|$(VERSION)|g" -e "s|@DATE@|$(DATE)|g" \
+	-e "s|@FAT95_MAJOR@|$(FAT95_MAJOR)|g" -e "s|@FAT95_MINOR@|$(FAT95_MINOR)|g" \
+	-e "s|@FAT95_VERSION@|$(FAT95_VERSION)|g"
+
 # ptable.library + lsptres versions/dates read from the ptable build stamps.
 PLIB_VERSION    = $(firstword $(shell cat $(PTABLE_VERSION_FILE) 2>/dev/null))
 PLIB_DATE       = $(word 2,$(shell cat $(PTABLE_VERSION_FILE) 2>/dev/null))
@@ -595,8 +600,8 @@ stage: version-readme all $(README_NAME) guide
 	$(Q)cp -r icons/. $(STAGE)/
 	$(Q)[ -f $(PTABLE)/install/common.inc ] || { echo "ERROR: $(PTABLE) has no install/; build with PTABLE=<amigaos-ptable checkout>"; exit 1; }
 	$(Q)cat $(INSTALL)/fat95.head $(PTABLE)/install/common.inc $(INSTALL)/language.inc $(INSTALL)/fat95.pre \
-	    $(PTABLE)/install/ptable.inc $(INSTALL)/fat95.post $(INSTALL)/fat95.tail | sed -e "s|@VERSION@|$(VERSION)|" -e "s|@DATE@|$(DATE)|" > $(STAGE)/fat95/Install
-	$(Q)cat $(INSTALL)/language.head $(INSTALL)/language.inc $(INSTALL)/language.tail | sed -e "s|@VERSION@|$(VERSION)|" -e "s|@DATE@|$(DATE)|" > $(STAGE)/fat95/Language
+	    $(PTABLE)/install/ptable.inc $(INSTALL)/fat95.post $(INSTALL)/fat95.tail | sed $(INSTALL_SED) > $(STAGE)/fat95/Install
+	$(Q)cat $(INSTALL)/language.head $(INSTALL)/language.inc $(INSTALL)/language.tail | sed $(INSTALL_SED) > $(STAGE)/fat95/Language
 
 release: check-lha stage
 	@echo "Creating $(ARCHIVE_NAME)..."
