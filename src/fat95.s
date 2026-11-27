@@ -1019,7 +1019,13 @@ DirtyCycle      = 902
 DirtyIO         = 904
 RegStart	= 906		;start block given to RegisterPartition, in the
 				;row's blocks; UnregisterPartition passes it back
-VarsSizeof      = 910
+WantedStart	= 910		;name component the units below belong to, or 0
+WantedCount	= 914		;its UTF-16 units
+WantedOff	= 916		;byte offset of each unit, -1 for a low surrogate
+WantedUp	= 1020		;each unit in upper case
+VarsSizeof      = 1228
+
+WANTED_MAX	= 104		;units of a name component at most
 
 ;*** Here we go!! ******************************************
 
@@ -7848,6 +7854,7 @@ lob_scandir:
 	tst.b	(a0)
 	beq.w	lob_found		;hit
 
+	clr.l	WantedStart(a4)		;units of an earlier name
 	sf	LOB_ESC(a5)
 lob_sesc:
 	move.b	(a0)+,d0
@@ -7967,10 +7974,11 @@ lob_cother:
 	tst.b	LOB_ESC(a5)
 	beq	lob_oldstyle		;plain ASCII differs
 lob_cunits:
-	move.l	a2,-(sp)
+	movem.l	a2/a6,-(sp)
 	lea	XMSDE_FullName(a2),a2	;start of the disk name
+	move.l	LOB_NAME(a5),a6		;the wanted name component
 	bsr	ExSameRest		;escapes, characters from $80
-	move.l	(sp)+,a2
+	movem.l	(sp)+,a2/a6
 	tst.l	d0
 	bne	lob_chit
 	bra	lob_oldstyle
@@ -9439,8 +9447,9 @@ ece_end:
 	rts
 
 ; a0 <- disk name behind its first different byte, a1 <- wanted name
-; behind its one, a2 <- start of the disk name; d0 -> 1 when both mean
-; the same characters up to case (the wanted name ends at 0 or /)
+; behind its one, a2 <- start of the disk name, a6 <- start of the
+; wanted name; d0 -> 1 when both mean the same characters up to case
+; (the wanted name ends at 0 or /)
 
 ExSameRest:
 	movem.l	d2-d3/a3,-(sp)
@@ -9492,53 +9501,95 @@ esr_end:
 ; ExSameRest from d2 bytes back; d2-d3/a3 are free
 
 ExSameUnits:
-	movem.l	d1/d4-d5/a0-a1/a6,-(sp)
-	sub.l	d2,a0
-	sub.l	d2,a1
-	move.l	a0,a3			;disk name
-	moveq.l	#0,d4			;pending surrogates
-	moveq.l	#0,d5
+	movem.l	d1/d4/a0-a1/a6,-(sp)
+	sub.l	d2,a0			;disk name
+	sub.l	d2,a1			;wanted name
+	cmp.l	WantedStart(a4),a6
+	beq	esu_ready
+	bsr	ExWantedUnits
+esu_ready:
+	move.l	a1,d0
+	sub.l	a6,d0			;offset of the wanted unit
+	lea	WantedOff(a4),a3
+	moveq.l	#0,d3
+esu_find:
+	cmp.w	WantedCount(a4),d3
+	bcc	esu_differ
+	cmp.b	(a3,d3.w),d0
+	beq	esu_found
+	addq.w	#1,d3
+	bra	esu_find
+esu_found:
+	lea	WantedUp(a4),a3
+	add.w	d3,a3
+	add.w	d3,a3
+	move.l	a0,a1
+	moveq.l	#0,d4			;pending surrogate
 	move.l	CodePage(a4),a6
 esu_loop:
+	cmp.w	WantedCount(a4),d3
+	bcc	esu_wend
 	tst.w	d4
-	bne	esu_wmore
-	move.b	(a1),d0
-	beq	esu_wend
-	cmp.b	#'/',d0
-	beq	esu_wend
-esu_wmore:
-	tst.w	d5
 	bne	esu_dmore
-	tst.b	(a3)
+	tst.b	(a1)
 	beq	esu_differ		;the disk name is shorter
 esu_dmore:
 	bsr	ExNextUnit
-	move.w	d0,d2			;wanted unit
-	exg	a1,a3
-	exg	d4,d5
-	bsr	ExNextUnit		;disk unit
-	exg	a1,a3
-	exg	d4,d5
-	cmp.w	d0,d2
-	beq	esu_loop
 	bsr	UpperUnit
-	move.w	d0,d3
-	move.w	d2,d0
-	bsr	UpperUnit
-	cmp.w	d0,d3
-	beq	esu_loop
-	bra	esu_differ
-esu_wend:
-	tst.w	d5
+	cmp.w	(a3)+,d0
 	bne	esu_differ
-	tst.b	(a3)
+	addq.w	#1,d3
+	bra	esu_loop
+esu_wend:
+	tst.w	d4
+	bne	esu_differ
+	tst.b	(a1)
 	bne	esu_differ		;the disk name is longer
 	moveq.l	#1,d0
 	bra	esu_end
 esu_differ:
 	moveq.l	#0,d0
 esu_end:
-	movem.l	(sp)+,d1/d4-d5/a0-a1/a6
+	movem.l	(sp)+,d1/d4/a0-a1/a6
+	rts
+
+; a6 <- wanted name component (ends at 0 or /); its units in upper case
+; and their offsets go to WantedUp/WantedOff; registers kept
+
+ExWantedUnits:
+	movem.l	d0-d4/a0-a2/a6,-(sp)
+	move.l	a6,WantedStart(a4)
+	move.l	a6,a1
+	move.l	a6,d2
+	move.l	CodePage(a4),a6
+	lea	WantedOff(a4),a0
+	lea	WantedUp(a4),a2
+	moveq.l	#0,d3			;units
+	moveq.l	#0,d4			;pending surrogate
+ewu_loop:
+	cmp.w	#WANTED_MAX,d3
+	bcc	ewu_end
+	move.l	a1,d1
+	sub.l	d2,d1			;offset
+	tst.w	d4
+	beq	ewu_new
+	moveq.l	#-1,d1			;a low surrogate starts nothing
+	bra	ewu_unit
+ewu_new:
+	move.b	(a1),d0
+	beq	ewu_end
+	cmp.b	#'/',d0
+	beq	ewu_end
+ewu_unit:
+	move.b	d1,(a0,d3.w)
+	bsr	ExNextUnit
+	bsr	UpperUnit
+	move.w	d0,(a2)+
+	addq.w	#1,d3
+	bra	ewu_loop
+ewu_end:
+	move.w	d3,WantedCount(a4)
+	movem.l	(sp)+,d0-d4/a0-a2/a6
 	rts
 
 ; d0 <- UTF-16 code unit; d0 -> its upper case form; registers kept

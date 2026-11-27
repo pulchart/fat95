@@ -228,6 +228,7 @@ Long names: characters outside the code page as %-escapes.
 | `test_add_unit_code_page_filler_and_page_lookup` | With a code page, a character whose page exists but whose slot holds the filler, or whose page does not exist, is escaped, also if its low byte looks like '_' or like a high byte that has a page. |
 | `test_upper_unit` | UpperUnit maps the lower case letters of Latin, Greek, Cyrillic, Armenian and full-width ASCII to their Unicode upper case and never maps a unit anywhere else. |
 | `test_same_rest_is_a_case_blind_compare` | ExSameRest finds two names equal exactly when their code units are equal after UpperUnit, whether the difference lies inside an escape, in a byte from 0x80 or behind an escape, with or without a code page. |
+| `test_same_rest_keeps_the_wanted_units_for_the_next_entry` | ExSameRest converts the wanted name once and compares it with every following disk name like a fresh conversion would. |
 | `test_escape_routines_keep_the_registers_the_callers_use` | ExPutEscape and ExAddUnit leave d1-d6 and a0, a2-a6 alone (rxms_conv keeps its counters in d3/d5), ExParseEscape leaves d1-d7 and a0, a2-a6 (ExNextUnit keeps the pending surrogate in d4), on success and on failure; UpperUnit, ExCutEscape and ExSameRest change only their result. |
 | `test_cut_keeps_no_part_of_an_escape` | ExCutEscape moves the end of a name cut inside an escape back to its %, so the kept text means the same characters as the start of the full name; a % that starts no escape stays. |
 

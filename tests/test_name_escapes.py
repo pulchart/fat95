@@ -351,8 +351,8 @@ class NameEscapes(unittest.TestCase):
                 out += e.lower() if rng.random() < 0.3 else e
         return out.encode('latin-1')
 
-    def same_rest(self, disk, wanted):
-        """Call ExSameRest the way LocateObj does, at the first byte pair that differs other than by ASCII case; None when the names never get there."""
+    def same_rest(self, disk, wanted, keep_units=False):
+        """Call ExSameRest the way LocateObj does, at the first byte pair that differs other than by ASCII case; None when the names never get there. keep_units leaves the wanted name and its units from the call before."""
         h = self.h
         stop = wanted.find(b'/')
         component = wanted if stop < 0 else wanted[:stop]
@@ -361,8 +361,13 @@ class NameEscapes(unittest.TestCase):
             if a == b or (a | 32 == b | 32 and 0x61 <= a | 32 <= 0x7a):
                 continue
             self.put(ENTRY, disk)
-            self.put(ENTRY + 0x200, wanted)
-            return h.run('ExSameRest', a0=ENTRY + i + 1, a1=ENTRY + 0x200 + i + 1, a2=ENTRY)
+            if keep_units:
+                self.assertEqual(h.mem.r_block(ENTRY + 0x200, len(wanted)), wanted)
+            else:
+                self.put(ENTRY + 0x200, wanted)
+                h.set('WantedStart', 0)
+            return h.run('ExSameRest', a0=ENTRY + i + 1, a1=ENTRY + 0x200 + i + 1, a2=ENTRY,
+                         regs={14: ENTRY + 0x200})
         return None
 
     def test_same_rest_is_a_case_blind_compare(self):
@@ -401,6 +406,23 @@ class NameEscapes(unittest.TestCase):
                 want = meaning(disk) == meaning(wanted)
                 self.assertEqual(got, int(want), (disk, wanted))
             self.assertGreater(checked, 800)
+
+
+    def test_same_rest_keeps_the_wanted_units_for_the_next_entry(self):
+        """ExSameRest converts the wanted name once and compares it with every following disk name like a fresh conversion would."""
+        rng = random.Random(19)
+        h = self.h
+        wanted = escape(0x436) + 'big ' + escape(0x101) + '.txt'
+        disks = [escape(cp) + 'BIG ' + escape(other) + '.TXT' for cp in (0x416, 0x436, 0x417, 0x100)
+                 for other in (0x100, 0x101, 0x102)]
+        rng.shuffle(disks)
+        self.put(ENTRY + 0x200, wanted.encode())
+        h.set('WantedStart', 0)
+        for disk in disks:
+            want = disk.startswith((escape(0x416), escape(0x436))) and escape(0x102) not in disk
+            got = self.same_rest(disk.encode(), wanted.encode(), keep_units=True)
+            self.assertEqual(want if got is None else got, int(want), disk)
+        self.assertEqual(h.get('WantedStart'), ENTRY + 0x200)
 
     def sentinels(self, regs, outputs):
         regs = dict(regs)
@@ -446,7 +468,8 @@ class NameEscapes(unittest.TestCase):
         for disk, wanted, at in ((b'a%90M', b'a%91M', 4), (b'ab', b'ac', 2), (b'a\xe9', b'a\xc9', 2)):
             self.put(ENTRY, disk)
             self.put(ENTRY + 0x200, wanted)
-            regs = self.sentinels({8: ENTRY + at, 9: ENTRY + 0x200 + at, 10: ENTRY}, (0,))
+            h.set('WantedStart', 0)
+            regs = self.sentinels({8: ENTRY + at, 9: ENTRY + 0x200 + at, 10: ENTRY, 14: ENTRY + 0x200}, (0,))
             h.run('ExSameRest', regs=regs)
             self.assert_preserved(regs, (0,), ('ExSameRest', disk))
 
