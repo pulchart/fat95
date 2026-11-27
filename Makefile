@@ -587,6 +587,7 @@ STAGE   = build/stage
 INSTALL = install
 LOCALES       = english cestina dansk deutsch espanol francais greek italiano magyar nederlands norsk polski portugues russian svenska turkce
 
+# LhA on the Amiga turns the file modes into protection bits, programs need e
 stage: version-readme all $(README_NAME) guide
 	$(Q)rm -rf $(STAGE)
 	$(Q)mkdir -p $(STAGE)/fat95/c $(STAGE)/fat95/src $(STAGE)/fat95/docs $(STAGE)/fat95/locale
@@ -606,6 +607,8 @@ stage: version-readme all $(README_NAME) guide
 	$(Q)cat $(INSTALL)/fat95.head $(PTABLE)/install/common.inc $(INSTALL)/language.inc $(INSTALL)/fat95.pre \
 	    $(PTABLE)/install/ptable.inc $(INSTALL)/fat95.post $(INSTALL)/fat95.tail | sed $(INSTALL_SED) > $(STAGE)/fat95/Install
 	$(Q)cat $(INSTALL)/language.head $(INSTALL)/language.inc $(INSTALL)/language.tail | sed $(INSTALL_SED) > $(STAGE)/fat95/Language
+	$(Q)chmod -R u=rwX,go=rX $(STAGE)
+	$(Q)chmod 755 $(STAGE)/fat95/c/* $(STAGE)/fat95/l/*/fat95 $(STAGE)/fat95/l/install95 $(STAGE)/fat95/libs/*/*/ptable.library
 
 release: check-lha stage
 	@echo "Creating $(ARCHIVE_NAME)..."
