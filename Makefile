@@ -553,7 +553,7 @@ check-lha:
 # Archive tree: binaries, Installer scripts and the laid-out icons/ tree.
 STAGE   = build/stage
 INSTALL = install
-LOCALES       = english cestina deutsch espanol francais greek magyar polski russian turkce
+LOCALES       = english cestina dansk deutsch espanol francais greek italiano magyar nederlands norsk polski portugues russian svenska turkce
 
 stage: check-vasm version-readme all $(README_NAME) guide
 	$(Q)rm -rf $(STAGE)

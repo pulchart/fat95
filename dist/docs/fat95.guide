@@ -233,7 +233,8 @@ By hand:
   1. Copy @{fg shine}l/<tier>/fat95@{fg text} to @{fg shine}L:fat95@{fg text} (see @{"CPU tiers" link cpu_tiers}).
   2. Copy @{fg shine}libs/<small|full>/<68000|68020>/ptable.library@{fg text} to @{fg shine}LIBS:@{fg text}.
   3. Set the language: @{fg shine}l/install95 w locale/<language>@{fg text} . Languages: english,
-     cestina, deutsch, espanol, francais, greek, magyar, polski, russian, turkce.
+     cestina, dansk, deutsch, espanol, francais, greek, italiano, magyar,
+     nederlands, norsk, polski, portugues, russian, svenska, turkce.
   4. Optional: copy mountlists from @{fg shine}DOSDrivers/@{fg text} to @{fg shine}DEVS:DOSDrivers/@{fg text} (mount at
      boot) or @{fg shine}SYS:Storage/DOSDrivers/@{fg text} (mount by hand):
     * @{fg shine}MS0@{fg text}/@{fg shine}MS1@{fg text} - FAT-formatted PC DD 720k floppy (mfm.device)
