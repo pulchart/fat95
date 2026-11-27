@@ -227,6 +227,7 @@ Long names: characters outside the code page as %-escapes.
 | `test_add_unit_hides_an_ascii_character_missing_from_the_code_page` | With a code page that lacks an ASCII character, ExAddUnit hides the name instead of writing an escape for a value below 0x80. |
 | `test_add_unit_code_page_filler_and_page_lookup` | With a code page, a character whose page exists but whose slot holds the filler, or whose page does not exist, is escaped, also if its low byte looks like '_' or like a high byte that has a page. |
 | `test_escape_routines_keep_the_registers_the_callers_use` | ExPutEscape and ExAddUnit leave d1-d6 and a0, a2-a6 alone (rxms_conv keeps its counters in d3/d5), ExParseEscape leaves d1-d7 and a0, a2-a6 (ExNextUnit keeps the pending surrogate in d4), on success and on failure. |
+| `test_cut_keeps_no_part_of_an_escape` | ExCutEscape moves the end of a name cut inside an escape back to its %, so the kept text means the same characters as the start of the full name; a % that starts no escape stays. |
 
 #### `test_resize.py`
 
