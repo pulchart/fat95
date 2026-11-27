@@ -192,6 +192,36 @@ def literal_percent(b, want):
     want['100% \u0416.txt'] = want.pop('100% done.txt')
 
 
+CASE_START = {'\u0416 big.txt': b'zhe', '\u0100 macron.txt': b'a macron', 'a[1] long.txt': b'square',
+              'x\u00d7 long.txt': b'times', '\u00ff long.txt': b'y diaeresis', '\u00c9t\u00e9 long.txt': b'ete',
+              '\u00ff' + 'a' * 36: b'37 bytes'}  # the length byte before the name is a %
+
+
+def case_blind(b, want):
+    """Names match regardless of case beyond ASCII: the other case opens, overwrites, renames and deletes the file and a new directory of that name fails with 203; characters that only share bit 5 are different names."""
+    for name, other in (('\u0416 big.txt', '\u0436 BIG.txt'), ('\u0100 macron.txt', '\u0101 MACRON.txt'),
+                        ('\u00c9t\u00e9 long.txt', '\u00e9T\u00c9 LONG.txt'), ('\u00ff long.txt', '\u0178 LONG.txt')):
+        assert b.read_file('/' + escaped(other), 100, 0) == want[name], other
+    assert b.read_file('/%91m big.txt', 100, 0) == want['\u0416 big.txt']
+    assert b.read_file('/' + escaped('\u0178' + 'a' * 36), 100, 0) == b'37 bytes'
+    mkdir(b, '\u0416 sub')
+    b.put('/' + escaped('\u0416 sub/\u00ff' + 'a' * 36), b'in sub')
+    assert b.read_file('/' + escaped('\u0436 SUB/\u0178' + 'a' * 36), 100, 0) == b'in sub'
+    want['\u0416 sub'] = None
+    want['\u0416 sub/\u00ff' + 'a' * 36] = b'in sub'
+    assert b.create_dir(0, escaped('\u0436 big.txt')) == (0, 203)
+    b.put('/' + escaped('\u0436 BIG.txt'), b'overwritten')
+    want['\u0416 big.txt'] = b'overwritten'
+    okay(b.rename_object(0, escaped('\u0416 big.txt'), 0, escaped('\u0436 big.txt')))
+    want['\u0436 big.txt'] = want.pop('\u0416 big.txt')
+    okay(b.delete_object(0, escaped('\u0101 MACRON.txt')))
+    del want['\u0100 macron.txt']
+    for name in ('a{1} long.txt', 'x\u00f7 long.txt', '\u00df long.txt'):
+        assert b.open_file('/' + name, os.O_RDONLY) is None, name
+        b.put('/' + name, name.encode('utf-8'))
+        want[name] = name.encode('utf-8')
+
+
 def name_limit(b, want):
     """A name of exactly 104 bytes with an escape is created and opened by that name; a longer one is cut before an escape the limit splits, and a % that starts no escape stays."""
     name = 'c' * 100 + '\u0416'
@@ -284,7 +314,7 @@ def case_work(driver, bits):
     start = {'\u0416-move.txt': b'move me', '\u0416-data.bin': bytes(range(256)) * 12,
              '\u0416-attr.txt': b'attributes', '100% done.txt': b'hundred', '%ZZ name.txt': b'zz',
              '%8 short.txt': b'eight', 'a%%b long.txt': b'two percent', '%880 only ascii.txt': b'ascii percent',
-             'a' * 100 + '\u0416': b'fits'}
+             'a' * 100 + '\u0416': b'fits'} | CASE_START
     want = dict(start)
     with tempfile.TemporaryDirectory() as d:
         image = Path(d) / 'work.img'
@@ -296,6 +326,7 @@ def case_work(driver, bits):
             directories(b, want)
             literal_percent(b, want)
             name_limit(b, want)
+            case_blind(b, want)
             attributes(b, '\u0416-attr.txt')
             b.flush_volume()
         finally:

@@ -7770,6 +7770,7 @@ xlo_ncopy:
 ;	(FORCE_MODE only);
 ; -> struct XLock *location;
 
+LOB_ESC		= -34-XMSDE_Sizeof-256	;the name component holds a %
 LOB_CSTR	= -32-XMSDE_Sizeof-256
 LOB_MSDEBUF	= -32-XMSDE_Sizeof
 LOB_NAMEBUF	= -32
@@ -7788,7 +7789,7 @@ LOB_MODE	= 16		;SHARED_LOCK or EXCLUSIVE_LOCK,..
 LOB_IGNOREXL	= 20
 
 LocateObj:
-	link.w	a5,#LOB_CSTR
+	link.w	a5,#LOB_ESC
 	movem.l	d2-d4/a2-a3,-(sp)
 	clr.l	NewObject(a4)		;second reply value
 	move.l	LOB_NAME(a5),d0		;(BPTR)BSTR source
@@ -7847,6 +7848,17 @@ lob_scandir:
 	tst.b	(a0)
 	beq.w	lob_found		;hit
 
+	sf	LOB_ESC(a5)
+lob_sesc:
+	move.b	(a0)+,d0
+	beq	lob_sescd
+	cmp.b	#'/',d0
+	beq	lob_sescd
+	cmp.b	#'%',d0
+	bne	lob_sesc
+	st	LOB_ESC(a5)
+lob_sescd:
+	move.l	LOB_NAME(a5),a0
 	lea	LOB_NAMEBUF(a5),a1
 	bsr	MakeShortName
 	move.l	a0,LOB_NAMENEXT(a5)
@@ -7924,7 +7936,7 @@ lob_check:
 	beq.s	lob_oldstyle		;..not available
 
 	move.l	LOB_NAME(a5),a1		;&desired name..
-	move.b	#$df,d2
+	move.b	#$df,d2			;long name present
 lob_cfull:
 	move.b	(a1)+,d1
 	beq.s	lob_cf1
@@ -7935,11 +7947,33 @@ lob_cfull:
 	move.b	(a0)+,d0
 	beq.s	lob_oldstyle
 
-	and.b	d2,d0			;toUpper
-	and.b	d2,d1
 	cmp.b	d0,d1
 	beq.s	lob_cfull
-	bra.s	lob_oldstyle
+	or.b	#$20,d0
+	or.b	#$20,d1
+	cmp.b	d0,d1
+	bne	lob_cother
+	cmp.b	#'a',d0
+	bcs	lob_cother
+	cmp.b	#'z',d0
+	bls.s	lob_cfull		;ASCII letter in the other case
+lob_cother:
+	tst.b	d0
+	bmi	lob_cunits
+	tst.b	d1
+	bmi	lob_cunits
+	cmp.b	#'%',d0
+	beq	lob_cunits
+	tst.b	LOB_ESC(a5)
+	beq	lob_oldstyle		;plain ASCII differs
+lob_cunits:
+	move.l	a2,-(sp)
+	lea	XMSDE_FullName(a2),a2	;start of the disk name
+	bsr	ExSameRest		;escapes, characters from $80
+	move.l	(sp)+,a2
+	tst.l	d0
+	bne	lob_chit
+	bra	lob_oldstyle
 lob_cf1:
 	tst.b	(a0)
 	beq.s	lob_chit		;long name fits
@@ -9403,6 +9437,214 @@ ece_end:
 	move.l	a3,a1
 	movem.l	(sp)+,d0-d2/a0/a2-a3
 	rts
+
+; a0 <- disk name behind its first different byte, a1 <- wanted name
+; behind its one, a2 <- start of the disk name; d0 -> 1 when both mean
+; the same characters up to case (the wanted name ends at 0 or /)
+
+ExSameRest:
+	movem.l	d2-d3/a3,-(sp)
+	moveq.l	#1,d2			;bytes to go back
+	move.l	a0,a3
+	subq.l	#1,a3			;the different byte
+esr_find:
+	cmp.l	a2,a3
+	beq	esr_here
+	addq.l	#1,d2
+	cmp.b	#'%',-(a3)
+	beq	esr_pct
+	cmp.w	#6,d2
+	bcs	esr_find
+	bra	esr_here
+esr_pct:
+	cmp.w	#2,d2
+	beq	esr_units		;the class digit differs
+	move.l	a1,d3
+	lea	1(a3),a1
+	bsr	ExDigit			;class digit
+	move.l	d3,a1
+	lsr.w	#2,d0
+	subq.w	#2,d0
+	cmp.w	#2,d0
+	bhi	esr_here		;a % of its own
+	addq.w	#4,d0			;bytes of the escape
+	cmp.w	d2,d0
+	bcc	esr_units		;the difference is inside it
+esr_here:
+	moveq.l	#1,d2
+	move.b	-1(a0),d0
+	move.b	-1(a1),d3
+	bmi	esr_units		;a byte from $80
+	tst.b	d0
+	bmi	esr_units
+	cmp.b	#'%',d0
+	beq	esr_units
+	cmp.b	#'%',d3
+	beq	esr_units
+	moveq.l	#0,d0
+	bra	esr_end
+esr_units:
+	bsr	ExSameUnits
+esr_end:
+	movem.l	(sp)+,d2-d3/a3
+	rts
+
+; ExSameRest from d2 bytes back; d2-d3/a3 are free
+
+ExSameUnits:
+	movem.l	d1/d4-d5/a0-a1/a6,-(sp)
+	sub.l	d2,a0
+	sub.l	d2,a1
+	move.l	a0,a3			;disk name
+	moveq.l	#0,d4			;pending surrogates
+	moveq.l	#0,d5
+	move.l	CodePage(a4),a6
+esu_loop:
+	tst.w	d4
+	bne	esu_wmore
+	move.b	(a1),d0
+	beq	esu_wend
+	cmp.b	#'/',d0
+	beq	esu_wend
+esu_wmore:
+	tst.w	d5
+	bne	esu_dmore
+	tst.b	(a3)
+	beq	esu_differ		;the disk name is shorter
+esu_dmore:
+	bsr	ExNextUnit
+	move.w	d0,d2			;wanted unit
+	exg	a1,a3
+	exg	d4,d5
+	bsr	ExNextUnit		;disk unit
+	exg	a1,a3
+	exg	d4,d5
+	cmp.w	d0,d2
+	beq	esu_loop
+	bsr	UpperUnit
+	move.w	d0,d3
+	move.w	d2,d0
+	bsr	UpperUnit
+	cmp.w	d0,d3
+	beq	esu_loop
+	bra	esu_differ
+esu_wend:
+	tst.w	d5
+	bne	esu_differ
+	tst.b	(a3)
+	bne	esu_differ		;the disk name is longer
+	moveq.l	#1,d0
+	bra	esu_end
+esu_differ:
+	moveq.l	#0,d0
+esu_end:
+	movem.l	(sp)+,d1/d4-d5/a0-a1/a6
+	rts
+
+; d0 <- UTF-16 code unit; d0 -> its upper case form; registers kept
+
+UpperUnit:
+	movem.l	d1-d2/a0,-(sp)
+	and.l	#$ffff,d0
+	cmp.w	#'a',d0
+	bcs	uu_end			;nothing below maps
+	move.w	d0,d1
+	lsr.w	#8,d1
+	cmp.w	#5,d1
+	bls	uu_page
+	moveq.l	#6,d1			;units from $0600
+uu_page:
+	moveq.l	#0,d2
+	move.b	uu_pages(pc,d1.w),d2	;first rule of the page
+	lea	UpperRules(pc),a0
+	add.w	d2,a0
+uu_rule:
+	move.w	(a0)+,d1		;first unit
+	cmp.w	d1,d0
+	bcs	uu_end			;the rules are sorted
+	move.w	(a0)+,d1		;last unit
+	cmp.w	d1,d0
+	bhi	uu_next
+	move.w	(a0)+,d1		;mode
+	move.w	(a0),d2			;delta
+	tst.w	d1
+	beq	uu_add
+	cmp.w	#3,d1
+	beq	uu_set
+	btst	#0,d0
+	beq	uu_even
+	cmp.w	#1,d1
+	beq	uu_down
+	bra	uu_end
+uu_even:
+	cmp.w	#2,d1
+	bne	uu_end
+uu_down:
+	subq.w	#1,d0
+	bra	uu_end
+uu_set:
+	move.w	d2,d0
+	bra	uu_end
+uu_add:
+	add.w	d2,d0
+	bra	uu_end
+uu_next:
+	addq.l	#4,a0
+	bra	uu_rule
+uu_end:
+	movem.l	(sp)+,d1-d2/a0
+	rts
+
+; byte offset of the first rule that can hold a unit of the page
+; $00..$05, the last one for all units from $0600
+
+uu_pages:
+	dc.b	0,uu_p1-UpperRules,uu_p3-UpperRules,uu_p3-UpperRules
+	dc.b	uu_p4-UpperRules,uu_p5-UpperRules,uu_p6-UpperRules
+	even
+
+; up-case rules: first unit, last unit, mode, delta.
+; Mode 0 adds delta, 1 maps odd units one down, 2 maps even units one
+; down, 3 maps the unit to delta. The list ends with $ffff.
+
+UpperRules:
+	dc.w	$0061,$007a,0,-32
+	dc.w	$00b5,$00b5,3,$039c
+	dc.w	$00e0,$00f6,0,-32
+	dc.w	$00f8,$00fe,0,-32
+	dc.w	$00ff,$00ff,3,$0178
+uu_p1:
+	dc.w	$0101,$012f,1,0
+	dc.w	$0131,$0131,3,$0049
+	dc.w	$0133,$0137,1,0
+	dc.w	$013a,$0148,2,0
+	dc.w	$014b,$0177,1,0
+	dc.w	$017a,$017e,2,0
+	dc.w	$017f,$017f,3,$0053
+uu_p3:
+	dc.w	$03ac,$03ac,3,$0386
+	dc.w	$03ad,$03af,0,-37
+	dc.w	$03b1,$03c1,0,-32
+	dc.w	$03c2,$03c2,3,$03a3
+	dc.w	$03c3,$03cb,0,-32
+	dc.w	$03cc,$03cc,3,$038c
+	dc.w	$03cd,$03ce,0,-63
+uu_p4:
+	dc.w	$0430,$044f,0,-32
+	dc.w	$0450,$045f,0,-80
+	dc.w	$0461,$0481,1,0
+	dc.w	$048b,$04bf,1,0
+	dc.w	$04c2,$04ce,2,0
+uu_p5:
+	dc.w	$04d1,$052f,1,0
+	dc.w	$0561,$0586,0,-48
+uu_p6:
+	dc.w	$1e01,$1e95,1,0
+	dc.w	$1ea1,$1eff,1,0
+	dc.w	$2170,$217f,0,-16
+	dc.w	$24d0,$24e9,0,-26
+	dc.w	$ff41,$ff5a,0,-32
+	dc.w	$ffff
 
 ;--- go to next dir entry ----------------------------------
 ; !ATTENTION!
