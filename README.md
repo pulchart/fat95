@@ -495,11 +495,10 @@ Raw block transfer tool. See [docs/dd.md](docs/dd.md) for more details.
 
 ### Debug95
 
-Writes the internal state of fat95 for a volume to a file, for example for a bug report.
+Writes the internal state of fat95 for a volume to a file, for example for a bug report. See [docs/debug95.md](docs/debug95.md) for more details.
 ```
 debug95 CF0: RAM:cf0.dump
 ```
-`tools/parse_debug95.py` in the [source repository](https://github.com/pulchart/fat95/tree/master/tools) shows the file as text. It prints a summary, and `--all` lists every field.
 
 ### boot95
 
