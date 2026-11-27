@@ -18,18 +18,14 @@ from toolchain import VASM, EXPECTED_VASM_VERSION
 
 MIN_PYTHON = (3, 14)
 
-# Distribution name, the version the suite was last green against, and the hint.
-# The package names are not the import names: amitools-amifuse provides amitools.
-TESTED = (
-    ("amitools-amifuse", "0.8.0.post8", "pip install -r tests/requirements.txt"),
-    ("machine68k-amifuse", "0.4.1.post1", "pip install -r tests/requirements.txt"),
-)
-TESTED_AMIFUSE = (
-    ("amifuse", "0.6.0", "pip install -r tests/requirements-amifuse.txt"),
-    ("fusepy", "3.0.1", "pip install -r tests/requirements-amifuse.txt"),
-)
-# Upstream distributions that claim the same import paths as the forks above.
-CONFLICTS = (("amitools", "amitools-amifuse"), ("machine68k", "machine68k-amifuse"))
+# The amiga-toolchain image lists the Python packages it installs, at the
+# versions the suites run with; make runs the suites in that image.
+IMAGE_REQUIREMENTS = Path("/usr/share/amiga-toolchain/requirements.txt")
+HINT = "run make, which uses the amiga-toolchain image, or uv pip install -r its requirements.txt"
+TESTED = ("amitools", "machine68k")
+TESTED_AMIFUSE = ("amifuse", "fusepy")
+# The amifuse forks claim the same import paths as the packages above.
+FORKS = (("amitools-amifuse", "amitools"), ("machine68k-amifuse", "machine68k"))
 
 BINARIES = (
     ("mkfs.fat", "dnf install dosfstools"),
@@ -37,6 +33,17 @@ BINARIES = (
     ("mcopy", "dnf install mtools"),
     ("fusermount3", "dnf install fuse3, only amifuse_fuse.py needs it"),
 )
+
+
+def image_versions():
+    """The image's pinned versions by distribution name, {} outside the image."""
+    pins = {}
+    if IMAGE_REQUIREMENTS.is_file():
+        for line in IMAGE_REQUIREMENTS.read_text().splitlines():
+            name, _, pinned = line.split("#")[0].partition("==")
+            if pinned:
+                pins[name.split("[")[0].strip().lower()] = pinned.strip()
+    return pins
 
 
 def version(dist):
@@ -50,15 +57,16 @@ def version(dist):
 def report(rows, required):
     """Print one tier. Returns True when something required is missing."""
     missing = False
-    for dist, tested, hint in rows:
-        have = version(dist)
+    pins = image_versions()
+    for dist in rows:
+        have, tested = version(dist), pins.get(dist)
         if have is None:
-            print("  MISSING  %-20s %s" % (dist, hint))
+            print("  MISSING  %-20s %s" % (dist, HINT))
             missing = missing or required
-        elif have == tested:
+        elif tested is None or have == tested:
             print("  ok       %-20s %s" % (dist, have))
         else:
-            print("  UNTESTED %-20s %s, the suite was last green against %s" % (dist, have, tested))
+            print("  UNTESTED %-20s %s, the image has %s" % (dist, have, tested))
     return missing
 
 
@@ -93,22 +101,20 @@ def main():
 
     # Two providers of one import path overwrite each other and the suite then
     # fails in every test. This is the single most likely broken install.
-    for upstream, fork in CONFLICTS:
-        if version(upstream) and version(fork):
+    for fork, wanted in FORKS:
+        if version(fork) and version(wanted):
             print(
                 "  CONFLICT %-20s %s and %s are both installed and claim the same"
-                % ("", upstream, fork)
+                % ("", fork, wanted)
             )
-            print("           import paths. Uninstalling %s alone removes files the" % upstream)
-            print("           fork owns too, so use a fresh venv, or uninstall both and")
-            print("           reinstall from tests/requirements.txt")
-            bad = True
-        elif version(upstream) and not version(fork):
             print(
-                "  WRONG    %-20s %s is installed instead of %s; the harness needs"
-                % ("", upstream, fork)
+                "           import paths. Uninstalling %s alone removes files %s" % (fork, wanted)
             )
-            print("           Machine.from_name, which upstream does not provide")
+            print("           owns too, so use a fresh venv, or uninstall both and")
+            print("           reinstall the image's requirements.txt")
+            bad = True
+        elif version(fork):
+            print("  WRONG    %-20s %s is installed instead of %s" % ("", fork, wanted))
             bad = True
 
     print("\noptional, for make test-amifuse")

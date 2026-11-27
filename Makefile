@@ -522,7 +522,7 @@ test:
 test-amifuse: $(TARGET_020)
 	$(Q)python3 -c 'import amifuse' >/dev/null 2>&1 || { \
 		echo "ERROR: amifuse is not installed, so this tier cannot run"; \
-		echo "       pip install -r $(TESTDIR)/requirements-amifuse.txt"; \
+		echo "       the amiga-toolchain image has it; make runs the tests there"; \
 		echo "       run 'make check-test-deps' for the full list"; \
 		exit 1; \
 	}
