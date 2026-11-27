@@ -30,6 +30,7 @@
       "italiano" "magyar" "nederlands" "norsk" "polski" "portugues" "russian"
       "svenska" "turkce"))
   (working "Setting the language of L:fat95")
+  (protect "l/install95" "+e")
   (set fat95-rc (run (cat "l/install95 >ENV:fat95inst WRITE locale/" fat95-lang)))
   (set fat95-err (getenv "fat95inst"))
   (if (exists "ENV:fat95inst") (delete "ENV:fat95inst"))
