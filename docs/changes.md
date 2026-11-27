@@ -1,6 +1,53 @@
-## 20261115
+## 20261127
 
 <!-- COMPONENTS:BEGIN -->
+_Components in this release_:
+
+- `fat95 5.0 (27.11.2026)` _(new)_
+- `install95 4.0 (27.11.2026)` _(new)_
+- `dd 2.7 (03.10.2026)`
+- `debug95 3.20 (27.11.2026)` _(new)_
+- `SetFileSize 1.1 (25.01.2026)`
+- `boot95 3.19 (25.01.2026)`
+- `lsfsres 1.3 (03.10.2026)`
+- `ptable.library 3.0 (27.11.2026)` _(new)_
+- `lsptres 1.3 (15.11.2026)`
+<!-- COMPONENTS:END -->
+
+#### Changed: file names with characters the language cannot show
+fat95 5.0 shows such characters, for example in names written on Windows in another language, as `^` codes such as `^880`, where 4.2 showed `%880`.
+- Commands such as Copy, Delete, Rename, Type and List read `%` as a pattern, so `Delete a%880` looked for `a880` and deleted that file if there was one. With `^` these names work like any other.
+- A script or assign that names such a file with `%` needs `^` now. Control `+n%` brings back `%`, `+n<char>` picks another character, and `-n` shows `_` as fat95 4.1 and older did.
+- Upper and lower case match in `^` codes too, so `^91M` finds `^90M`.
+- A `^` in a name shows as `^^` where it could be read as a code, and a long name cut at 104 characters no longer ends in half of a code.
+
+#### AROS and ApolloOS
+- Improved AROS and ApolloOS support. fat95 now mounts FAT volumes under AROS, where mounting used to crash it.
+
+#### Improved character code pages and language options
+- New languages: Czech, Danish, Dutch, Greek, Italian, Norwegian, Portuguese, Swedish and Turkish. Each uses the same code page as the AmigaOS catalogs of that language, so file names with accents look the same as in Workbench.
+- Russian file names use Amiga-1251 like the Russian AmigaOS catalogs, instead of Windows-1251.
+- Upper and lower case match for Greek, Cyrillic and Armenian names too. `[` and `{` no longer count as the same character.
+- Short 8.3 names of Greek and Turkish files keep the right letters, such as accented Greek letters, the final sigma and the dotless i.
+- Renaming a volume keeps letters with accents in languages without their own 8.3 table, such as `polski`.
+
+#### Other fixes
+- Creating or renaming in a directory whose last entry was an open file no longer fails with 202 (object is in use) or 203 (object already exists), and no longer damages the directory or loses the file.
+- Files written while the system clock is before 1980, as on an Amiga without a battery clock, get 1 January 1980 instead of a date in 2106.
+- fat95 loads from the RDB of a hard disk under AmigaOS.
+
+#### Install and tools
+- Install and Language ask before setting the language when `L:fat95` is another version than the one in the archive, and say why when it fails.
+- Install sets the execute bit on `install95` before it runs it and on the files it copies.
+- `install95` takes its arguments like other AmigaOS commands. `w` and `r` still work, `WRITE`, `READ` and `HANDLER <file>` are new. `install95 r L:fat95` no longer overwrites the handler, and an extra argument is an error.
+- `debug95` gives up after 10 seconds without an answer from the handler, or at once on Ctrl-C. The new `debug95.guide` explains the dump.
+
+#### Build and tests
+- Improved build. Every change is built and packaged automatically, the same way on every machine, and the release archive comes from that build.
+- Much improved testing. The emulated tests run on 68000 and 68020, and new integration tests in FS-UAE mount PC floppies and FAT12, FAT16 and FAT32 disks with an MBR, without a partition table and in an RDB, then read, write and rename on them. They run automatically on AROS and ApolloOS, and locally also on AmigaOS 3.1 and 3.2.3. See [integration tests](https://github.com/pulchart/fat95/tree/master/tests/integration).
+
+## 20261115
+
 _Components in this release_:
 
 - `fat95 4.2 (15.11.2026)` _(new)_
@@ -12,7 +59,6 @@ _Components in this release_:
 - `lsfsres 1.3 (03.10.2026)`
 - `ptable.library 2.3 (15.11.2026)` _(new)_
 - `lsptres 1.3 (15.11.2026)` _(new)_
-<!-- COMPONENTS:END -->
 
 ##### 'fat95 4.2'
 - Formatted volumes get a minimal boot sector instead of the PC DOS/Win95 boot stub.
