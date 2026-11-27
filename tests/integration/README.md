@@ -1,6 +1,6 @@
 # fat95 integration tests
 
-fat95 under AmigaOS 3.1, AmigaOS 3.2.3, AROS and ApolloOS in FS-UAE (A1200): PC floppies through mfm.device and disks with FAT partitions. No PCMCIA, no compactflash.device.
+fat95 under AmigaOS 3.1, AmigaOS 3.2.3, AROS and ApolloOS in FS-UAE (A1200, and AmigaOS as an A600 with the 68000 builds): PC floppies through mfm.device and disks with FAT partitions. No PCMCIA, no compactflash.device.
 
 ## Running
 
@@ -8,14 +8,14 @@ Each OS runs in an [amiga-fsuae](https://github.com/pulchart/container-amiga-fsu
 
 | OS | image |
 |---|---|
-| `3.2.3`, `3.1` | `localhost/amiga-fsuae-amigaos:<version>`, built locally from own install media |
+| `3.2.3-a1200`, `3.1-a1200`, `3.2.3-a600`, `3.1-a600` | `localhost/amiga-fsuae-amigaos:<version>`, built locally from own install media |
 | `aros` | `docker.io/pulchart/amiga-fsuae-aros:latest` |
 | `apolloos` | `ghcr.io/pulchart/amiga-fsuae-apolloos:latest` |
 
 ```
 make test-integration PTABLE=...                     # every scenario on every OS, except stress_
 make test-integration IT_OS=aros IT="--scenario sf_fat32"
-make test-integration IT_OS=3.2.3 IT="--scenario stress_fat32"   # a stress_ scenario runs only when named
+make test-integration IT_OS=3.2.3-a1200 IT="--scenario stress_fat32"   # a stress_ scenario runs only when named
 tests/integration/run.py --list                      # scenarios, the OSes they run on, description
 ```
 
@@ -45,6 +45,8 @@ Optional per profile:
 | `max_transfer` | `0x20000` in mountlists, RDB default | MaxTransfer |
 | `copy` | `Copy` | command that moves files between `OUT:` and the fat95 volume |
 | `cpu` | `68020` | FS-UAE CPU |
+| `model` | `A1200` | FS-UAE Amiga model, and the image's `<model>.rom` beside `AMIGA_KICKSTART` |
+| `tier` | none | `68000`: the 68000 builds of fat95 and ptable.library |
 | `fast_memory` | `8192` | Fast RAM in KB |
 | `fsuae` | none | extra FS-UAE lines |
 
@@ -66,12 +68,12 @@ Optional parameters: `work` (`build/integration`, for run.py alone), `fsuae` (`f
 
 | Scenario | OS | Checks |
 |---|---|---|
-| `floppy_fat12` | 3.1, 3.2.3 | PC 720K floppy through mfm.device: payload reads back, `smoke` passes, a written file reads back and lands on the image |
+| `floppy_fat12` | AmigaOS | PC 720K floppy through mfm.device: payload reads back, `smoke` passes, a written file reads back and lands on the image |
 | `disk_fat16` | all | MBR FAT16 partition: the same |
 | `disk_fat32` | all | MBR FAT32 partition: the same |
 | `sf_fat32` | all | FAT32 from block 0, no partition table: the same |
 | `rdb_fat32` | all | RDB that carries fat95 and a FAT32 partition, mounted by the OS at boot: the same |
-| `stress_fat12` | 3.1, 3.2.3 | PC 720K floppy: FileSystemStressTest as below |
+| `stress_fat12` | AmigaOS | PC 720K floppy: FileSystemStressTest as below |
 | `stress_fat16` | all | MBR FAT16 partition, 128 MiB, 68040 with JIT: two FileSystemStressTest writers with small files in one directory at once, then large files, then the volume filled; every file validated and removed, the directory empty, fsck clean, the handler's free clusters equal to the image's |
 | `stress_fat32` | all | the same on FAT32 with 512-byte clusters |
 

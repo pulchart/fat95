@@ -332,6 +332,8 @@ def run(cfg, osname, osc, boot, work, name, sc):
     serial = d / "serial.txt"
     serial.touch()
     rom, ext = os.environ["AMIGA_KICKSTART"], os.environ.get("AMIGA_KICKSTART_EXT")
+    if "model" in osc:  # the image keeps each model's ROM as <model>.rom beside it
+        rom = str(Path(rom).with_name(osc["model"] + ".rom"))
     cpu = osc.get("cpu", "68020")
     speed = []
     if sc.get("fast"):  # sizes and contents, not timing: 68040 with JIT
@@ -343,7 +345,7 @@ def run(cfg, osname, osc, boot, work, name, sc):
         b for b in boot if not (sc["medium"] == "floppy" and b.startswith("writable_floppy_images"))
     ]
     lines = (
-        ["[fs-uae]", "amiga_model = A1200", "cpu = %s" % cpu, "chip_memory = 2048",
+        ["[fs-uae]", "amiga_model = %s" % osc.get("model", "A1200"), "cpu = %s" % cpu, "chip_memory = 2048",
          "fast_memory = %d" % osc.get("fast_memory", 8192), "kickstart_file = %s" % rom]
         + (["kickstart_ext_file = %s" % ext] if ext else [])
         + boot_lines + attach + list(osc.get("fsuae", [])) + speed
@@ -440,6 +442,9 @@ def main():
     unset = [v for v in ("AMIGA_SYSTEM", "AMIGA_KICKSTART") if not os.environ.get(v)]
     if unset:
         sys.exit("%s not set: run in an amiga-fsuae OS image" % " and ".join(unset))
+    if osc.get("tier") == "68000":  # the 68000 builds of fat95 and ptable.library
+        for k in ("fat95", "ptable"):
+            cfg[k] = Path(str(cfg[k]).replace("/68020/", "/68000/"))
     builds = [cfg[k] for k in ("fat95", "dd", "lsfsres", "ptable") if not cfg[k].exists()]
     builds += [p for p in (SMOKE, NOREQ) if not p.exists()]
     if builds:
