@@ -267,7 +267,6 @@ jobs:
           path: dist/
       - name: Keep a copy of the build
         run: |
-          chmod 755 dist/c/* dist/l/*/fat95 dist/l/install95
           cp -r dist "$RUNNER_TEMP/build"
       - name: Archive and readme
         run: make release
@@ -280,6 +279,7 @@ jobs:
           if grep -rl '^version https://git-lfs' unpacked; then echo "$archive holds LFS pointers" >&2; exit 1; fi
           for f in "$build"/l/*/fat95 "$build"/l/install95 "$build"/c/* "$build"/libs/*/*/ptable.library; do
             cmp "$f" "unpacked/fat95/${f#"$build"/}"
+            [ -x "unpacked/fat95/${f#"$build"/}" ]
           done
           ver=$(strings "$build/l/68020/fat95" | sed -n '/VER: /{s/.*VER: //p;q}')
           for f in fat95/Install fat95/Language fat95/LICENSE fat95/fat95.readme fat95.info "$build"/docs/*.guide; do
