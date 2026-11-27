@@ -18,8 +18,6 @@ os:
     ide_unit: 1
     stack: 65536
     copy: dd
-# FileSystemStressTest from Aminet (disk/misc), for the stress_ scenarios
-fsst: /opt/AmigaOS/FileSystemStressTest/FileSystemStressTest
 # work: build/integration
 # fsuae: fs-uae
 # wait: 5

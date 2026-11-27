@@ -19,7 +19,7 @@ make test-integration IT_OS=3.2.3 IT="--scenario stress_fat32"   # a stress_ sce
 tests/integration/run.py --list                      # scenarios, the OSes they run on, description
 ```
 
-`make test-integration` builds `smoke` and `noreq` first and mounts the repository and `FSST_DIR` (default `/opt/AmigaOS/FileSystemStressTest`) at the same paths. `make` with `PTABLE` puts ptable.library into `dist/libs`. Exit code 0 when every scenario passes. Each run gets a new directory under `build/integration`, or `IT_WORK`.
+`make test-integration` builds `smoke` and `noreq` first and mounts the repository and the run directory at the same paths. A `stress_` scenario fetches FileSystemStressTest 1.2 from Aminet (disk/misc) once into `build/fsst`, checked against its SHA-256. `make` with `PTABLE` puts ptable.library into `dist/libs`. Exit code 0 when every scenario passes. Each run gets a new directory under `build/integration`, or `IT_WORK`.
 
 In an image, as in CI:
 
@@ -55,7 +55,6 @@ Builds:
 | `fat95`, `dd`, `lsfsres` | this repository's `dist/` |
 | `ptable` | `dist/libs/full/68020/ptable.library`; fat95 reads partition tables through it |
 | `debug95` | this repository's `dist/`; optional, dumps the handler state into `OUT:` |
-| `fsst` | none: FileSystemStressTest 1.2 from Aminet (disk/misc), for the `stress_` scenarios; run.py stops when a named one lacks it |
 
 Optional parameters: `work` (`build/integration`, for run.py alone), `fsuae` (`fs-uae`), `wait` (`5` seconds after a mount), `limit` (`240` seconds before a scenario counts as hung; a scenario can set its own).
 
@@ -83,7 +82,7 @@ podman; the images bring the rest. `make smoke noreq` needs vasm and vbcc with `
 ## Phases
 
 1. Plan: the scenarios of the OS.
-2. Preparation: a copy of the system directory with fat95, dd, lsfsres, ptable.library, `noreq` and `smoke`.
+2. Preparation: a copy of the system directory with fat95, dd, lsfsres, ptable.library, `noreq` and `smoke`, plus FileSystemStressTest as `C:fsst` for a `stress_` scenario.
 3. Per scenario: the medium image, a mountlist and the steps, in the host directory the guest sees as `OUT:`.
 4. Boot: the Startup-Sequence runs the steps; the guest writes its findings to `OUT:`.
 5. Checks: on `OUT:` and the medium image (mtools).
