@@ -2,22 +2,9 @@
 
 ## Start here
 
-Requires Linux, Python 3.14+ and [vasm 2.0f](../CONTRIBUTING.md#build).
-From the repository root:
-
-```sh
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install -r tests/requirements.txt
-make test
-```
+`make test` runs the suites in the amiga-toolchain image, which holds vasm 2.0f, Python 3.14+, `amitools`, `machine68k` and `amifuse` at the versions in its `requirements.txt`, see [CONTRIBUTING.md](../CONTRIBUTING.md#build). For Python runs outside the image, `uv pip install -r` that file into a venv. Do not mix `amitools` and `machine68k` with the amifuse forks: their import paths overlap. `make check-test-deps` reports missing packages, versions other than the image's and conflicting providers.
 
 `make lint` runs ruff and yamllint; `pre-commit install` runs them before each commit.
-
-An existing compatible Python environment also works. The requirements pin
-tested **amitools-amifuse** and **machine68k-amifuse** versions. Do not mix them
-with upstream packages: their import paths overlap. Use `make check-test-deps`
-to diagnose missing dependencies, untested versions or conflicting providers.
 
 `make test` runs unit tests and standalone checks on 68000 and 68020.
 Any failure fails the run.
@@ -34,15 +21,13 @@ the default is 68000. Use `-k DirtyBitTests` to select a class.
 ## Optional image tests
 
 ```sh
-python -m pip install -r tests/requirements-amifuse.txt
-# Install dosfstools and mtools with your distribution's package manager.
 make test-amifuse AMIFUSE_CYCLES=1  # short run; default is 100 restart cycles
 ```
 
-This builds the 68020 handler and tests FAT images through DOS packets.
-It checks results with `fsck.fat` and mtools. Missing dependencies fail the
-requested run. Requirements include the tested base packages; amifuse uses
-private APIs, so upgrades need verification.
+This builds the 68020 handler and tests FAT images through DOS packets, with
+amifuse, dosfstools and mtools from the image. It checks results with
+`fsck.fat` and mtools. amifuse uses private APIs, so upgrades need
+verification.
 
 The matrix covers nested directories, long names, seek/resize, live handles,
 disk-full recovery and remounts. It also runs 18 bounded media-removal,
