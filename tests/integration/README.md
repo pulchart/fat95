@@ -1,47 +1,46 @@
 # fat95 integration tests
 
-fat95 under AmigaOS 3.1, AmigaOS 3.2.3 and AROS in FS-UAE (A1200): PC floppies through mfm.device and disks with FAT partitions. No PCMCIA, no compactflash.device.
+fat95 under AmigaOS 3.1, AmigaOS 3.2.3, AROS and ApolloOS in FS-UAE (A1200): PC floppies through mfm.device and disks with FAT partitions. No PCMCIA, no compactflash.device.
 
 ## Running
 
+Each OS runs in an [amiga-fsuae](https://github.com/pulchart/container-amiga-fsuae) image with podman, one after another:
+
+| OS | image |
+|---|---|
+| `3.2.3`, `3.1` | `localhost/amiga-fsuae-amigaos:<version>`, built locally from own install media |
+| `aros` | `docker.io/pulchart/amiga-fsuae-aros:latest` |
+| `apolloos` | `ghcr.io/pulchart/amiga-fsuae-apolloos:latest` |
+
 ```
-make test-integration                                # every scenario on every OS profile, except stress_
-make test-integration IT="--os 3.1 --scenario sf_fat32"
-make test-integration IT="--os 3.2.3 --scenario stress_fat32"   # a stress_ scenario runs only when named
+make test-integration PTABLE=...                     # every scenario on every OS, except stress_
+make test-integration IT_OS=aros IT="--scenario sf_fat32"
+make test-integration IT_OS=3.2.3 IT="--scenario stress_fat32"   # a stress_ scenario runs only when named
 tests/integration/run.py --list                      # scenarios, the OSes they run on, description
-tests/integration/run.py --config FILE               # another configuration (default: config.yaml here, or $FAT95_IT_CONFIG)
-tests/integration/run.py --work DIR                  # a new directory for this run
 ```
 
-`make test-integration` builds `smoke` first; run.py alone needs `make smoke`. The run first prints its plan: per OS profile the scenarios it runs, or why the profile is skipped. Exit code 0 when every scenario that ran passes. Each run gets a new directory under `work`; nothing is written into the source tree outside it.
+`make test-integration` builds `smoke` and `noreq` first and mounts the repository and `FSST_DIR` (default `/opt/AmigaOS/FileSystemStressTest`) at the same paths. `make` with `PTABLE` puts ptable.library into `dist/libs`. Exit code 0 when every scenario passes. Each run gets a new directory under `build/integration`, or `IT_WORK`.
+
+In an image, as in CI:
+
+```
+tests/integration/run.py --os aros [--scenario NAME ...] [--work DIR] [--config FILE]
+```
+
+run.py takes the OS from the image: `AMIGA_SYSTEM` is the system directory, `AMIGA_KICKSTART` the ROM, `AMIGA_KICKSTART_EXT` its second half and `AMIGA_HD_CONTROLLER` the FS-UAE controller for disks (default `ide0`), if any.
 
 ## Configuration
 
-`config.yaml` holds the inputs that are not part of the repository. A relative path starts at the repository root, so `../amigaos-ptable` is a checkout beside this one.
-
-`os` names the OS profiles. A profile whose files are missing is skipped. An AmigaOS profile:
-
-| Key | Content |
-|---|---|
-| `kickstart` | Kickstart ROM; a `.F8` half takes the `.E0` half beside it |
-| `commands_adf` | disks the boot disk takes its C: commands from, searched in order |
-| `workbench_adf` | disk with `Devs/mfm.device` |
-
-An AROS profile:
-
-| Key | Content |
-|---|---|
-| `kickstart`, `kickstart_ext` | AROS ROM halves |
-| `system_dir` | AROS system directory; a copy of it is the boot volume |
+`config.yaml` (or `--config`, `$FAT95_IT_CONFIG`) names the OS profiles in `os` with their settings, and the builds. A relative path starts at the repository root.
 
 Optional per profile:
 
 | Key | Default | Meaning |
 |---|---|---|
 | `ide_device` | `scsi.device` | device the disk mountlists use |
-| `ide_controller` | `ide0` | FS-UAE controller the disk is attached to |
 | `ide_unit` | `0` | unit of the disk on `ide_device` |
 | `ptable` | `true` | `false` leaves ptable.library off the boot volume |
+| `setpatch` | `true` | `false` leaves `SetPatch` out of the Startup-Sequence |
 | `stack` | `8192` | handler stack, in the mountlists and the RDB |
 | `max_transfer` | `0x20000` in mountlists, RDB default | MaxTransfer |
 | `copy` | `Copy` | command that moves files between `OUT:` and the fat95 volume |
@@ -54,11 +53,11 @@ Builds:
 | Key | Default |
 |---|---|
 | `fat95`, `dd`, `lsfsres` | this repository's `dist/` |
+| `ptable` | `dist/libs/full/68020/ptable.library`; fat95 reads partition tables through it |
 | `debug95` | this repository's `dist/`; optional, dumps the handler state into `OUT:` |
 | `fsst` | none: FileSystemStressTest 1.2 from Aminet (disk/misc), for the `stress_` scenarios; run.py stops when a named one lacks it |
-| `ptable` | none: ptable.library build, fat95 reads partition tables through it |
 
-Optional parameters: `work` (`build/integration`), `fsuae` (`fs-uae`), `vasm` (`vasmm68k_mot`), `wait` (`5` seconds after a mount), `limit` (`240` seconds before a scenario counts as hung; a scenario can set its own).
+Optional parameters: `work` (`build/integration`, for run.py alone), `fsuae` (`fs-uae`), `wait` (`5` seconds after a mount), `limit` (`240` seconds before a scenario counts as hung; a scenario can set its own).
 
 ## Scenarios
 
@@ -79,12 +78,12 @@ Optional parameters: `work` (`build/integration`), `fsuae` (`fs-uae`), `vasm` (`
 
 ## Host tools
 
-FS-UAE, xvfb-run, amitools (`xdftool`, `rdbtool`), sfdisk, mkfs.fat, mtools, gzip, vasm, vbcc with `NDK/` for `smoke`, Python 3 with PyYAML.
+podman; the images bring the rest. `make smoke noreq` needs vasm and vbcc with `NDK/`.
 
 ## Phases
 
-1. Plan: the OS profiles and scenarios that run, the profiles that are skipped.
-2. Preparation per OS: an AmigaOS boot disk with the C: commands from `commands_adf`, mfm.device, fat95, dd, lsfsres, ptable.library, `noreq` and `smoke`; or a copy of the AROS system directory with the same files.
+1. Plan: the scenarios of the OS.
+2. Preparation: a copy of the system directory with fat95, dd, lsfsres, ptable.library, `noreq` and `smoke`.
 3. Per scenario: the medium image, a mountlist and the steps, in the host directory the guest sees as `OUT:`.
 4. Boot: the Startup-Sequence runs the steps; the guest writes its findings to `OUT:`.
 5. Checks: on `OUT:` and the medium image (mtools).
@@ -104,8 +103,7 @@ FS-UAE is started a second time when it exits or the guest has not begun its ste
 
 - Info prints `read/write`; the check ignores case.
 - AROS `Copy` to and from the FS-UAE host directory (`OUT:`) fails with "object already exists" and "object is in use"; the profiles set `copy: dd`.
-- The nightly ata.device sends the second data block of a WRITE MULTIPLE above 128 sectors before the drive asks for it, and the write fails; the profile sets `max_transfer: 0x10000`.
-- The ApolloOS ata.device fails with "Failed to Allocate CacheData" in FS-UAE, so that profile puts the disk on the UAE controller (`uaehf.device`).
+- ApolloOS finds IDE only on Apollo boards, so its image puts disks on the UAE controller and the profile mounts them through `uaehf.device`.
 
 ## Not covered
 
