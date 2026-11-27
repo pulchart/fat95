@@ -2956,6 +2956,7 @@ msn_loop:
 
 	addq.l	#1,a0
 	cmp.b	#'/',d0
+msn_slash:
 	beq.w	msn_pass2		;..or next component
 
 	cmp.b	#'.',d0
@@ -2968,7 +2969,7 @@ msn_start:
 
 	addq.l	#1,a0
 	cmp.b	#'/',d0
-	beq.s	msn_pass2
+	beq.s	msn_slash		;on to msn_pass2
 
 	cmp.b	#'.',d0
 	beq.s	msn_period		;several dots in a row
@@ -3009,6 +3010,8 @@ msn_c1:
 	and.b	d0,d1
 	btst	d1,(a2)
 	beq.s	msn_write
+	cmp.b	#'%',d0
+	beq.s	msn_pct			;marked invalid to reach this check
 msn_underscore:
 	moveq.l	#'_',d0			;invalid char
 	moveq.l	#3,d4
@@ -3016,6 +3019,19 @@ msn_write:
 	move.b	d0,(a1)+		;write char
 	subq.w	#1,d3
 	bra.s	msn_loop
+msn_pct:
+	cmp.b	(a0),d0
+	beq.s	msn_pair
+	exg	a0,a1
+	bsr	ExParseEscape
+	exg	a0,a1
+	tst.l	d0
+	bpl.s	msn_underscore		;an escape: a character outside the code page
+	moveq.l	#'%',d0
+	bra.s	msn_write
+msn_pair:
+	addq.l	#1,a0			;%% is one %
+	bra.s	msn_write
 msn_table:
 	btst	#6,d0
 	beq.s	msn_t1
@@ -3109,7 +3125,7 @@ msn_parent:
 	bra.s	msn_end
 
 msn_chars:
-	dc.l	-1,$04dc00fc,$00000038,$00000010
+	dc.l	-1,$24dc00fc,$00000038,$00000010
 
 ;--- find a unique standard name ---------------------------
 ; <- ULONG DirStartBlock, char &StdName[11];
@@ -7952,7 +7968,7 @@ lob_cfull:
 	beq.s	lob_cf1
 
 	move.b	(a0)+,d0
-	beq.s	lob_oldstyle
+	beq.s	lob_cdend
 
 	cmp.b	d0,d1
 	beq.s	lob_cfull
@@ -7981,6 +7997,10 @@ lob_cunits:
 	movem.l	(sp)+,a2/a6
 	tst.l	d0
 	bne	lob_chit
+	bra	lob_oldstyle
+lob_cdend:
+	tst.b	LOB_ESC(a5)
+	bne	lob_cunits		;the wanted name may hold a %% for a %
 	bra	lob_oldstyle
 lob_cf1:
 	tst.b	(a0)
@@ -8070,17 +8090,8 @@ lob_copy:
 	move.l	d0,XMSDE_ExtKey(a2) ;"extended entry" for CheckDirSpace()
 
 	move.l	LOB_NAME(a5),a0
-	lea	XMSDE_FullName(a2),a1
-	moveq.l	#11,d0
-	sub.l	a1,d0
-lob_fncopy:
-	move.b	(a0)+,(a1)+		;copy long name
-	bne.s	lob_fncopy
-
-	add.l	a1,d0			;name length + 12
-	moveq.l	#-12,d1
-	add.l	d0,d1
-	move.b	d1,XMSDE_FNLength(a2)	;BStr length
+	move.l	a2,a1
+	bsr	ExShowName		;long name as a listing shows it
 	lea	XMSDE_FullName(a2),a0
 	bsr	ExCountUnits		;UTF-16 units
 	add.w	#12,d0
@@ -8351,16 +8362,25 @@ gbn_standard:
 	bra.s	gbn_namelen
 
 gbn_filename:
+	moveq.l	#0,d1			;no % yet
 	moveq.l	#8,d0
-	bsr	SpcStrCopy		;file-/dir name (<= 8)
+	bsr	SpcFieldCopy		;file-/dir name (<= 8)
 	move.b	#'.',(a1)+		;dot
 	move.l	a1,-(sp)
+	lea	8(a3),a0
 	moveq.l	#3,d0
-	bsr	SpcStrCopy		;Name extension (<= 3)
+	bsr	SpcFieldCopy		;Name extension (<= 3)
 	cmp.l	(sp)+,a1
-	bne.s	gbn_namelen
+	bne.s	gbn_ext
 
 	subq.l	#1,a1			;no ext, no dot
+gbn_ext:
+	tst.l	d1
+	beq.s	gbn_namelen		;no %
+	clr.b	(a1)
+	lea	1(a2),a0
+	bsr	ExShowPct
+	lea	-1(a0),a1		;end with the %%
 gbn_namelen:
 	clr.b	(a1)			;C String termination AND..
 	move.l	a2,a0
@@ -8429,6 +8449,29 @@ ssc_next:
 	bgt.s	ssc_loop
 
 	move.l	d1,a1
+	rts
+
+;--- 8.3 field without its trailing spaces -----------------
+; a0 <- field, d0.w <- its length, a1 <-> &target;
+; d1 -> -1 when a % was copied, else kept; a0 changed
+
+SpcFieldCopy:
+	add.w	d0,a0
+	subq.w	#1,d0
+sfc_trim:
+	cmp.b	#' ',-(a0)
+	dbne	d0,sfc_trim
+	beq.s	sfc_end			;only spaces
+	sub.w	d0,a0
+sfc_copy:
+	move.b	(a0),(a1)+
+	cmp.b	#'%',(a0)+
+	dbeq	d0,sfc_copy
+	bne.s	sfc_end
+	moveq.l	#-1,d1			;a % was copied
+	subq.w	#1,d0
+	bpl.s	sfc_copy
+sfc_end:
 	rts
 
 ;--- extra timestamps MSDE -> BStr -------------------------
@@ -9099,7 +9142,9 @@ rxms_error:
 ; Such a character is shown as % and its code point in base 32:
 ; %880 is U+0100, %90M is U+0416. Code points below
 ; $800 take 3 digits, below $10000 4, the rest 5; the last digit of
-; the longer forms is even. A % that starts no valid escape stands for itself.
+; the longer forms is even. %% is one %. A % that starts no valid escape
+; stands for itself; a % of the name shows as %% where it would read as
+; an escape or comes before a %.
 
 ; a1 <- digit; d0 -> 0..31 or -1; a1 advanced
 
@@ -9251,16 +9296,17 @@ ExRoom:
 	movem.l	(sp)+,d1
 	rts
 
-; d0.w <- UTF-16 code unit; d7 <-> pending high surrogate or 0;
-; a1 <-> end of the name, a3 <- entry, a6 <- InvCodePage or 0;
-; d0 -> 0: the name cannot be shown
+; d0.w <- UTF-16 code unit; d7 <-> pending high surrogate in the low
+; word, offset from a3 of a % that waits for the text behind it in the
+; high word, or 0; a1 <-> end of the name, a3 <- entry,
+; a6 <- InvCodePage or 0; d0 -> 0: the name cannot be shown
 
 ExAddUnit:
 	movem.l	d1-d2/a0,-(sp)
 	and.l	#$ffff,d0
 	move.l	d0,d2
-	tst.w	d7
-	bne	eau_second
+	tst.l	d7
+	bne	eau_wait		;a surrogate or a % waits
 	cmp.w	#$d800,d2
 	bcs	eau_char
 	cmp.w	#$e000,d2
@@ -9320,7 +9366,15 @@ eau_put:
 	bsr	ExRoom
 	bcc	eau_bad
 	move.b	d1,(a1)+
-	bra	eau_ok
+	cmp.b	#'%',d1
+	bne	eau_end			;d0 = 1 from ExRoom
+	move.l	a1,d2			;a % waits for the text behind it
+	sub.l	a3,d2
+	subq.w	#1,d2
+	swap	d7
+	move.w	d2,d7
+	swap	d7
+	bra	eau_end
 eau_unit:
 	move.l	d2,d0
 eau_esc:
@@ -9335,6 +9389,59 @@ eau_bad:
 	moveq.l	#0,d0
 eau_end:
 	movem.l	(sp)+,d1-d2/a0
+	rts
+eau_wait:
+	cmp.l	#$ffff,d7
+	bls	eau_second		;only a high surrogate
+	movem.l	(sp)+,d1-d2/a0
+	move.l	d7,-(sp)		;the waiting % in the high word
+	and.l	#$ffff,d7
+	bsr	ExAddUnit		;the unit itself
+	movem.l	d1-d2/a0,-(sp)
+	tst.w	d0
+	beq	eaw_end
+	move.w	12(sp),d1		;offset of the waiting %
+	lea	(a3,d1.w),a0
+	clr.b	(a1)
+	cmp.b	#'%',1(a0)
+	beq	eaw_double
+	move.l	a1,d2
+	lea	1(a0),a1
+	bsr	ExParseEscape
+	move.l	d2,a1
+	tst.l	d0
+	bpl	eaw_double		;the text behind it reads as an escape
+	sub.l	a0,d2
+	cmp.w	#6,d2
+	bcc	eaw_ok			;5 bytes behind it: a % of its own
+	cmp.l	#$ffff,d7
+	bhi	eaw_ok			;a later % waits instead
+	swap	d7
+	move.w	d1,d7			;still waiting
+	swap	d7
+	bra	eaw_ok
+eaw_double:
+	moveq.l	#1,d0
+	bsr	ExRoom
+	bcc	eaw_bad
+	move.l	a1,d2
+eaw_shift:
+	move.b	-(a1),1(a1)
+	cmp.l	a1,a0
+	bne	eaw_shift
+	move.l	d2,a1
+	addq.l	#1,a1
+	cmp.l	#$ffff,d7
+	bls	eaw_ok
+	add.l	#$10000,d7		;a later % moved by one
+eaw_ok:
+	moveq.l	#1,d0
+	bra	eaw_end
+eaw_bad:
+	moveq.l	#0,d0
+eaw_end:
+	movem.l	(sp)+,d1-d2/a0
+	addq.l	#4,sp
 	rts
 
 ; a1 <-> next character of the name, a6 <- CodePage or 0;
@@ -9353,6 +9460,8 @@ enu_new:
 	move.b	(a1)+,d1
 	cmp.b	#'%',d1
 	bne	enu_plain
+	cmp.b	(a1),d1
+	beq	enu_pair
 	bsr	ExParseEscape
 	tst.l	d0
 	bmi	enu_plain		;a % of its own
@@ -9366,6 +9475,8 @@ enu_new:
 	lsr.l	#2,d0
 	or.w	#$d800,d0
 	bra	enu_end
+enu_pair:
+	addq.l	#1,a1			;%% is one %
 enu_plain:
 	move.l	a6,d0
 	bne	enu_table
@@ -9394,6 +9505,8 @@ ecnt_loop:
 	addq.w	#1,d1
 	cmp.b	#'%',d0
 	bne	ecnt_loop
+	cmp.b	(a1),d0
+	beq	ecnt_pair
 	bsr	ExParseEscape
 	tst.l	d0
 	bmi	ecnt_loop
@@ -9401,14 +9514,96 @@ ecnt_loop:
 	bcs	ecnt_loop
 	addq.w	#1,d1			;a surrogate pair
 	bra	ecnt_loop
+ecnt_pair:
+	addq.l	#1,a1			;%% is one %
+	bra	ecnt_loop
 ecnt_end:
 	moveq.l	#0,d0
 	move.w	d1,d0
 	movem.l	(sp)+,d1/a1
 	rts
 
+; a0 <- typed name (ends at 0 or /), a1 <- entry; its long name and
+; length become the text a listing shows for the same units, or the
+; typed text when that cannot be shown; registers kept
+
+ExShowName:
+	movem.l	d0-d7/a0-a3/a6,-(sp)
+	move.l	a1,a3
+	move.l	a0,a2			;typed text
+	lea	XMSDE_FullName(a3),a1
+	moveq.l	#0,d4			;pending low surrogate
+	moveq.l	#0,d7			;pending high surrogate, waiting %
+esn_loop:
+	tst.w	d4
+	bne	esn_unit
+	move.b	(a2),d0
+	beq	esn_done
+	cmp.b	#'/',d0
+	beq	esn_done
+esn_unit:
+	exg	a1,a2
+	move.l	CodePage(a4),a6
+	bsr	ExNextUnit
+	exg	a1,a2
+	move.l	InvCodePage(a4),a6
+	bsr	ExAddUnit
+	tst.w	d0
+	bne	esn_loop
+esn_typed:
+	move.l	(8*4)(sp),a2		;cannot be shown: the typed text
+	lea	XMSDE_FullName(a3),a1
+esn_copy:
+	move.b	(a2)+,d0
+	beq	esn_end
+	cmp.b	#'/',d0
+	beq	esn_end
+	move.b	d0,(a1)+
+	bra	esn_copy
+esn_done:
+	tst.w	d7
+	bne	esn_typed		;a high surrogate alone
+esn_end:
+	clr.b	(a1)
+	move.l	a1,d0
+	sub.l	a3,d0
+	sub.w	#XMSDE_FullName,d0
+	move.b	d0,XMSDE_FNLength(a3)	;BStr length
+	movem.l	(sp)+,d0-d7/a0-a3/a6
+	rts
+
+; a0 <- C string whose every % stands for itself; a % that would read
+; as an escape or comes before a % is doubled in place;
+; a0 -> behind the 0; d0/a1 changed
+
+ExShowPct:
+esp_loop:
+	move.b	(a0)+,d0
+	beq	esp_end
+	cmp.b	#'%',d0
+	bne	esp_loop
+	cmp.b	(a0),d0
+	beq	esp_double
+	move.l	a0,a1
+	bsr	ExParseEscape
+	tst.l	d0
+	bmi	esp_loop
+esp_double:
+	move.l	a0,a1
+esp_find:
+	tst.b	(a1)+
+	bne	esp_find
+esp_shift:
+	move.b	-(a1),1(a1)
+	cmp.l	a1,a0
+	bne	esp_shift
+	move.b	#'%',(a0)+
+	bra	esp_loop
+esp_end:
+	rts
+
 ; a1 <-> end of a name cut to MAXNAMELEN, d0 <- first byte cut off;
-; a1 moves back to the % of an escape the cut splits
+; a1 moves back to the % of an escape or %% the cut splits
 
 ExCutEscape:
 	movem.l	d0-d2/a0/a2-a3,-(sp)
@@ -9420,7 +9615,25 @@ ece_find:
 	cmp.b	#'%',-(a2)
 	dbeq	d2,ece_find
 	bne	ece_end			;no % close to the cut
+	lea	-MAXNAMELEN(a3),a0	;start of the name
+	move.l	a2,a1
+	moveq.l	#0,d1
+ece_run:
+	cmp.l	a0,a1
+	beq	ece_odd
+	cmp.b	#'%',-(a1)
+	bne	ece_odd
+	addq.w	#1,d1			;% before it in the run
+	bra	ece_run
+ece_odd:
+	btst	#0,d1
+	bne	ece_end			;it ends a %%
 	lea	1(a2),a1
+	cmp.l	a1,a3
+	bne	ece_class
+	cmp.b	#'%',d0
+	beq	ece_cut			;the cut splits a %%
+ece_class:
 	bsr	ExDigit			;class digit
 	lsr.w	#2,d0
 	subq.w	#2,d0
@@ -9466,6 +9679,18 @@ esr_find:
 	bcs	esr_find
 	bra	esr_here
 esr_pct:
+	move.l	a3,d3
+esr_run:
+	cmp.l	a2,a3
+	beq	esr_first
+	cmp.b	#'%',-(a3)
+	beq	esr_run
+	addq.l	#1,a3
+esr_first:
+	sub.l	a3,d3			;% before it in the run
+	add.l	d3,a3
+	btst	#0,d3
+	bne	esr_here		;it ends a %%
 	cmp.w	#2,d2
 	beq	esr_units		;the class digit differs
 	move.l	a1,d3
@@ -10197,7 +10422,7 @@ exa_entry:
 	move.b	XMSDE_FNLength(a0),d0
 	bne.s	exa_2
 
-	moveq.l	#12,d0			;max short name size
+	moveq.l	#21,d0			;max short name size, %% included
 exa_2:
 	addq.l	#2+3,d0
 	and.w	#-4,d0			;longword aligned

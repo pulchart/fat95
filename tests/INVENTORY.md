@@ -208,18 +208,26 @@ Failed FAT access stops mutation and reports failure to file operations.
 
 #### `test_name_escapes.py`
 
-Long names: characters outside the code page as %-escapes.
+Long names: characters outside the code page as %-escapes, %% for a % that would read as one.
 
 | test | what it guards |
 |---|---|
 | `test_escape_matches_the_reference_form` | ExPutEscape writes the same characters as the reference encoder for 0x80 and above, in all three lengths. |
 | `test_escape_stops_at_the_end_of_the_name` | ExPutEscape writes nothing and returns 0 when the escape does not fit the 104 bytes of name. |
 | `test_parse_is_the_inverse_and_rejects_what_the_rules_reject` | ExParseEscape returns the code point and moves past the escape, or returns -1 and leaves a1 alone, exactly like the reference decoder on valid, odd-cased, overlong, truncated and random digit strings. |
-| `test_count_units` | ExCountUnits counts a valid escape as one unit, an escape above 0xFFFF as two and a stray % as itself. |
+| `test_count_units` | ExCountUnits counts a valid escape as one unit, an escape above 0xFFFF as two, %% as one and a stray % as itself. |
 | `test_units_to_name_without_a_code_page` | ExAddUnit keeps Latin-1 characters, escapes the rest, joins surrogate pairs into one escape and hides names it cannot show. |
 | `test_name_longer_than_the_limit_is_hidden` | ExAddUnit accepts 104 bytes of name and fails on the 105th, escapes included. |
 | `test_units_to_name_with_a_code_page` | With a code page ExAddUnit maps through the inverse table and escapes a character that is missing, also when its page exists and the slot holds the filler '_'. |
 | `test_name_to_units_with_a_code_page` | ExNextUnit turns code page characters above 0x7F into their Unicode value without the bit that 2*index leaves in the low byte, and decodes escapes including a surrogate pair. |
+| `test_percent_shows_as_two_where_it_would_read_as_an_escape` | ExAddUnit writes a % as %% only when the text behind it starts with % or reads as an escape, so U+0025 U+0038 U+0038 U+0030 and U+0100 show differently. |
+| `test_shown_names_read_back_as_their_units` | For random names with % runs, digits and characters outside the code page, ExAddUnit writes the reference text, ExNextUnit and ExCountUnits read it back as the same units, with and without a code page. |
+| `test_typed_names_mean_what_the_reference_decodes` | Typed text with %, %% and escapes: ExNextUnit and ExCountUnits agree with the reference decoder, and the units shown again give the canonical text. |
+| `test_percent_doubling_needs_room` | A % that becomes %% needs one more byte of the 104: a name that fits only with a single % is hidden. |
+| `test_short_name_shows_its_percent_like_a_long_name` | ExShowPct doubles the % of an 8.3 name where the reference encoder does, in place, and leaves a0 behind the 0. |
+| `test_short_name_listing_doubles_its_percent` | GetBName shows an 8.3 name with its spaces trimmed and its % doubled where the reference encoder does, with the length byte to match, in at most 21 characters. |
+| `test_created_name_is_stored_as_listed` | ExShowName stores a typed name (up to 0 or /) as the text a listing shows for its units, with its length, so %%, lower-case escape digits and escapes of code page characters take their listed form; registers kept. |
+| `test_short_name_from_a_typed_percent` | MakeShortName takes %% as one % and an escape as a character outside 8.3, so %%880.txt and %880.txt get different short names. |
 | `test_parse_limits_of_every_form` | ExParseEscape agrees with the reference decoder at every limit: smallest and largest code point of each form, the form below and above, surrogate and noncharacter edges, 0x10FFFF and 0x110000, in all forms that can hold the value, upper and lower case. |
 | `test_parse_rejects_the_characters_next_to_the_digit_ranges` | ExParseEscape does not read ':' '@' '[' '`' '{' and other neighbours of 0-9, A-V, a-v as digits, in any position. |
 | `test_add_unit_surrogate_and_range_edges` | ExAddUnit at the edges of the surrogate ranges: first and last pair, 0xD800 pending, 0xDC00 alone, a second unit just below/above the low range, 0xD7FF and 0xE000 as characters, 0xFFFD ok and 0xFFFF hidden. |
@@ -227,10 +235,10 @@ Long names: characters outside the code page as %-escapes.
 | `test_add_unit_hides_an_ascii_character_missing_from_the_code_page` | With a code page that lacks an ASCII character, ExAddUnit hides the name instead of writing an escape for a value below 0x80. |
 | `test_add_unit_code_page_filler_and_page_lookup` | With a code page, a character whose page exists but whose slot holds the filler, or whose page does not exist, is escaped, also if its low byte looks like '_' or like a high byte that has a page. |
 | `test_upper_unit` | UpperUnit maps the lower case letters of Latin, Greek, Cyrillic, Armenian and full-width ASCII to their Unicode upper case and never maps a unit anywhere else. |
-| `test_same_rest_is_a_case_blind_compare` | ExSameRest finds two names equal exactly when their code units are equal after UpperUnit, whether the difference lies inside an escape, in a byte from 0x80 or behind an escape, with or without a code page. |
+| `test_same_rest_is_a_case_blind_compare` | ExSameRest finds two names equal exactly when their code units are equal after UpperUnit, whether the difference lies inside an escape, in a %% where the disk name shows %, in a byte from 0x80 or behind an escape, with or without a code page. |
 | `test_same_rest_keeps_the_wanted_units_for_the_next_entry` | ExSameRest converts the wanted name once and compares it with every following disk name like a fresh conversion would. |
-| `test_escape_routines_keep_the_registers_the_callers_use` | ExPutEscape and ExAddUnit leave d1-d6 and a0, a2-a6 alone (rxms_conv keeps its counters in d3/d5), ExParseEscape leaves d1-d7 and a0, a2-a6 (ExNextUnit keeps the pending surrogate in d4), on success and on failure; UpperUnit, ExCutEscape and ExSameRest change only their result. |
-| `test_cut_keeps_no_part_of_an_escape` | ExCutEscape moves the end of a name cut inside an escape back to its %, so the kept text means the same characters as the start of the full name; a % that starts no escape stays. |
+| `test_escape_routines_keep_the_registers_the_callers_use` | ExPutEscape and ExAddUnit (also with a % waiting) leave d1-d6 and a0, a2-a6 alone (rxms_conv keeps its counters in d3/d5), ExParseEscape leaves d1-d7 and a0, a2-a6 (ExNextUnit keeps the pending surrogate in d4), on success and on failure; UpperUnit, ExCutEscape and ExSameRest change only their result. |
+| `test_cut_keeps_no_part_of_an_escape` | ExCutEscape moves the end of a name cut inside an escape or a %% back to its first %, so the kept text means the same characters as the start of the full name; a % that starts no escape stays. |
 
 #### `test_resize.py`
 

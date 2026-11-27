@@ -180,9 +180,9 @@ def directories(b, want):
 
 
 def literal_percent(b, want):
-    """A % that does not start a valid escape stands for itself: such names from the disk open and rename, the handler creates them, lower-case escape digits create the character."""
+    """A % that does not start a valid escape stands for itself, one that would shows as %%: such names from the disk open and rename, the handler creates them, lower-case escape digits create the character."""
     for name in ('100% done.txt', '%ZZ name.txt', '%8 short.txt', 'a%%b long.txt', '%880 only ascii.txt'):
-        assert b.read_file('/' + name, 100, 0) == want[name], name
+        assert b.read_file('/' + escaped(name), 100, 0) == want[name], name
     for name, data in (('50% off.txt', b'fifty'), ('%G00 literal.txt', b'g'), ('x%9.txt', b'nine')):
         b.put('/' + name, data)
         want[name] = data
@@ -190,6 +190,86 @@ def literal_percent(b, want):
     want['\u0436-lower.txt'] = b'small zhe'
     okay(b.rename_object(0, '100% done.txt', 0, '100% ' + escaped('\u0416.txt')))
     want['100% \u0416.txt'] = want.pop('100% done.txt')
+
+
+def examine_name(b, lock):
+    """The name ACTION_EXAMINE_OBJECT returns for a lock."""
+    from amifuse.fuse_fs import _parse_fib
+    fib = b._alloc_fib()
+    b.launcher.send_examine(b.state, lock, fib.addr)
+    okay(b._run_until_replies()[-1][2:])
+    return _parse_fib(b.mem, fib.addr)['name']
+
+
+def percent_pairs(b, want, tail):
+    """A literal % name and the character its text would read as list apart and open their own file; %% opens, creates and renames the literal name, a % that starts no escape stays single; a new directory examines under the name the listing shows."""
+    literal, char = '%880' + tail, '\u0100' + tail
+    shown = {e['name'] for e in b.list_dir_path('/')}
+    assert {'%%880' + tail, '%880' + tail, '100%' + tail, 'a%%%b' + tail} <= shown, shown
+    assert b.read_file('/%%880' + tail, 100, 0) == want[literal]
+    assert b.read_file('/%880' + tail, 100, 0) == want[char]
+    assert b.read_file('/%%880' + tail.upper(), 100, 0) == want[literal]
+    assert b.read_file('/100%%' + tail, 100, 0) == want['100%' + tail]  # %% where % would do
+    assert b.read_file('/a%%%%b' + tail, 100, 0) == want['a%%b' + tail]
+    b.put('/%%880' + tail, b'literal again')
+    want[literal] = b'literal again'
+    assert b.read_file('/%880' + tail, 100, 0) == want[char]
+    b.put('/%%881 new.txt', b'new literal')
+    want['%881 new.txt'] = b'new literal'
+    b.put('/%%%880 mixed.txt', b'mixed')
+    want['%\u0100 mixed.txt'] = b'mixed'
+    b.put('/ends in %', b'end')
+    want['ends in %'] = b'end'
+    assert b.read_file('/ends in %%', 100, 0) == b'end'
+    b.put('/ends in %%', b'end again')
+    want['ends in %'] = b'end again'
+    for typed, name in (('x%%y dir', 'x%y dir'), ('%90m%%' + tail, '\u0416%' + tail), ('%%%%880 dir', '%%880 dir')):
+        lock = okay(b.create_dir(0, typed))
+        try:
+            assert examine_name(b, lock) == escaped(name), (typed, examine_name(b, lock))
+        finally:
+            b.free_lock(lock)
+        assert escaped(name) in {e['name'] for e in b.list_dir_path('/')}, name
+        want[name] = None
+    okay(b.rename_object(0, '%%880' + tail, 0, '%%%%%880 renamed.txt'))
+    want['%%\u0100 renamed.txt'] = want.pop(literal)
+    assert b.open_file('/%%880' + tail, os.O_RDONLY) is None
+    assert b.read_file('/' + escaped(char), 100, 0) == want[char]
+
+
+def percent_start(tail):
+    """Names for percent_pairs: a literal %880, the character it reads as, a % before a dot, two literal %."""
+    return {'%880' + tail: b'literal', '\u0100' + tail: b'a macron', '100%' + tail: b'hundred', 'a%%b' + tail: b'two'}
+
+
+def case_percent(driver, bits):
+    """A long name with a literal %880 and one with the character it reads as, and the 8.3 name %880.TXT, each list and open distinctly; %% creates and renames literal names."""
+    start = percent_start(' pair.txt')
+    short = {'%880.txt': b'short', '%%x.txt': b'short pair'}
+    want = dict(start)
+    with tempfile.TemporaryDirectory() as d:
+        image = Path(d) / 'pct.img'
+        make_image(image, bits, start | short)
+        assert on_disk(image) == start | short
+        b = RawFatBridge(image, driver)
+        try:
+            assert {'%%880.TXT', '%%%X.TXT'} <= {e['name'] for e in b.list_dir_path('/')}
+            assert b.read_file('/%%880.txt', 100, 0) == b'short'
+            assert b.open_file('/%880.txt', os.O_RDONLY) is None
+            assert b.read_file('/%%%x.txt', 100, 0) == b'short pair'
+            percent_pairs(b, want, ' pair.txt')
+            b.flush_volume()
+        finally:
+            b.shutdown_handler()
+            b.close()
+        b = RawFatBridge(image, driver)
+        try:
+            tree = shown_tree(b)
+            assert {k: v for k, v in tree.items() if k not in ('%%880.TXT', '%%%X.TXT')} == as_shown(want), tree
+        finally:
+            b.shutdown_handler()
+            b.close()
+        check_disk(image, want | short)
 
 
 CASE_START = {'\u0416 big.txt': b'zhe', '\u0100 macron.txt': b'a macron', 'a[1] long.txt': b'square',
@@ -235,7 +315,7 @@ def name_limit(b, want):
         want[kept] = kept[:1].encode()
         assert b.read_file('/' + name, 100, 0) == want[kept]
     folder = 'f' * 102 + escaped('\u0416')
-    mkdir(b, folder)
+    mkdir(b, 'f' * 102 + '\u0416')
     b.put('/' + folder + '/inner.txt', b'inner')
     want['f' * 102] = None
     want['f' * 102 + '/inner.txt'] = b'inner'
@@ -362,7 +442,7 @@ def case_long_name(driver, bits):
         check_disk(image, {'short.txt': b'too long', 'fits long.txt': b'fits'})
 
 
-CASES = [(case, bits) for bits in (12, 16, 32) for case in (case_names, case_work, case_long_name)]
+CASES = [(case, bits) for bits in (12, 16, 32) for case in (case_names, case_work, case_long_name, case_percent)]
 
 
 def main():

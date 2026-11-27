@@ -1,4 +1,4 @@
-"""Long names: characters outside the code page as %-escapes.
+"""Long names: characters outside the code page as %-escapes, %% for a % that would read as one.
 
 Run: make test"""
 import random
@@ -55,9 +55,13 @@ def unescape(text):
 
 
 def decode(text):
-    """Reference decoder of a whole name: its code points, a % that starts no escape as itself."""
+    """Reference decoder of a whole name: its code points, %% as one %, a % that starts no escape as itself."""
     out, i = [], 0
     while i < len(text):
+        if text[i:i + 2] == '%%':
+            out.append(0x25)
+            i += 2
+            continue
         found = unescape(text[i + 1:]) if text[i] == '%' else None
         if found:
             out.append(found[0])
@@ -66,6 +70,37 @@ def decode(text):
             out.append(ord(text[i]))
             i += 1
     return out
+
+
+def show(cps, local=None):
+    """Reference encoder of a whole name: a character of the code page (Latin-1 without one) as itself, any other as its escape, a % as %% where the text behind it starts with % or reads as an escape."""
+    text = ''
+    for cp in reversed(cps):
+        if cp == 0x25:
+            piece = '%%' if text.startswith('%') or unescape(text) else '%'
+        elif cp < 0x80 or (local is None and cp < 0x100):
+            piece = chr(cp)
+        elif local is not None and cp in local:
+            piece = chr(local[cp])
+        else:
+            piece = escape(cp)
+        text = piece + text
+    return text
+
+
+def utf16(cps):
+    """UTF-16 code units of code points."""
+    out = []
+    for cp in cps:
+        if cp < 0x10000:
+            out.append(cp)
+        else:
+            out += [0xd800 | (cp - 0x10000) >> 10, 0xdc00 | (cp - 0x10000) & 0x3ff]
+    return out
+
+
+# characters next to a % that matter: %, escape digits, a non-digit, characters outside Latin-1
+PCT_POOL = ([0x25] * 6 + [ord(c) for c in '0158AGKMVamv'] + [0x2e, 0x20, 0x7a, 0xe9, 0x100, 0x416, 0x2013, 0x1f600])
 
 
 # local 0x80..0x83 are U+0104, U+00E9, U+0141 and U+2013, every other value once
@@ -139,14 +174,25 @@ class NameEscapes(unittest.TestCase):
         """Feed code units to ExAddUnit; return (name, last result, pending high surrogate)."""
         h = self.h
         h.mem.w_block(ENTRY, bytes(C['XMSDE_Sizeof']))
-        end, pending, result = ENTRY + C['XMSDE_FullName'], 0, 1
+        end, state, result = ENTRY + C['XMSDE_FullName'], 0, 1
         for unit in units:
             result = h.run('ExAddUnit', d0=unit,
-                           regs={7: pending, 9: end, 11: ENTRY, 14: inverse})
-            pending, end = h.cpu.r_reg(7) & 0xffff, h.cpu.r_reg(9)
+                           regs={7: state, 9: end, 11: ENTRY, 14: inverse})
+            state, end = h.cpu.r_reg(7), h.cpu.r_reg(9)
             if not result:
                 break
-        return self.text(ENTRY + C['XMSDE_FullName'], end - ENTRY - C['XMSDE_FullName']), result, pending
+        return self.text(ENTRY + C['XMSDE_FullName'], end - ENTRY - C['XMSDE_FullName']), result, state & 0xffff
+
+    def next_units(self, text, table=0):
+        """The code units ExNextUnit reads from a name, up to its end."""
+        h = self.h
+        self.put(ENTRY, text)
+        units, cursor, pending = [], ENTRY, 0
+        while pending or cursor < ENTRY + len(text):
+            units.append(h.run('ExNextUnit', regs={9: cursor, 4: pending, 14: table}) & 0xffff)
+            cursor, pending = h.cpu.r_reg(9), h.cpu.r_reg(4) & 0xffff
+        self.assertEqual(cursor, ENTRY + len(text), text)
+        return units
 
     def test_escape_matches_the_reference_form(self):
         """ExPutEscape writes the same characters as the reference encoder for 0x80 and above, in all three lengths."""
@@ -192,10 +238,10 @@ class NameEscapes(unittest.TestCase):
                 self.assertEqual(h.cpu.r_reg(9), ENTRY + want[1], text)
 
     def test_count_units(self):
-        """ExCountUnits counts a valid escape as one unit, an escape above 0xFFFF as two and a stray % as itself."""
-        for name, units in (('plain.txt', 9), ('%880.txt', 5), ('a%90Mb', 3), ('%%880', 2),
-                            ('%880%882', 2), ('x%1P0.y', 7), ('%55', 3), ('%', 1), ('', 0),
-                            (escape(0x1f600) + 'z', 3), ('%8', 2)):
+        """ExCountUnits counts a valid escape as one unit, an escape above 0xFFFF as two, %% as one and a stray % as itself."""
+        for name, units in (('plain.txt', 9), ('%880.txt', 5), ('a%90Mb', 3), ('%%880', 4), ('%%%880', 2),
+                            ('%880%882', 2), ('x%1P0.y', 7), ('%55', 3), ('%', 1), ('', 0), ('%%', 1),
+                            ('a%%%', 3), ('%%%%', 2), (escape(0x1f600) + 'z', 3), ('%8', 2)):
             self.put(ENTRY, name.encode())
             self.assertEqual(self.h.run('ExCountUnits', a0=ENTRY), units, name)
 
@@ -234,6 +280,115 @@ class NameEscapes(unittest.TestCase):
             cursor, pending = h.cpu.r_reg(9), h.cpu.r_reg(4) & 0xffff
         self.assertEqual(units, [0x41, 0x104, 0xe9, 0x141, 0x100, 0xd83d, 0xde00, 0x7a])
         self.assertEqual(cursor, ENTRY + len(text))
+
+    def test_percent_shows_as_two_where_it_would_read_as_an_escape(self):
+        """ExAddUnit writes a % as %% only when the text behind it starts with % or reads as an escape, so U+0025 U+0038 U+0038 U+0030 and U+0100 show differently."""
+        for cps, want in (([0x25, 0x38, 0x38, 0x30], '%%880'), ([0x100], '%880'), ([0x25, 0x100], '%%%880'),
+                          ([0x31, 0x30, 0x30, 0x25, 0x2e], '100%.'), ([0x25, 0x25], '%%%'),
+                          ([0x61, 0x25, 0x25, 0x62], 'a%%%b'), ([0x25, 0x38, 0x38], '%88'),
+                          ([0x25, 0x38, 0x38, 0x31], '%%881'), ([0x25, 0x43, 0x30, 0x30, 0x31], '%C001'), ([0x25, 0x47, 0x30, 0x30, 0x30, 0x30], '%G0000'),
+                          ([0x25, 0x47, 0x30, 0x30, 0x30, 0x31], '%G0001'), ([0x25, 0x1f600], '%%' + escape(0x1f600)),
+                          ([0x25] * 3 + [0x38, 0x38, 0x30], '%%%%%%880')):
+            self.assertEqual(want, show(cps), cps)
+            self.assertEqual(self.add_units(utf16(cps))[:2], (want.encode(), 1), want)
+
+    def test_shown_names_read_back_as_their_units(self):
+        """For random names with % runs, digits and characters outside the code page, ExAddUnit writes the reference text, ExNextUnit and ExCountUnits read it back as the same units, with and without a code page."""
+        rng = random.Random(23)
+        for local in (None, {u: i for i, u in enumerate(TABLE[:0x100]) if i >= 0x80}):
+            inverse = self.set_codepage(TABLE) if local is not None else 0
+            for _ in range(400):
+                cps = [rng.choice(PCT_POOL) for _ in range(rng.randrange(1, 14))]
+                want = show(cps, local)
+                name, result, _ = self.add_units(utf16(cps), inverse)
+                self.assertEqual((name.decode('latin-1'), result), (want, 1), cps)
+                back = {v: k for k, v in local.items()} if local else {}
+                self.assertEqual([back.get(c, c) for c in decode(want)], cps, want)
+                self.assertEqual(self.next_units(name, TABLES if local else 0), utf16(cps), want)
+                self.put(ENTRY, name)
+                self.assertEqual(self.h.run('ExCountUnits', a0=ENTRY), len(utf16(cps)), want)
+
+    def test_typed_names_mean_what_the_reference_decodes(self):
+        """Typed text with %, %% and escapes: ExNextUnit and ExCountUnits agree with the reference decoder, and the units shown again give the canonical text."""
+        rng = random.Random(29)
+        parts = ['%', '%%', '%%%', '880', '90M', '%880', '%90m', escape(0x1f600), '8', 'G00', 'x', '.']
+        for _ in range(500):
+            text = ''.join(rng.choice(parts) for _ in range(rng.randrange(1, 7)))
+            cps = decode(text)
+            self.assertEqual(self.next_units(text.encode()), utf16(cps), text)
+            self.put(ENTRY, text.encode())
+            self.assertEqual(self.h.run('ExCountUnits', a0=ENTRY), len(utf16(cps)), text)
+            canonical = show(cps)
+            self.assertEqual(decode(canonical), cps, text)
+            self.assertEqual(self.add_units(utf16(cps))[0], canonical.encode('latin-1'), text)
+
+    def test_percent_doubling_needs_room(self):
+        """A % that becomes %% needs one more byte of the 104: a name that fits only with a single % is hidden."""
+        self.assertEqual(self.add_units([0x61] * 103 + [0x25]), (b'a' * 103 + b'%', 1, 0))
+        self.assertEqual(self.add_units([0x61] * 100 + [0x25, 0x38, 0x38, 0x30])[1], 0)
+        self.assertEqual(self.add_units([0x61] * 99 + [0x25, 0x38, 0x38, 0x30])[:2], (b'a' * 99 + b'%%880', 1))
+
+    def test_short_name_shows_its_percent_like_a_long_name(self):
+        """ExShowPct doubles the % of an 8.3 name where the reference encoder does, in place, and leaves a0 behind the 0."""
+        rng = random.Random(31)
+        cases = ['%880.TXT', '100%.TXT', '%%X.TXT', 'A%%B.TXT', '%%%%%%%%.%%%', '%%%%%880', '%G00', 'ABC']
+        cases += [''.join(rng.choice('%%%08AGKV.X') for _ in range(rng.randrange(1, 12))) for _ in range(300)]
+        for text in cases:
+            self.put(ENTRY, text.encode())
+            self.h.run('ExShowPct', a0=ENTRY)
+            want = show([ord(c) for c in text]).encode()
+            self.assertEqual(self.text(ENTRY, len(want) + 1), want + b'\0', text)
+            self.assertEqual(self.h.cpu.r_reg(8), ENTRY + len(want) + 1, text)
+            self.assertLessEqual(len(want), 21, text)
+
+    def test_short_name_listing_doubles_its_percent(self):
+        """GetBName shows an 8.3 name with its spaces trimmed and its % doubled where the reference encoder does, with the length byte to match, in at most 21 characters."""
+        rng = random.Random(37)
+        cases = ['README  TXT', '%880    TXT', 'AB%%    %  ', 'NOEXT      ', 'A B     TXT', 'A!      $  ',
+                 '%%%%%%%%%%%', '%       %%%', '%C00    ', '%%X     TXT']
+        cases += [''.join(rng.choice('%% 08ACGX!') for _ in range(11)) for _ in range(300)]
+        for raw in cases:
+            raw = raw.ljust(11)
+            if raw[0] == ' ':
+                continue
+            self.h.mem.w_block(ENTRY, bytes(C['XMSDE_Sizeof']))
+            self.h.mem.w_block(ENTRY, raw.encode())
+            self.h.run('GetBName', a0=ENTRY, a1=ENTRY + 0x200)
+            base, ext = raw[:8].rstrip(' '), raw[8:].rstrip(' ')
+            want = show([ord(c) for c in base + ('.' + ext if ext else '')]).encode()
+            self.assertEqual(self.text(ENTRY + 0x200, len(want) + 2), bytes([len(want)]) + want + b'\0', raw)
+            self.assertLessEqual(len(want), 21, raw)
+
+    def test_created_name_is_stored_as_listed(self):
+        """ExShowName stores a typed name (up to 0 or /) as the text a listing shows for its units, with its length, so %%, lower-case escape digits and escapes of code page characters take their listed form; registers kept."""
+        rng = random.Random(41)
+        parts = ['%', '%%', '%%%', '880', '90m', '%880', '%90m', '%875', escape(0x1f600).lower(), 'G00', 'x', '.', '\xe9']
+        for local in (None, {u: i for i, u in enumerate(TABLE[:0x100]) if i >= 0x80}):
+            if local is not None:
+                self.set_codepage(TABLE)
+            back = {v: k for k, v in local.items()} if local else {}
+            for _ in range(300):
+                text = ''.join(rng.choice(parts) for _ in range(rng.randrange(1, 8)))
+                tail = rng.choice(('', '/next'))
+                cps = [back.get(c, c) for c in decode(text)]
+                want = show(cps, local).encode('latin-1')
+                self.h.mem.w_block(ENTRY, bytes(C['XMSDE_Sizeof']))
+                self.put(ENTRY + 0x200, text.encode('latin-1') + tail.encode())
+                regs = self.sentinels({8: ENTRY + 0x200, 9: ENTRY}, ())
+                self.h.run('ExShowName', regs=regs)
+                self.assert_preserved(regs, (), text)
+                start = ENTRY + C['XMSDE_FullName']
+                self.assertEqual(self.text(start, len(want) + 1), want + b'\0', text)
+                self.assertEqual(self.h.mem.r8(ENTRY + C['XMSDE_FNLength']), len(want), text)
+
+    def test_short_name_from_a_typed_percent(self):
+        """MakeShortName takes %% as one % and an escape as a character outside 8.3, so %%880.txt and %880.txt get different short names."""
+        for text, want in (('%%880.txt', b'%880    TXT'), ('%880.txt', b'_~1     TXT'), ('100%.txt', b'100%    TXT'),
+                           ('a%%%880', b'A%_~1      '), ('%8.txt', b'%8      TXT')):
+            self.put(ENTRY, text.encode())
+            self.assertEqual(self.h.run('MakeShortName', a0=ENTRY, a1=ENTRY + 0x100), 0, text)
+            self.assertEqual(self.text(ENTRY + 0x100, 11), want, text)
+            self.assertEqual(self.h.cpu.r_reg(8), ENTRY + len(text), text)
 
     def test_parse_limits_of_every_form(self):
         """ExParseEscape agrees with the reference decoder at every limit: smallest and largest code point of each form, the form below and above, surrogate and noncharacter edges, 0x10FFFF and 0x110000, in all forms that can hold the value, upper and lower case."""
@@ -336,19 +491,22 @@ class NameEscapes(unittest.TestCase):
             elif got != unit:
                 self.assertEqual(chr(got), chr(unit).upper(), hex(unit))
 
-    def write_units(self, units, rng, local=None):
-        """Amiga text for code units: a byte when the code page (Latin-1 without one) has the unit, else an escape, sometimes with lower-case digits."""
+    def write_units(self, units, rng, local=None, typed=False):
+        """Amiga text for code units: a byte when the code page (Latin-1 without one) has the unit, else an escape, sometimes with lower-case digits; typed text sometimes has %% where % would do."""
         out = ''
-        for unit in units:
-            if unit < 0x80:
-                out += chr(unit)
+        for unit in reversed(units):
+            if unit == 0x25:
+                piece = '%%' if out.startswith('%') or unescape(out) or (typed and rng.random() < 0.5) else '%'
+            elif unit < 0x80:
+                piece = chr(unit)
             elif local is not None and unit in local:
-                out += chr(local[unit])
+                piece = chr(local[unit])
             elif local is None and unit < 0x100:
-                out += chr(unit)
+                piece = chr(unit)
             else:
-                e = escape(unit)
-                out += e.lower() if rng.random() < 0.3 else e
+                piece = escape(unit)
+                piece = piece.lower() if rng.random() < 0.3 else piece
+            out = piece + out
         return out.encode('latin-1')
 
     def same_rest(self, disk, wanted, keep_units=False):
@@ -368,15 +526,23 @@ class NameEscapes(unittest.TestCase):
                 h.set('WantedStart', 0)
             return h.run('ExSameRest', a0=ENTRY + i + 1, a1=ENTRY + 0x200 + i + 1, a2=ENTRY,
                          regs={14: ENTRY + 0x200})
+        if len(disk) < len(component) and b'%' in component:  # the disk name ends first
+            self.put(ENTRY, disk)
+            if not keep_units:
+                self.put(ENTRY + 0x200, wanted)
+                h.set('WantedStart', 0)
+            i = len(disk)
+            return h.run('ExSameRest', a0=ENTRY + i + 1, a1=ENTRY + 0x200 + i + 1, a2=ENTRY,
+                         regs={14: ENTRY + 0x200})
         return None
 
     def test_same_rest_is_a_case_blind_compare(self):
-        """ExSameRest finds two names equal exactly when their code units are equal after UpperUnit, whether the difference lies inside an escape, in a byte from 0x80 or behind an escape, with or without a code page."""
+        """ExSameRest finds two names equal exactly when their code units are equal after UpperUnit, whether the difference lies inside an escape, in a %% where the disk name shows %, in a byte from 0x80 or behind an escape, with or without a code page."""
         rng = random.Random(17)
         pool = [0x41, 0x61, 0x5b, 0x7b, 0x40, 0x60, 0x2e, 0x25, 0x31, 0xe9, 0xc9, 0xd7, 0xf7, 0xff, 0x178, 0xdf,
                 0x100, 0x101, 0x131, 0x49, 0x17f, 0x53, 0x3a3, 0x3c2, 0x3c3, 0xb5, 0x39c, 0x3bc, 0x416, 0x436,
                 0x417, 0x450, 0x400, 0x104, 0x105, 0x1e00, 0x1e01, 0xff21, 0xff41, 0x24b6, 0x24d0, 0x2160, 0x2170,
-                0x1f600, 0x1f601]
+                0x1f600, 0x1f601, 0x25, 0x25, 0x25, 0x38, 0x30, 0x4d, 0x6d]
         h = self.h
         for local in (None, {u: i for i, u in enumerate(TABLE[:0x100]) if i >= 0x80}):
             if local is not None:
@@ -394,7 +560,7 @@ class NameEscapes(unittest.TestCase):
                 elif rng.random() < 0.1:
                     units.append(rng.choice((0x7a, 0x1f600)))
                 disk = self.write_units(units, rng, local)
-                wanted = self.write_units(other, rng, local) + (b'/next' if rng.random() < 0.3 else b'')
+                wanted = self.write_units(other, rng, local, typed=True) + (b'/next' if rng.random() < 0.3 else b'')
                 got = self.same_rest(disk, wanted)
                 if got is None:
                     continue
@@ -437,7 +603,7 @@ class NameEscapes(unittest.TestCase):
                 self.assertEqual(self.h.cpu.r_reg(r), value, (label, 'register', r))
 
     def test_escape_routines_keep_the_registers_the_callers_use(self):
-        """ExPutEscape and ExAddUnit leave d1-d6 and a0, a2-a6 alone (rxms_conv keeps its counters in d3/d5), ExParseEscape leaves d1-d7 and a0, a2-a6 (ExNextUnit keeps the pending surrogate in d4), on success and on failure; UpperUnit, ExCutEscape and ExSameRest change only their result."""
+        """ExPutEscape and ExAddUnit (also with a % waiting) leave d1-d6 and a0, a2-a6 alone (rxms_conv keeps its counters in d3/d5), ExParseEscape leaves d1-d7 and a0, a2-a6 (ExNextUnit keeps the pending surrogate in d4), on success and on failure; UpperUnit, ExCutEscape and ExSameRest change only their result."""
         h = self.h
         inverse = self.set_codepage(TABLE)
         for cp, used in ((0x100, 0), (0x1234, 0), (0x1f600, 0), (0x100, 102)):
@@ -451,6 +617,15 @@ class NameEscapes(unittest.TestCase):
             regs = self.sentinels({7: pending, 9: ENTRY + C['XMSDE_FullName'], 11: ENTRY, 14: table}, (0, 7, 9))
             h.run('ExAddUnit', d0=unit, regs=regs)
             self.assert_preserved(regs, (0, 7, 9), ('ExAddUnit', hex(unit), pending))
+        name = ENTRY + C['XMSDE_FullName']
+        for text, unit, pending in ((b'%88', 0x30, 0), (b'%', 0x25, 0), (b'%', 0x100, 0), (b'%', 0x41, 0),
+                                    (b'%', 0xdc00, 0xd800), (b'%', 0xd800, 0)):
+            h.mem.w_block(ENTRY, bytes(200))
+            h.mem.w_block(name, text)
+            regs = self.sentinels({7: C['XMSDE_FullName'] << 16 | pending, 9: name + len(text), 11: ENTRY, 14: 0},
+                                  (0, 7, 9))
+            self.assertEqual(h.run('ExAddUnit', d0=unit, regs=regs), 1, (text, hex(unit)))
+            self.assert_preserved(regs, (0, 7, 9), ('ExAddUnit', text, hex(unit)))
         for text in ('880', 'C00', escape(0x1f600)[1:], '8x0', '8', '', '1', 'K200000', 'C01', 'VVVVV'):
             self.put(ENTRY, text.encode())
             regs = self.sentinels({9: ENTRY}, (0, 9))
@@ -474,34 +649,42 @@ class NameEscapes(unittest.TestCase):
             self.assert_preserved(regs, (0,), ('ExSameRest', disk))
 
 
+    def cut(self, text, cut):
+        """Call ExCutEscape on text cut after `cut` bytes, as LocateObj does at the 104-byte limit; return the kept length."""
+        start = ENTRY + 0x200 - C['MAXNAMELEN']
+        self.h.mem.w_block(start, b'\0' * C['MAXNAMELEN'])
+        self.put(ENTRY + 0x200 - cut, text[:cut].encode())
+        self.h.run('ExCutEscape', d0=ord(text[cut]), regs={9: ENTRY + 0x200})
+        return self.h.cpu.r_reg(9) - (ENTRY + 0x200 - cut)
+
     def test_cut_keeps_no_part_of_an_escape(self):
-        """ExCutEscape moves the end of a name cut inside an escape back to its %, so the kept text means the same characters as the start of the full name; a % that starts no escape stays."""
+        """ExCutEscape moves the end of a name cut inside an escape or a %% back to its first %, so the kept text means the same characters as the start of the full name; a % that starts no escape stays."""
         rng = random.Random(13)
-        parts = [escape(cp) for cp in samples()[::40]] + ['%', '%Z', '%8', '%9x', '%%', 'a', 'b9', 'Q']
-        h = self.h
+        parts = [escape(cp) for cp in samples()[::40]] + ['%', '%Z', '%8', '%9x', '%%', '%%%', '%%880', 'a', 'b9', 'Q']
         for text, cut, want in (('c' * 102 + '%9x', 104, 104), ('c' * 101 + '%90!', 104, 104),
-                                ('c' * 101 + '%90M', 104, 101)):
-            self.put(ENTRY, text[:cut].encode())
-            h.run('ExCutEscape', d0=ord(text[cut]), regs={9: ENTRY + cut})
-            self.assertEqual(h.cpu.r_reg(9) - ENTRY, want, text)
-        for _ in range(1500):
+                                ('c' * 101 + '%90M', 104, 101), ('c' * 103 + '%%', 104, 103),
+                                ('c' * 102 + '%%%', 104, 104), ('c' * 101 + '%%%8', 104, 103),
+                                ('c' * 100 + '%%%880', 104, 102), ('c' * 101 + '%%880', 104, 104),
+                                ('%' * 105, 104, 104), ('c' + '%' * 104, 104, 103),
+                                ('c' + '%' * 103 + 'x', 104, 104), ('c' + '%' * 103 + '8', 104, 103)):
+            self.assertEqual(self.cut(text, cut), want, text)
+        for _ in range(3000):
             text = ''.join(rng.choice(parts) for _ in range(rng.randrange(2, 8))) + 'zzzzzz'
             cut = rng.randrange(1, len(text) - 1)
-            self.put(ENTRY, text[:cut].encode())
-            h.run('ExCutEscape', d0=ord(text[cut]), regs={9: ENTRY + cut})
-            end = h.cpu.r_reg(9) - ENTRY
+            end = self.cut(text, cut)
             kept = text[:end]
             self.assertTrue(cut - 5 <= end <= cut, (text, cut, end))
             self.assertEqual(decode(kept), decode(text)[:len(decode(kept))], (text, cut, end))
             if end < cut:
-                self.assertEqual(text[end], '%', (text, cut, end))
-                self.assertIsNone(unescape(text[end + 1:cut]), (text, cut, end))
-                self.assertTrue(all(c in B32 + B32.lower() for c in text[end + 1:cut + 1]),
-                                (text, cut, end))
+                # only the first % of a split %%, or of what may be an escape up to the cut byte, goes
+                run = len(kept) - len(kept.rstrip('%'))
+                self.assertEqual((text[end], run % 2), ('%', 0), (text, cut, end))
+                pair = end + 1 == cut and text[cut] == '%'
+                digits = all(c in B32 + B32.lower() for c in text[end + 1:cut + 1])
+                self.assertTrue(pair or (digits and 2 <= B32.index(text[end + 1].upper()) >> 2 <= 4), (text, cut, end))
             else:
-                last = text.rfind('%', 0, cut)
-                whole = unescape(text[last + 1:]) if last >= 0 else None
-                self.assertFalse(whole and last + 1 + whole[1] > cut, (text, cut))
+                whole = decode(text)
+                self.assertEqual(decode(kept), whole[:len(decode(kept))], (text, cut, end))
 
 if __name__ == '__main__':
     unittest.main()

@@ -163,20 +163,47 @@ def okay(result):
     return result[0]
 
 
+DIGITS = '0123456789ABCDEFGHIJKLMNOPQRSTUV'
+
+
+def escape_value(text):
+    """The code point of the escape at the start of text (behind its %), or None."""
+    digits = [DIGITS.find(c.upper()) if c.upper() in DIGITS else -1 for c in text[:5]]
+    if not digits or not 2 <= digits[0] >> 2 <= 4:
+        return None
+    size = digits[0] >> 2
+    if len(digits) <= size or -1 in digits[:size + 1]:
+        return None
+    value = digits[0] & 3
+    for d in digits[1:size + 1]:
+        value = value << 5 | d
+    if size > 2:
+        if value & 1:
+            return None
+        value >>= 1
+    if (value < (0x80, 0x800, 0x10000)[size - 2] or 0xd800 <= value < 0xe000
+            or value in (0xfffe, 0xffff) or value > 0x10ffff):
+        return None
+    return value
+
+
 def escaped(text):
-    """What the handler shows for names outside Latin-1: % and the code point in base 32."""
-    digits = '0123456789ABCDEFGHIJKLMNOPQRSTUV'
+    """What the handler shows for a name: a character outside Latin-1 as % and its code point in base 32, a % as %% where the text behind it starts with % or reads as an escape."""
     out = ''
-    for char in text:
+    for char in reversed(text):
         cp = ord(char)
-        if cp < 0x100:
-            out += char
+        if char == '%':
+            piece = '%%' if out.startswith('%') or escape_value(out) is not None else '%'
+        elif cp < 0x100:
+            piece = char
         elif cp < 0x800:
-            out += '%' + digits[8 | cp >> 10] + digits[cp >> 5 & 31] + digits[cp & 31]
+            piece = '%' + DIGITS[8 | cp >> 10] + DIGITS[cp >> 5 & 31] + DIGITS[cp & 31]
         elif cp < 0x10000:
-            out += '%' + digits[12 | cp >> 14] + digits[cp >> 9 & 31] + digits[cp >> 4 & 31] + digits[cp << 1 & 31]
+            piece = '%' + DIGITS[12 | cp >> 14] + DIGITS[cp >> 9 & 31] + DIGITS[cp >> 4 & 31] + DIGITS[cp << 1 & 31]
         else:
-            out += '%' + digits[16 | cp >> 19] + digits[cp >> 14 & 31] + digits[cp >> 9 & 31] + digits[cp >> 4 & 31] + digits[cp << 1 & 31]
+            piece = ('%' + DIGITS[16 | cp >> 19] + DIGITS[cp >> 14 & 31] + DIGITS[cp >> 9 & 31]
+                     + DIGITS[cp >> 4 & 31] + DIGITS[cp << 1 & 31])
+        out = piece + out
     return out
 
 

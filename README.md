@@ -38,6 +38,7 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 * Up to 4 GBytes of partition size for FAT16
 * Large harddisk support via TD64 or direct SCSI
 * Long filenames (up to 104 chars for now)
+* Characters outside the code page show as `%` and the code point in base 32, such as `%880` for U+0100; a `%` that would read as an escape shows as `%%`, and typing `%%` gives one `%`
 * Inquiry, read, write, and maintenance access
 * Built-in error check utility
 * Disk formatting using the OS 2.0+ format command
