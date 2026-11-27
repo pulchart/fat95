@@ -33,9 +33,19 @@ BASE, GLOBALS, REQUEST, BUFFER, WINDOW, BB, STACK = (
 )
 
 
+def source_lines(path=ROOT / "src/fat95.s"):
+    """The lines of a source with its local includes expanded in place."""
+    for line in path.read_text().splitlines():
+        match = re.match(r'^\s+include\s+"([^"]+)"', line)
+        if match and (path.parent / match[1]).exists():
+            yield from source_lines(path.parent / match[1])
+        else:
+            yield line
+
+
 def constants():
     result = {}
-    for line in (ROOT / "src/fat95.s").read_text().splitlines():
+    for line in source_lines():
         match = re.match(r"^(\w+)\s*=\s*([^;]+)", line)
         if match:
             name, expr = match.groups()
