@@ -117,6 +117,7 @@ class Handler:
         self.set_if("MountedClean", 1, 2)
         self.set("PhysFlags", 2, 2)
         self.set("DiskState", C["ID_VALIDATED"])
+        self.set("EscChar", ord("^"), 1)  # as Start sets it, tests skip Start
         head = GLOBALS + C["FAT32List"]
         self.mem.w32(head, WINDOW)
         self.mem.w32(head + 4, 0)

@@ -198,9 +198,10 @@ WantedStart	= 910		;name component the units below belong to, or 0
 WantedCount	= 914		;its UTF-16 units
 WantedOff	= 916		;byte offset of each unit, -1 for a low surrogate
 WantedUp	= 1020		;each unit in upper case
+EscChar		= 1228		;.b escape character of names, 0 for none, Control n
 
 ;total size
-VarsSizeof      = 1228
+VarsSizeof      = 1230
 
 ;*** Summary of parse_debug95.py, formats described there ***
 
@@ -230,6 +231,7 @@ VarsSizeof      = 1228
 ;@show dec	Activity	buffers = NumBuffers
 ;@show yesno	Names		[unicode] table = CodePage
 ;@show yesno	Names		[oem] table = OemPage
+;@show text	Names		escape character = EscChar
 ;@show doserr	Errors		last DOS error = ErrorNum
 ;@show ioerr	Errors		last read = LastReadError
 ;@show dec	Errors		last block read = LastReadBlock

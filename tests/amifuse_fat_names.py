@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FAT long names with characters outside the code page: the built handler shows them as %-escapes and lists, opens, edits, creates, renames and deletes the right file or directory on FAT12, FAT16 and FAT32; a Python parser and fsck.fat read the result back.
+"""FAT long names with characters outside the code page: the built handler shows them as escapes (written here with %, run with Control n% and with the default ^ swapped in, and _ under Control -n) and lists, opens, edits, creates, renames and deletes the right file or directory on FAT12, FAT16 and FAT32; a Python parser and fsck.fat read the result back.
 
 Status: handler-in-the-loop tier. Needs amifuse, dosfstools, mtools and the built handler (make fat95-020).
 Run: python3 tests/amifuse_fat_names.py"""
@@ -15,6 +15,34 @@ from amifuse_bridge import RawFatBridge, dirty_memory, escaped, okay
 from toolchain import ROOT
 
 ENV = {**os.environ, "LANG": "C.UTF-8", "MTOOLS_SKIP_CHECK": "1", "MTOOLSRC": os.devnull}
+SWAP = str.maketrans("%^", "^%")
+CARET = {"on": False}  # the round with the default ^: names written here with % swap with ^
+
+
+def swapped(text):
+    return text.translate(SWAP) if CARET["on"] else text
+
+
+class CaretBridge(RawFatBridge):
+    """The handler with its default escape character ^; % and ^ swap in every name passed and listed."""
+
+    def _alloc_bstr(self, text):
+        return super()._alloc_bstr(text.translate(SWAP))
+
+    def list_dir_path(self, path):
+        entries = super().list_dir_path(path)
+        for e in entries:
+            e["name"] = e["name"].translate(SWAP)
+        return entries
+
+
+def bridge(image, driver):
+    """The handler with % as the escape character, through Control n% or by swapping it with the default ^."""
+    if CARET["on"]:
+        return CaretBridge(image, driver)
+    return RawFatBridge(image, driver, control="n%")
+
+
 OFFSET_END = 1
 
 
@@ -34,7 +62,7 @@ def make_image(path, bits, files):
     for name, data in files.items():
         source = Path(path).with_suffix(".src")
         source.write_bytes(data)
-        mtools(path, "mcopy", str(source), "::/" + name)
+        mtools(path, "mcopy", str(source), "::/" + swapped(name))
         source.unlink()
 
 
@@ -132,7 +160,7 @@ def scan(image):
 
 def on_disk(image):
     """Files and directories (path -> contents, None for a directory)."""
-    return {path: entry[3] for path, entry in scan(image).items()}
+    return {swapped(path): entry[3] for path, entry in scan(image).items()}
 
 
 def shown_tree(b, path=""):
@@ -230,7 +258,7 @@ def examine_name(b, lock):
     fib = b._alloc_fib()
     b.launcher.send_examine(b.state, lock, fib.addr)
     okay(b._run_until_replies()[-1][2:])
-    return _parse_fib(b.mem, fib.addr)["name"]
+    return swapped(_parse_fib(b.mem, fib.addr)["name"])
 
 
 def percent_pairs(b, want, tail):
@@ -292,7 +320,7 @@ def case_percent(driver, bits):
         image = Path(d) / "pct.img"
         make_image(image, bits, start | short)
         assert on_disk(image) == start | short
-        b = RawFatBridge(image, driver)
+        b = bridge(image, driver)
         try:
             assert {"%%880.TXT", "%%%X.TXT"} <= {e["name"] for e in b.list_dir_path("/")}
             assert b.read_file("/%%880.txt", 100, 0) == b"short"
@@ -303,7 +331,7 @@ def case_percent(driver, bits):
         finally:
             b.shutdown_handler()
             b.close()
-        b = RawFatBridge(image, driver)
+        b = bridge(image, driver)
         try:
             tree = shown_tree(b)
             assert {
@@ -422,7 +450,7 @@ def case_names(driver, bits):
         image = Path(d) / "un.img"
         make_image(image, bits, names)
         assert on_disk(image) == names
-        b = RawFatBridge(image, driver)
+        b = bridge(image, driver)
         try:
             shown = sorted(e["name"] for e in b.list_dir_path("/"))
             assert shown == sorted(escaped(n) for n in names), shown
@@ -464,12 +492,14 @@ def case_work(driver, bits):
         "a%%b long.txt": b"two percent",
         "%880 only ascii.txt": b"ascii percent",
         "a" * 100 + "\u0416": b"fits",
+        "\u017f long s.txt": b"long s",
+        "x\u0131y dotless.txt": b"dotless i",
     } | CASE_START
     want = dict(start)
     with tempfile.TemporaryDirectory() as d:
         image = Path(d) / "work.img"
         make_image(image, bits, start)
-        b = RawFatBridge(image, driver)
+        b = bridge(image, driver)
         try:
             assert shown_tree(b) == as_shown(want)
             edit_in_place(b, want, "\u0416-data.bin")
@@ -477,12 +507,14 @@ def case_work(driver, bits):
             literal_percent(b, want)
             name_limit(b, want)
             case_blind(b, want)
+            assert b.read_file("/S LONG s.txt", 100, 0) == b"long s"  # ASCII for an escape
+            assert b.read_file("/xIy dotless.txt", 100, 0) == b"dotless i"
             attributes(b, "\u0416-attr.txt")
             b.flush_volume()
         finally:
             b.shutdown_handler()
             b.close()
-        b = RawFatBridge(image, driver)
+        b = bridge(image, driver)
         try:
             assert shown_tree(b) == as_shown(want)
         finally:
@@ -499,7 +531,7 @@ def case_long_name(driver, bits):
     with tempfile.TemporaryDirectory() as d:
         image = Path(d) / "long.img"
         make_image(image, bits, {"a" * 101 + "\u0416": b"too long", "fits long.txt": b"fits"})
-        b = RawFatBridge(image, driver)
+        b = bridge(image, driver)
         try:
             shown = sorted(e["name"] for e in b.list_dir_path("/"))
             assert (
@@ -516,10 +548,68 @@ def case_long_name(driver, bits):
         check_disk(image, {"short.txt": b"too long", "fits long.txt": b"fits"})
 
 
+def case_default(driver, bits):
+    """Without Control n names outside Latin-1 show, open and are created as ^-escapes, a literal ^ shows as ^^ where it would read as one, and % is a plain character."""
+    names = {
+        "\u0416-two.txt": b"zhe",
+        "^880 caret.txt": b"caret",
+        "100% done.txt": b"percent",
+        "%880 pct.txt": b"pct",
+    }
+    with tempfile.TemporaryDirectory() as d:
+        image = Path(d) / "caret.img"
+        make_image(image, bits, names)
+        b = RawFatBridge(image, driver)
+        try:
+            shown = sorted(e["name"] for e in b.list_dir_path("/"))
+            assert shown == sorted(escaped(n, "^") for n in names), shown
+            assert "^^880 caret.txt" in shown, shown
+            for name, data in names.items():
+                assert b.read_file("/" + escaped(name, "^"), 100, 0) == data, name
+            assert b.read_file("/^90m-two.txt", 100, 0) == b"zhe"
+            b.put("/^880 new.txt", b"new")
+            names["\u0100 new.txt"] = b"new"
+            b.put("/^^881 lit.txt", b"literal")
+            names["^881 lit.txt"] = b"literal"
+            b.flush_volume()
+        finally:
+            b.shutdown_handler()
+            b.close()
+        check_disk(image, names)
+
+
+def case_off(driver, bits):
+    """Control -n shows characters outside the code page as _; the file opens and takes writes under that name and keeps its long name on the disk, and ^ and % in typed names are plain characters."""
+    names = {"\u0416-two.txt": b"zhe", "^880 caret.txt": b"caret", "%880 pct.txt": b"pct"}
+    with tempfile.TemporaryDirectory() as d:
+        image = Path(d) / "off.img"
+        make_image(image, bits, names)
+        b = RawFatBridge(image, driver, control="-n")
+        try:
+            shown = sorted(e["name"] for e in b.list_dir_path("/"))
+            assert shown == sorted(["_-two.txt", "^880 caret.txt", "%880 pct.txt"]), shown
+            assert b.read_file("/_-two.txt", 100, 0) == b"zhe"
+            handle, lock = b.open_file("/_-two.txt", os.O_RDWR)
+            try:
+                assert b.write_handle(handle, b"ZHE") == 3
+            finally:
+                b.close_file(handle)
+                if lock:
+                    b.free_lock(lock)
+            names["\u0416-two.txt"] = b"ZHE"
+            b.put("/^881 new.txt", b"new")
+            names["^881 new.txt"] = b"new"
+            b.flush_volume()
+        finally:
+            b.shutdown_handler()
+            b.close()
+        check_disk(image, names)
+
+
 CASES = [
     (case, bits)
     for bits in (12, 16, 32)
-    for case in (case_names, case_work, case_long_name, case_percent)
+    for case in (case_names, case_work, case_long_name, case_percent, case_default, case_off)
 ]
 
 
@@ -531,6 +621,11 @@ def main():
         for case, bits in CASES:
             case(args.driver, bits)
             print(f"{case.__name__} FAT{bits}: ok")
+        CARET["on"] = True
+        for case, bits in CASES:
+            if case not in (case_default, case_off):
+                case(args.driver, bits)
+                print(f"{case.__name__} FAT{bits} with ^: ok")
 
 
 if __name__ == "__main__":
