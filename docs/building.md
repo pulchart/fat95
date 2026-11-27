@@ -4,6 +4,8 @@
 
 Podman and an amigaos-ptable checkout: the `extern/ptable` submodule or `PTABLE=`. Every target runs in the [amiga-toolchain](https://github.com/pulchart/container-amiga-toolchain) image, which holds vasm, vbcc, the NDK, the test and lint tools, md2guide and lha. Outside the image `make` runs the requested targets there, in one container, with the checkout and `PTABLE` mounted; inside it, as in CI, make runs them directly. make pulls a newer `latest` when the registry has one; `TOOLCHAIN_IMAGE=` selects another image, such as a dated tag or the Docker Hub copy.
 
+`make` and `make guides` write the handler, the tools, the bundled ptable.library and lsptres and the guides to `dist/`, which git ignores except for `dist/DOSDrivers` and `dist/locale`.
+
 ## ptable.library
 
 `make` builds ptable.library (small and full) and `lsptres` in the ptable checkout and copies them into `dist/`. During ptable development:
