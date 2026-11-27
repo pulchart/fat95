@@ -166,6 +166,10 @@ export FAT95_VASM = $(VASM)
 # rules below.  Tools are always built 68000 (single tier).
 VASMFLAGS = -Fhunkexe -nosym $(DEFINITIONS)
 
+# The handler is also loaded from an RDB by the Kickstart, whose loader knows
+# HUNK_RELOC32 but not HUNK_RELOC32SHORT.
+HANDLERFLAGS = -kick1hunks
+
 # CPU tier flags
 # -D__68020__=1 enables the 020+ inline math paths (mulu.l / divul.l /
 # bfffo) inside src/fat95.s via the UMUL32 / UDIVMOD32 / LOG2 macros.
@@ -360,21 +364,21 @@ $(VERSION_LSFSRES_INC): $(VERSION_STAMP)
 $(TARGET_080): $(SOURCE) $(VERSION_FAT95_INC)
 	$(Q)mkdir -p $(OUTDIR_080)
 	$(Q)echo "  VASM    $@ [68080]"
-	$(Q)$(VASM) $(VASMFLAGS) $(VASMCPU_080) -o $@ $<
+	$(Q)$(VASM) $(VASMFLAGS) $(HANDLERFLAGS) $(VASMCPU_080) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
 # Build fat95 handler, 68020+ tier
 $(TARGET_020): $(SOURCE) $(VERSION_FAT95_INC)
 	$(Q)mkdir -p $(OUTDIR_020)
 	$(Q)echo "  VASM    $@ [68020+]"
-	$(Q)$(VASM) $(VASMFLAGS) $(VASMCPU_020) -o $@ $<
+	$(Q)$(VASM) $(VASMFLAGS) $(HANDLERFLAGS) $(VASMCPU_020) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
 # Build fat95 handler, 68000 tier
 $(TARGET_000): $(SOURCE) $(VERSION_FAT95_INC)
 	$(Q)mkdir -p $(OUTDIR_000)
 	$(Q)echo "  VASM    $@ [68000]"
-	$(Q)$(VASM) $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
+	$(Q)$(VASM) $(VASMFLAGS) $(HANDLERFLAGS) $(VASMCPU_000) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
 # Build tools (single tier: 68000)
