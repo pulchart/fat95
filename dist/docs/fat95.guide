@@ -791,10 +791,10 @@ A: Check the @{fg shine}Device =@{fg text}, @{fg shine}Unit =@{fg text} and @{fg
 @{b}Debug tool:@{ub}
 
 @{fg highlight}
-  debug95 CF0: ram:cf0.log
+  debug95 CF0: RAM:cf0.dump
 @{fg text}
 
-Creates a dump of internal fat95 variables for diagnosis.
+Writes the internal state of fat95 for a volume to a file. See @{"Debug95" link debug95}.
 
 ----------------------------------------
 @{"<< Prev" link Special_Features}  @{"Contents" link Main}  @{"Next >>" link Mount_Scans_and_Dirty_Volumes}
@@ -921,10 +921,14 @@ Raw block transfer tool. See @{"  docs/dd.guide  " link "dd.guide/Main"} for mor
 @node Debug95 "Debug95"
 @{i}Debug95@{ui}
 
-Creates a dump of internal fat95 variables for diagnosis.
+Writes the internal state of fat95 for a volume to a file, for example
+for a bug report.
 @{fg highlight}
-  debug95 CF0: ram:cf0.log
+  debug95 CF0: RAM:cf0.dump
 @{fg text}
+@{fg shine}tools/parse_debug95.py@{fg text} in the source repository
+(https://github.com/pulchart/fat95/tree/master/tools) shows the file as
+text. It prints a summary, and @{fg shine}--all@{fg text} lists every field.
 
 ----------------------------------------
 @{"<< Prev" link dd}  @{"Contents" link Main}  @{"Next >>" link boot95}

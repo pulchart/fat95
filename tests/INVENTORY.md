@@ -241,6 +241,24 @@ Long names: characters outside the code page as %-escapes, %% for a % that would
 | `test_escape_routines_keep_the_registers_the_callers_use` | ExPutEscape and ExAddUnit (also with a % waiting) leave d1-d6 and a0, a2-a6 alone (rxms_conv keeps its counters in d3/d5), ExParseEscape leaves d1-d7 and a0, a2-a6 (ExNextUnit keeps the pending surrogate in d4), on success and on failure; UpperUnit, ExCutEscape and ExSameRest change only their result. |
 | `test_cut_keeps_no_part_of_an_escape` | ExCutEscape moves the end of a name cut inside an escape or a %% back to its first %, so the kept text means the same characters as the start of the full name; a % that starts no escape stays. |
 
+#### `test_parse_debug95.py`
+
+tools/parse_debug95.py reads debug95 dumps with the layout of src/fat95_vars.i.
+
+| test | what it guards |
+|---|---|
+| `test_layout_is_clean` | src/fat95_vars.i and the field accesses of src/fat95.s pass the check that make runs before it assembles the handler. |
+| `test_offsets_match_the_assembler` | Each field offset and VarsSizeof the parser reads equals the value vasm assembles from the same file. |
+| `test_check_finds_an_overlap` | A field whose .l size runs into the next field fails the check. |
+| `test_check_finds_a_field_out_of_order` | An offset below the one of the field above fails the check. |
+| `test_check_finds_a_wide_access` | A longword access to a word field fails the check unless the field comment lists .l too. |
+| `test_check_finds_a_bad_summary_line` | A summary line with an unknown format or field fails the check. |
+
+| test | what it guards |
+|---|---|
+| `test_summary_decodes_a_dump` | Type, name, sizes, flags and error codes of a dump show as text. |
+| `test_other_build_is_named` | A dump whose size differs from the layout warns that it needs the layout of its own build. |
+
 #### `test_resize.py`
 
 File handles follow the replacement chain after truncate-to-zero and growth.

@@ -364,21 +364,24 @@ $(VERSION_LSFSRES_INC): $(VERSION_STAMP)
 	$(call gen_version_inc,$@,lsfsres,,,$(LSFSRES_VERSION),VER_STRING,$(LSFSRES_DATE),1)
 
 # Build fat95 handler, Apollo 68080 tier
-$(TARGET_080): $(SOURCE) $(VARS_INC) $(VERSION_FAT95_INC)
+$(TARGET_080): $(SOURCE) $(VARS_INC) $(VERSION_FAT95_INC) tools/parse_debug95.py
+	$(Q)$(PYTHON) tools/parse_debug95.py --check --vars $(VARS_INC) --source $(SOURCE)
 	$(Q)mkdir -p $(OUTDIR_080)
 	$(Q)echo "  VASM    $@ [68080]"
 	$(Q)$(VASM) $(VASMFLAGS) $(HANDLERFLAGS) $(VASMCPU_080) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
 # Build fat95 handler, 68020+ tier
-$(TARGET_020): $(SOURCE) $(VARS_INC) $(VERSION_FAT95_INC)
+$(TARGET_020): $(SOURCE) $(VARS_INC) $(VERSION_FAT95_INC) tools/parse_debug95.py
+	$(Q)$(PYTHON) tools/parse_debug95.py --check --vars $(VARS_INC) --source $(SOURCE)
 	$(Q)mkdir -p $(OUTDIR_020)
 	$(Q)echo "  VASM    $@ [68020+]"
 	$(Q)$(VASM) $(VASMFLAGS) $(HANDLERFLAGS) $(VASMCPU_020) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
 # Build fat95 handler, 68000 tier
-$(TARGET_000): $(SOURCE) $(VARS_INC) $(VERSION_FAT95_INC)
+$(TARGET_000): $(SOURCE) $(VARS_INC) $(VERSION_FAT95_INC) tools/parse_debug95.py
+	$(Q)$(PYTHON) tools/parse_debug95.py --check --vars $(VARS_INC) --source $(SOURCE)
 	$(Q)mkdir -p $(OUTDIR_000)
 	$(Q)echo "  VASM    $@ [68000]"
 	$(Q)$(VASM) $(VASMFLAGS) $(HANDLERFLAGS) $(VASMCPU_000) -o $@ $<
