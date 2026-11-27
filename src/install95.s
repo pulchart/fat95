@@ -230,12 +230,12 @@ s_a2:
 s_a3:
 	move.l	d0,Mode(a4)
 s_3:
-	move.l	#80<<10,d0
+	move.l	#128<<10,d0
 	move.l	d0,BufSize(a4)
 	moveq.l	#MEMF_PUBLIC,d1
 	CALLEXEC AllocMem
 	move.l	d0,Buffer(a4)
-	beq.w	s_closelib
+	beq.w	s_nomem
 
 ;- - read fat95 Object - - - - - - - - - - - - - - - - - - -
 
@@ -957,6 +957,11 @@ s_help:
 	bsr.s	ReportError
 	bra.s	s_closelib
 
+s_nomem:
+	lea	NoMemStr(pc),a0
+	bsr.w	ReportError
+	bra.w	s_closelib
+
 s_argerr:
 	CALLDOS	IoErr
 	move.l	d0,d1
@@ -1359,6 +1364,7 @@ Fat95Name2:	dc.b	'fat95',0
 ProgName:	dc.b	'install95', 0
 ArgTemplate:	dc.b	'W=WRITE/S,R=READ/S,LANGUAGE/A,HANDLER/K', 0
 HelpStr:	dc.b	'usage: install95 WRITE|READ <language> [HANDLER <file>]', LF, 0
+NoMemStr:	dc.b	'not enough memory.', LF, 0
 NoFile3Str:	dc.b	'file "%s" not found.', LF, 0
 TooLarge3Str:	dc.b	'file "%s" too large.', LF, 0
 Bogus3Str:	dc.b	'file "%s" is incompatible.', LF, 0

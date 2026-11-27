@@ -163,6 +163,8 @@ install95 reads its arguments with ReadArgs and writes or reads the language of 
 | `test_handler_keyword` | HANDLER names the fat95 file to change, L:fat95 stays as it was. |
 | `test_missing_handler_is_named` | A missing handler file is reported by its name. |
 | `test_one_mode_required` | Neither or both of WRITE and READ print the usage before any file is touched. |
+| `test_handler_size_limit` | A fat95 file up to one byte below 64 KB is read, one of 64 KB is too large. |
+| `test_no_memory` | A failed AllocMem is reported and returns 10, so the Installer does not take it for success. |
 | `test_bad_arguments_print_the_fault` | A failing ReadArgs prints the DOS fault, returns 10 and frees nothing. |
 
 #### `test_integration.py`
