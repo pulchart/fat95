@@ -37,6 +37,7 @@ make clean; make; make guide; make release
 | `make test` | emulated checks on all CPU tiers |
 | `make lint` | ruff and yamllint |
 | `make test-integration` | FS-UAE integration suite, see [tests/integration](../tests/integration/README.md) |
+| `make test-stress` | FileSystemStressTest on FAT16 and FAT32 disks in FS-UAE, see [tests/integration](../tests/integration/README.md) |
 | `make clean`, `distclean`, `help` | cleanup, target list |
 
 ## Install script
