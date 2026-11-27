@@ -14691,6 +14691,9 @@ Date2MS:
 	addq.w	#1,d3			;..belong to next calendar year
 upd_1:
 	sub.w	#1980,d3
+	bmi.s	d2ms_early		;FAT dates start in 1980
+	cmp.w	#127,d3
+	bhi.s	d2ms_late		;..and end in 2107
 	moveq.l	#$7f,d0
 	and.w	d3,d0
 	ror.w	#7,d0			;(year-1980)<<9..
@@ -14714,8 +14717,15 @@ upd_1:
 
 	swap	d0
 	move.w	d1,d0
+d2ms_end:
 	movem.l	(sp)+,d2-d3
 	rts
+d2ms_early:
+	move.l	#$00210000,d0		;1 January 1980, 00:00:00
+	bra.s	d2ms_end
+d2ms_late:
+	move.l	#$ff9fbf7d,d0		;31 December 2107, 23:59:58
+	bra.s	d2ms_end
 
 ;*** string ops ********************************************
 ;--- copy string -------------------------------------------

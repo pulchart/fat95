@@ -2,6 +2,7 @@
 
 Run: make test"""
 
+import datetime
 import struct
 import tempfile
 import unittest
@@ -138,6 +139,24 @@ class HelperContracts(unittest.TestCase):
         for reg in (2, 3, 4, 5, 6, 7, 10, 11, 13):
             self.assertEqual(h.cpu.r_reg(reg), 0x13570000 + reg)
         self.assertEqual(h.cpu.r_sr() & 15, 0)
+
+    def test_date_to_ms_range(self):
+        """Date2MS packs a DateStamp as FAT date and time; dates before 1980 become 1 January 1980, after 2107 31 December 2107."""
+        epoch = datetime.date(1978, 1, 1)
+        cases = [
+            (datetime.date(1978, 1, 1), 0, 0, 0x00210000),
+            (datetime.date(1979, 12, 31), 23 * 60 + 59, 0, 0x00210000),
+            (datetime.date(1980, 1, 1), 0, 0, 0x00210000),
+            (datetime.date(2026, 11, 24), 10 * 60 + 30, 20 * 50, 0x5D7853CA),
+            (datetime.date(2107, 12, 31), 23 * 60 + 59, 58 * 50, 0xFF9FBF7D),
+            (datetime.date(2108, 1, 1), 0, 0, 0xFF9FBF7D),
+        ]
+        stamp = 0x52000
+        for day, minute, tick, expected in cases:
+            with self.subTest(day=day):
+                days = (day - epoch).days
+                self.h.mem.w_block(stamp, struct.pack(">III", days, minute, tick))
+                self.assertEqual(self.call("Date2MS", stamp), expected)
 
     def test_ms_date_string_all_packed_dates(self):
         """All 65536 dates yield ten DD.MM.YYYY bytes; a1 advances and saved registers survive."""
