@@ -3,8 +3,19 @@
 # and ptable default to this repository's dist/.
 ---
 os:
-  "3.2.3": {}
-  "3.1": {}
+  # the local AmigaOS images as an A1200 and as an A600 with the 68000 builds
+  "3.2.3-a1200":
+    model: A1200
+  "3.1-a1200":
+    model: A1200
+  "3.2.3-a600":
+    model: A600
+    cpu: "68000"
+    tier: "68000"
+  "3.1-a600":
+    model: A600
+    cpu: "68000"
+    tier: "68000"
   aros:
     setpatch: false
     cpu: 68040-NOMMU

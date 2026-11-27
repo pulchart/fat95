@@ -226,9 +226,11 @@ endif
 # tests/integration/run.py in the amiga-fsuae image of each OS in IT_OS, one
 # after another. Needs the build (make). IT_WORK is the run directory, IT
 # passes options to run.py. The AmigaOS images are built locally.
-IT_OS ?= 3.2.3 3.1 aros apolloos
-IT_IMAGE_3.2.3 = localhost/amiga-fsuae-amigaos:3.2.3
-IT_IMAGE_3.1 = localhost/amiga-fsuae-amigaos:3.1
+IT_OS ?= 3.2.3-a1200 3.1-a1200 aros apolloos
+IT_IMAGE_3.2.3-a1200 = localhost/amiga-fsuae-amigaos:3.2.3
+IT_IMAGE_3.1-a1200 = localhost/amiga-fsuae-amigaos:3.1
+IT_IMAGE_3.2.3-a600 = localhost/amiga-fsuae-amigaos:3.2.3
+IT_IMAGE_3.1-a600 = localhost/amiga-fsuae-amigaos:3.1
 IT_IMAGE_aros = docker.io/pulchart/amiga-fsuae-aros:latest
 IT_IMAGE_apolloos = ghcr.io/pulchart/amiga-fsuae-apolloos:latest
 IT_WORK := build/integration/$(shell date +%Y%m%d-%H%M%S)
