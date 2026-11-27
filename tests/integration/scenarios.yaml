@@ -1,0 +1,72 @@
+# Scenarios for run.py.
+#
+# fragments: AmigaDOS steps a scenario lists by name; they run from
+# S:Startup-Sequence. {dev} is the fat95 device, {wait} the mount wait from the
+# config, {copy} the command that moves files between OUT: and the volume,
+# {device} and {unit} the disk the mountlist names.
+#
+# scenarios:
+#   doc      one line for --list and the report
+#   medium   floppy (PC 720K through mfm.device) or ide
+#   layout   ide only: fs, table (an MBR type, none for a volume from block 0,
+#            rdb for an RDB that carries fat95) and sectors
+#   os       the OS profiles it runs on; all when absent
+#   steps    fragment names, in order
+#   checks   the check set in scenarios.py
+#   limit    seconds before the scenario counts as hung, if not the config's
+
+---
+fragments:
+  mount: |
+    dd INSPECT {device} UNIT {unit} >OUT:inspect.txt
+    Mount {dev} FROM OUT:mountlist >OUT:mount.txt
+    List {dev} >OUT:list0.txt
+    Wait {wait}
+  rdbmount: |  # mounted at boot from the RDB
+    List {dev} >OUT:list0.txt
+    Wait {wait}
+  snap: |
+    Info >OUT:info0.txt
+    If EXISTS OUT:debug95
+    OUT:debug95 {dev} OUT:debug95.txt
+    EndIf
+  read: |
+    {copy} {dev}payload.bin OUT:got0.bin
+  smoke: |  # tools/smoke.c: seeks, SetFileSize, rename, delete
+    smoke {dev} >OUT:smoke.txt
+  write: |  # fat95 flushes lazily
+    {copy} OUT:up.bin {dev}up.bin
+    {copy} {dev}up.bin OUT:back0.bin
+    Wait 5
+
+scenarios:
+  floppy_fat12:
+    doc: PC 720K floppy, FAT12, through mfm.device
+    medium: floppy
+    os: ["3.1", "3.2.3"]
+    steps: [mount, snap, read, smoke, write]
+    checks: fat
+  disk_fat16:
+    doc: disk, MBR, FAT16 partition
+    medium: ide
+    layout: {fs: fat16, table: 0x06, sectors: 65536}
+    steps: [mount, snap, read, smoke, write]
+    checks: fat
+  disk_fat32:
+    doc: disk, MBR, FAT32 partition
+    medium: ide
+    layout: {fs: fat32, table: 0x0c, sectors: 131072}
+    steps: [mount, snap, read, smoke, write]
+    checks: fat
+  sf_fat32:
+    doc: disk without a partition table, FAT32 from block 0
+    medium: ide
+    layout: {fs: fat32, table: none, sectors: 131072}
+    steps: [mount, snap, read, smoke, write]
+    checks: fat
+  rdb_fat32:
+    doc: disk with an RDB that carries fat95 and a FAT32 partition, mounted by the OS
+    medium: ide
+    layout: {fs: fat32, table: rdb, sectors: 131072}
+    steps: [rdbmount, snap, read, smoke, write]
+    checks: fat

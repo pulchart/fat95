@@ -1,6 +1,6 @@
 # fat95 test inventory
 
-Generated from the docstrings by `tests/list_tests.py`. Refresh with `make test-list-update`; `test_documented.py` fails when it is stale.
+Generated from the docstrings and `integration/scenarios.yaml` by `tests/list_tests.py`. Refresh with `make test-list-update`; `test_documented.py` fails when it is stale.
 
 <!-- TESTS:BEGIN -->
 
@@ -311,5 +311,17 @@ Not collected by `unittest`; each one is run on its own.
 | `audit_ptable_check.py` | gated | Regression check: the ptable wrappers act on d0, not on the condition codes exec.library's OpenLibrary happens to leave on the ROM-bootstrap retry. Each routine is driven with both flag polarities for both outcomes; the result must depend only on the returned base. |
 | `harness.py` | library | Run assembled handler routines with mocked device and Exec calls. |
 | `lsfsres_paging.py` | gated | lsfsres lists FileSystem.resource, so it walks the list under Forbid and prints from a copy; the pause between screenfuls must not reach the shell with the console left in RAW mode, and must not happen at all when either stream is redirected. Real assembled code from src/lsfsres.s, mocked dos.library and exec. |
+
+### FS-UAE integration scenarios
+
+Run by `make test-integration` from `integration/scenarios.yaml`; [integration/README.md](integration/README.md) describes the suite.
+
+| scenario | status | OS | what it checks |
+|---|---|---|---|
+| `floppy_fat12` | integration | 3.1, 3.2.3 | PC 720K floppy, FAT12, through mfm.device |
+| `disk_fat16` | integration | all | disk, MBR, FAT16 partition |
+| `disk_fat32` | integration | all | disk, MBR, FAT32 partition |
+| `sf_fat32` | integration | all | disk without a partition table, FAT32 from block 0 |
+| `rdb_fat32` | integration | all | disk with an RDB that carries fat95 and a FAT32 partition, mounted by the OS |
 
 <!-- TESTS:END -->

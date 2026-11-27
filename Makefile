@@ -151,6 +151,8 @@ endif
 VASM_HOME ?= /opt/vasm
 VASM = $(VASM_HOME)/bin/vasmm68k_mot
 EXPECTED_VASM_VERSION = 2.0f
+VBCC_HOME ?= /opt/vbcc
+VBCC = $(VBCC_HOME)/bin/vc
 
 # Test suite: the suites assemble src/ themselves, and FAT95_VASM is how they
 # are told to use exactly the assembler this Makefile uses.
@@ -442,6 +444,20 @@ lint:
 	$(Q)ruff format --check $$(git ls-files '*.py')
 	$(Q)yamllint -s $$(git ls-files '*.yaml' '*.yml')
 
+# smoke: guest tool of the integration suite, not shipped.
+SOURCE_SMOKE = tools/smoke.c
+TARGET_SMOKE = build/tools/smoke
+smoke: $(TARGET_SMOKE)
+$(TARGET_SMOKE): $(SOURCE_SMOKE) Makefile
+	$(Q)mkdir -p $(dir $@)
+	$(Q)echo "  VBCC    $@"
+	$(Q)VBCC=$(VBCC_HOME) PATH=$(VBCC_HOME)/bin:$$PATH $(VBCC) +aos68k -O2 -c99 -INDK/Include_H -o $@ $< -lamiga
+
+# FS-UAE integration suite: the built handler and tools under the OS profiles
+# of tests/integration/config.yaml. IT passes options to run.py.
+test-integration: $(TARGET_SMOKE)
+	$(Q)$(PYTHON) $(TESTDIR)/integration/run.py $(IT)
+
 # Must also run when vasm is missing.
 check-test-deps:
 	$(Q)$(PYTHON) $(TESTDIR)/deps.py
@@ -603,6 +619,7 @@ help:
 	@echo "Options:"
 	@echo "  V=1                 - Verbose output (show full assembler messages)"
 	@echo "  VASM_HOME=/opt/vbcc - vasm installation path"
+	@echo "  VBCC_HOME=/opt/vbcc - vbcc installation path"
 	@echo "  FAT95_TEST_CPU=68020 - CPU tier for a direct python test run"
 	@echo "  TEST_CPUS=68020    - Run make test on one CPU tier"
 	@echo "  AMIFUSE_CYCLES=1    - Restart cycles per test-amifuse case (default $(AMIFUSE_CYCLES))"
@@ -613,6 +630,8 @@ help:
 	@echo "  test-list-update - Refresh the inventory in $(TESTDIR)/INVENTORY.md"
 	@echo "  check-test-deps  - Report what the test suites need and what is missing"
 	@echo "  lint             - ruff check and format check of the tracked Python files"
+	@echo "  test-integration - FS-UAE integration suite (IT=\"--os 3.1\" passes options)"
+	@echo "  smoke            - Build build/tools/smoke for the integration suite"
 	@echo ""
 	@echo "Documentation targets:"
 	@echo "  guide / guides - Generate AmigaGuide documentation"
@@ -680,4 +699,4 @@ $(GUIDE_LSFSRES): docs/lsfsres.md $(MD2GUIDE) $(VERSION_STAMP)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) docs/lsfsres.md $@ --version $(LSFSRES_VERSION) --date $(LSFSRES_DATE) --title "lsfsres" --ver-title "lsfsres guide"
 
-.PHONY: all fat95 fat95-080 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide guides help version-readme stage FORCE test test-amifuse test-list-update check-test-deps lint
+.PHONY: all fat95 fat95-080 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide guides help version-readme stage FORCE test test-amifuse test-list-update check-test-deps lint test-integration smoke
