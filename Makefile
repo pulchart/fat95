@@ -569,7 +569,7 @@ stage: check-vasm version-readme all $(README_NAME) guide
 	$(Q)cp $(README_NAME) $(STAGE)/fat95/fat95.readme
 	$(Q)cp LICENSE $(STAGE)/fat95/
 	$(Q)cp -r dist/libs $(STAGE)/fat95/
-	$(Q)cp $(GUIDE_FAT95) $(GUIDE_CHANGES) $(GUIDE_DD) $(GUIDE_LSFSRES) $(STAGE)/fat95/docs/
+	$(Q)cp $(GUIDE_FAT95) $(GUIDE_CHANGES) $(GUIDE_DD) $(GUIDE_LSFSRES) $(GUIDE_DEBUG95) $(STAGE)/fat95/docs/
 	$(Q)[ ! -f $(GUIDE_LSPTRES) ] || cp $(GUIDE_LSPTRES) $(STAGE)/fat95/docs/
 	$(Q)for l in $(LOCALES); do cp dist/locale/$$l $(STAGE)/fat95/locale/; done
 	$(Q)cp -r dist/DOSDrivers $(STAGE)/fat95/
@@ -678,10 +678,11 @@ GUIDE_FAT95      = $(GUIDE_OUTPUT_DIR)/fat95.guide
 GUIDE_CHANGES    = $(GUIDE_OUTPUT_DIR)/changes.guide
 GUIDE_DD         = $(GUIDE_OUTPUT_DIR)/dd.guide
 GUIDE_LSFSRES    = $(GUIDE_OUTPUT_DIR)/lsfsres.guide
+GUIDE_DEBUG95    = $(GUIDE_OUTPUT_DIR)/debug95.guide
 GUIDE_LSPTRES    = $(GUIDE_OUTPUT_DIR)/lsptres.guide
 MD2GUIDE = ../cfd/tools/md2guide.py
 
-guide guides: $(GUIDE_FAT95) $(GUIDE_CHANGES) $(GUIDE_DD) $(GUIDE_LSFSRES)
+guide guides: $(GUIDE_FAT95) $(GUIDE_CHANGES) $(GUIDE_DD) $(GUIDE_LSFSRES) $(GUIDE_DEBUG95)
 
 $(GUIDE_FAT95): README.md $(MD2GUIDE)
 	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
@@ -702,5 +703,10 @@ $(GUIDE_LSFSRES): docs/lsfsres.md $(MD2GUIDE) $(VERSION_STAMP)
 	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) docs/lsfsres.md $@ --version $(LSFSRES_VERSION) --date $(LSFSRES_DATE) --title "lsfsres" --ver-title "lsfsres guide"
+
+$(GUIDE_DEBUG95): docs/debug95.md $(MD2GUIDE) $(VERSION_STAMP)
+	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
+	$(Q)echo "  GUIDE   $@"
+	$(Q)python3 $(MD2GUIDE) docs/debug95.md $@ --version $(DEBUG95_VERSION) --date $(DEBUG95_DATE) --title "debug95" --ver-title "debug95 guide"
 
 .PHONY: all fat95 fat95-080 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide guides help version-readme stage FORCE test test-amifuse test-list-update check-test-deps lint test-integration smoke

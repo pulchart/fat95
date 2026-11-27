@@ -116,6 +116,7 @@ fat95/docs/fat95.guide   - FAT95 filesystem handler documentation
 fat95/docs/changes.guide - Release notes and original fat95 history
 fat95/docs/dd.guide      - dd raw block transfer tool documentation
 fat95/docs/lsfsres.guide - lsfsres FileSystem.resource lister documentation
+fat95/docs/debug95.guide - debug95 state dump documentation
 fat95/docs/lsptres.guide - lsptres partition.resource lister documentation
 
 fat95/l/68080/fat95 - Filesystem handler, Apollo 68080 CPU tier
