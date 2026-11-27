@@ -374,6 +374,7 @@ Not collected by `unittest`; each one is run on its own.
 | `amifuse_io_ab.py` | handler-in-the-loop tier | A/B device-request counts between two handler binaries. Counts requests, not Amiga wall-clock time. |
 | `amifuse_media.py` | handler-in-the-loop tier | Media removal and replacement under a running handler: the handler process is kept alive while the card is pulled, swapped or made to fail. |
 | `amifuse_suite.py` | handler-in-the-loop tier | Packet-level matrix: the built 68020 handler is driven with real DOS packets against real FAT12, FAT16 and FAT32 images, and every result is read back in Python. Each case runs in a timed child process. |
+| `amifuse_summary.py` | CI helper for the handler-in-the-loop tier | Turn the output of make test-amifuse into a markdown summary: what each suite checks, what each case and scenario means, and its result. |
 | `audit_extenddir_check.py` | gated | Regression check: the '..' entry of a new directory names its parent, so the parent cluster survives MakeIntRef. |
 | `audit_ptable_check.py` | gated | Regression check: the ptable wrappers act on d0, not on the condition codes exec.library's OpenLibrary happens to leave on the ROM-bootstrap retry. Each routine is driven with both flag polarities for both outcomes; the result must depend only on the returned base. |
 | `harness.py` | library | Run assembled handler routines with mocked device and Exec calls. |
