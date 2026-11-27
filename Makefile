@@ -474,12 +474,11 @@ IT_IMAGE_3.2.3 = localhost/amiga-fsuae-amigaos:3.2.3
 IT_IMAGE_3.1 = localhost/amiga-fsuae-amigaos:3.1
 IT_IMAGE_aros = docker.io/pulchart/amiga-fsuae-aros:latest
 IT_IMAGE_apolloos = ghcr.io/pulchart/amiga-fsuae-apolloos:latest
-FSST_DIR ?= /opt/AmigaOS/FileSystemStressTest
 IT_WORK := build/integration/$(shell date +%Y%m%d-%H%M%S)
 test-integration: $(TARGET_SMOKE) $(TARGET_NOREQ)
 	$(Q)mkdir -p $(IT_WORK); rc=0; $(foreach os,$(IT_OS),podman run --rm --pull=newer \
 		--security-opt label=disable -v $(CURDIR):$(CURDIR) -w $(CURDIR) \
-		-v $(abspath $(IT_WORK)):$(abspath $(IT_WORK)) $(if $(wildcard $(FSST_DIR)),-v $(FSST_DIR):$(FSST_DIR):ro) \
+		-v $(abspath $(IT_WORK)):$(abspath $(IT_WORK)) \
 		$(IT_IMAGE_$(os)) python3 $(TESTDIR)/integration/run.py --os $(os) \
 		--work $(abspath $(IT_WORK))/$(os) $(IT) || rc=1;) exit $$rc
 

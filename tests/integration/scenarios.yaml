@@ -47,20 +47,20 @@ fragments:
     MakeDir {dev}st
   stress: |  # two FileSystemStressTest writers at once, b from a script (AROS Run drops + lines), then large files
     Echo >OUT:writer_b "FailAt 200"
-    Echo >>OUT:writer_b "OUT:fsst >OUT:st_b.txt {dev}st -p b -s {st_small} -l 0 -h 10000 -r 0x2222 -% 20 -i 2 -e -v 1 -k f"
+    Echo >>OUT:writer_b "fsst >OUT:st_b.txt {dev}st -p b -s {st_small} -l 0 -h 10000 -r 0x2222 -% 20 -i 2 -e -v 1 -k f"
     Echo >>OUT:writer_b "Echo >OUT:st_b.done done"
     Run >NIL: Execute OUT:writer_b
-    OUT:fsst >OUT:st_a.txt {dev}st -p a -s {st_small} -l 0 -h 10000 -r 0x1111 -% 20 -i 2 -e -v 1 -k f
+    fsst >OUT:st_a.txt {dev}st -p a -s {st_small} -l 0 -h 10000 -r 0x1111 -% 20 -i 2 -e -v 1 -k f
     Echo "rc $RC" >>OUT:st_a.txt
     Lab waitb
     If NOT EXISTS OUT:st_b.done
     Wait 5
     Skip waitb BACK
     EndIf
-    OUT:fsst >OUT:st_c.txt {dev}st -p c -s {st_large} -l 0 -h {st_max} -r 0x3333 -% 20 -i 2 -e -v 1 -k f
+    fsst >OUT:st_c.txt {dev}st -p c -s {st_large} -l 0 -h {st_max} -r 0x3333 -% 20 -i 2 -e -v 1 -k f
     Echo "rc $RC" >>OUT:st_c.txt
   fill: |  # the volume filled up and emptied again
-    OUT:fsst >OUT:st_f.txt {dev}st -p f -a -l 0 -h {st_max} -r 0x4444 -e -v 1 -k f
+    fsst >OUT:st_f.txt {dev}st -p f -a -l 0 -h {st_max} -r 0x4444 -e -v 1 -k f
     Echo "rc $RC" >>OUT:st_f.txt
   stressend: |
     List {dev}st >OUT:st_list.txt

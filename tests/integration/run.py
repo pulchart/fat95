@@ -16,11 +16,13 @@ when every scenario passes.
 """
 
 import argparse
+import hashlib
 import os
 import shutil
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 import yaml
@@ -40,9 +42,12 @@ BUILDS = {
     "debug95": "dist/c/debug95",
     "ptable": "dist/libs/full/68020/ptable.library",  # make with PTABLE= puts it there
 }
-PATH_KEYS = ("fat95", "dd", "lsfsres", "debug95", "ptable", "work", "fsst")
+PATH_KEYS = ("fat95", "dd", "lsfsres", "debug95", "ptable", "work")
 SMOKE = ROOT / "build/tools/smoke"  # make smoke
 NOREQ = ROOT / "build/tools/noreq"  # make noreq
+FSST_URL = "https://aminet.net/disk/misc/FileSystemStressTest.lha"
+FSST_SHA256 = "33cdc3e7462459874c2674d89b2e9d79e9b445acf380bea2c309fc1066078c05"
+FSST = ROOT / "build/fsst/FileSystemStressTest"
 
 sys.path.insert(0, str(ROOT / "tools"))
 import parse_debug95  # noqa: E402
@@ -85,7 +90,22 @@ def sh(*a, **k):
     return subprocess.run([str(x) for x in a], check=True, capture_output=True, **k)
 
 
-def prepare(cfg, osc, work):
+def fsst():
+    """FileSystemStressTest from Aminet, fetched once into build/fsst."""
+    if not FSST.exists():
+        data = urllib.request.urlopen(FSST_URL).read()
+        if hashlib.sha256(data).hexdigest() != FSST_SHA256:
+            sys.exit("%s: unexpected SHA-256" % FSST_URL)
+        lha = FSST.parent / "FileSystemStressTest.lha"
+        lha.parent.mkdir(parents=True, exist_ok=True)
+        lha.write_bytes(data)
+        sh("lha", "-xqw=%s" % FSST.parent, lha)
+        # lha keeps the archive's owner, a foreign uid outside the container
+        sh("chown", "-R", "%d:%d" % (os.getuid(), os.getgid()), FSST.parent)
+    return FSST
+
+
+def prepare(cfg, osc, work, stress):
     """The boot volume, a copy of the system directory; returns the FS-UAE
     lines that attach it."""
     sysdir = work / "boot"
@@ -100,6 +120,8 @@ def prepare(cfg, osc, work):
     ]
     if osc.get("ptable", True):  # fat95 reads partition tables through it
         payload.append((cfg["ptable"], "Libs/ptable.library"))
+    if stress:
+        payload.append((fsst(), "C/fsst"))
     for src, dest in payload:
         shutil.copyfile(src, sysdir / dest)
     startup = STARTUP if osc.get("setpatch", True) else STARTUP.replace("SetPatch >NIL:\n", "")
@@ -295,8 +317,6 @@ def run(cfg, osname, osc, boot, work, name, sc):
     (out / "up.bin").write_bytes(up)
     if cfg.get("debug95") and Path(cfg["debug95"]).exists():
         shutil.copyfile(cfg["debug95"], out / "debug95")
-    if "OUT:fsst" in sc["steps"]:
-        shutil.copyfile(cfg["fsst"], out / "fsst")
     steps = sc["steps"].format(dev=dev, wait=cfg["wait"], device=ml["device"], unit=ml["unit"],
                                copy=osc.get("copy", "Copy"))  # fmt: skip
     (out / "steps").write_text(steps)
@@ -426,15 +446,12 @@ def main():
         sys.exit("missing builds: %s" % ", ".join(map(shown, builds)))
     names = a.scenario or [n for n in SCENARIOS if not SCENARIOS[n].get("request")]
     todo = [n for n in names if a.os in SCENARIOS[n].get("os", (a.os,))]
-    stress = [n for n in todo if "OUT:fsst" in SCENARIOS[n]["steps"]]
-    if stress and not (cfg.get("fsst") and cfg["fsst"].exists()):
-        sys.exit("%s need FileSystemStressTest (fsst in the config)" % " ".join(stress))
     work = (a.work or cfg["work"] / time.strftime("fat95-it-%Y%m%d-%H%M%S")).resolve()
     if work.exists():
         sys.exit("%s exists; give a new --work directory" % work)
     work.mkdir(parents=True)
     print("%s: %s" % (a.os, " ".join(todo)))
-    boot = prepare(cfg, osc, work)
+    boot = prepare(cfg, osc, work, any("fsst " in SCENARIOS[n]["steps"] for n in todo))
     failed = [n for n in todo if not run(cfg, a.os, osc, boot, work, n, SCENARIOS[n])]
     print(
         "%s: %d/%d scenarios passed%s"
