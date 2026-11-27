@@ -90,11 +90,10 @@ def make_filesystem(bridge, mountpoint=None):
 
 
 def mount_image(image, driver, mountpoint):
-    from amifuse.fuse_fs import FUSE
+    from amifuse.fuse_fs import _require_fuse
     from amifuse_bridge import RawFatBridge
 
-    if FUSE is None:
-        raise RuntimeError("AmiFUSE cannot import FUSE")
+    FUSE = _require_fuse()
     fs = make_filesystem(RawFatBridge(image, driver), mountpoint)
     try:
         FUSE(

@@ -189,7 +189,7 @@ def edit_in_place(b, want, name):
     """Overwrite the middle, append at the end and cut a file that already exists, through one handle opened by its escaped name."""
     handle, lock = b.open_file("/" + escaped(name), os.O_RDWR)
     try:
-        assert b.write_handle_at(handle, 1000, b"X" * 100) == 100
+        assert b.write_handle_at(handle, 1000, b"X" * 100) == (100, 0)
         b.seek_handle(handle, 0, OFFSET_END)
         assert b.write_handle(handle, b"tail") == 4
         assert b.set_handle_size(handle, 2500) >= 0

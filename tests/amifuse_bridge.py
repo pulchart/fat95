@@ -1,11 +1,12 @@
 """Raw-FAT adapter between AmiFUSE's HandlerBridge and the fat95 handler, with the observer that records what reaches the device. Patches nothing on disk; the changes are made to the imported objects at runtime.
 
-Status: library for the handler-in-the-loop tier. Pinned to amifuse 0.6.0."""
+Status: library for the handler-in-the-loop tier. Pinned to amifuse 1.0.0."""
 
 import contextlib
 import os
 import time
 from pathlib import Path
+from amifuse.emu_thread import route_methods_through_emu
 from amifuse.fuse_fs import HandlerBridge
 from amifuse.rdb_inspect import ADFInfo
 from amifuse.scsi_device import ScsiDevice, IORequestStruct
@@ -14,19 +15,14 @@ from amifuse_images import inspect_image
 _original_io = ScsiDevice.BeginIO
 
 
-def _trackdisk_query(self, ctx, request):
+def _observed_io(self, ctx, request):
     observer = getattr(self.backend, "_fat95_io_observer", None)
     if observer:
         observer(IORequestStruct(ctx.mem, request))
-    result = _original_io(self, ctx, request)
-    ior = IORequestStruct(ctx.mem, request)
-    if ior.command.val == 0x4000 and ior.actual.val == 16 and not ior.error.val:
-        # NDK devices/newstyle.h: NSDEVTYPE_TRACKDISK = 5 (upstream uses 0).
-        ctx.mem.w16(ior.data.val + 8, 5)
-    return result
+    return _original_io(self, ctx, request)
 
 
-ScsiDevice.BeginIO = _trackdisk_query
+ScsiDevice.BeginIO = _observed_io
 
 
 class RawFatBridge(HandlerBridge):
@@ -81,10 +77,10 @@ class RawFatBridge(HandlerBridge):
 
     def snapshot(self):
         return dict(
-            pc=self.state.pc,
-            sp=self.state.sp,
             crashed=self.state.crashed,
-            registers=self.state.regs,
+            exited=self.state.exited,
+            error=repr(self.state.last_error) if self.state.last_error else None,
+            error_pc=self.state.last_error_pc,
             stack_lower=self.state.stack.get_lower(),
             stack_upper=self.state.stack.get_upper(),
         )
@@ -100,23 +96,33 @@ class RawFatBridge(HandlerBridge):
         self.last_reply = replies[-1]
         return replies
 
-    def packet(self, kind, *args):
-        self.launcher.send_packet(self.state, kind, list(args))
-        reply = self._run_until_replies()[-1]
-        if reply[2] == 0:
-            raise AssertionError(f"Packet {kind} failed: {reply[2:]}")
-        return reply[2:]
+    def _run_until_reply(self, pkt_addr, label, **wait):
+        answer = super()._run_until_reply(pkt_addr, label, **wait)
+        if answer is not None:
+            self.last_reply = (0, pkt_addr, *answer)
+        return answer
 
-    def flush_volume(self):
+    def _answer(self, sent, label):
+        reply = self._run_until_reply(sent[0], label)
+        if reply is None:
+            raise AssertionError(f"No reply to {label}: {self.snapshot()}")
+        return reply
+
+    def packet(self, kind, *args):
+        reply = self._answer(self.launcher.send_packet(self.state, kind, list(args)), "packet")
+        if reply[0] == 0:
+            raise AssertionError(f"Packet {kind} failed: {reply}")
+        return reply
+
+    def flush_volume(self, wait_pending=True):
         self.packet(27)
         self.backend.sync()
 
     def close_file(self, handle):
-        self.launcher.send_end_handle(self.state, handle)
-        reply = self._run_until_replies()[-1]
+        reply = self._answer(self.launcher.send_end_handle(self.state, handle), "close")
         self._free_fh(handle)
-        if not reply[2]:
-            raise AssertionError(f"Close failed: {reply[2:]}")
+        if not reply[0]:
+            raise AssertionError(f"Close failed: {reply}")
 
     def put(self, path, data):
         opened = self.open_file(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
@@ -143,12 +149,12 @@ class RawFatBridge(HandlerBridge):
         handle, lock = opened
         try:
             if offset:
-                self.launcher.send_seek_handle(self.state, handle, offset, -1)
-                reply = self._run_until_replies()[-1]
-                assert reply[2] >= 0, reply
+                reply = self._answer(
+                    self.launcher.send_seek_handle(self.state, handle, offset, -1), "seek"
+                )
+                assert reply[0] >= 0, reply
             data = self.read_handle(handle, size)
-            assert self.last_reply[2] >= 0 and self.last_reply[3] == 0, self.last_reply
-            assert len(data) == self.last_reply[2], self.last_reply
+            assert data is not None, (path, self.last_reply)
             return data
         finally:
             try:
@@ -164,15 +170,19 @@ class RawFatBridge(HandlerBridge):
         self.packet(5)  # ACTION_DIE; acknowledge alone is insufficient.
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
-            rs = self.launcher.run_burst(self.state, max_cycles=200000)
+            self.launcher.run(max_cycles=200000)
             if self.state.crashed:
                 raise AssertionError(f"Shutdown crash: {self.snapshot()}")
-            if getattr(rs, "done", False) and not getattr(rs, "error", None):
+            if self.state.exited:
                 self.exited = True
                 self.backend.sync()
                 return
             time.sleep(0.002)
         raise AssertionError(f"Handler did not exit after ACTION_DIE: {self.snapshot()}")
+
+
+# The methods above run on the emulation thread, as HandlerBridge's own do.
+route_methods_through_emu(RawFatBridge)
 
 
 def okay(result):

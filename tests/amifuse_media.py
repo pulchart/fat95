@@ -16,7 +16,8 @@ from amifuse_bridge import RawFatBridge
 from amifuse_images import create_image, inspect_image, file_sha256, verify_image
 from toolchain import ROOT, RUNS
 from amifuse.scsi_device import ScsiDevice, IORequestStruct
-from amifuse.startup_runner import _snapshot_block_state, _restore_block_state
+from amifuse.emu_thread import route_methods_through_emu
+from amitools.vamos.machine.runtime import Code
 
 _active = None
 _previous = ScsiDevice.BeginIO
@@ -96,7 +97,7 @@ ScsiDevice.BeginIO = media_io
 
 class MediaBridge(RawFatBridge):
     def _run_until_replies(self, *args, **kwargs):
-        if self.state.pc <= 0x1000:
+        if self.state.exited:
             raise AssertionError(
                 f"Unexpected handler exit; disallow upstream restart: {self.snapshot()}"
             )
@@ -109,12 +110,13 @@ class MediaBridge(RawFatBridge):
             if info and info["num_blocks_used"] < info["num_blocks"]:
                 return info
             for _ in range(20):
-                rs = self.launcher.run_burst(self.state, max_cycles=200000)
-                assert not self.state.crashed and not (
-                    getattr(rs, "done", False) and not rs.error
-                ), self.snapshot()
+                self.launcher.run(max_cycles=200000)
+                assert not self.state.crashed and not self.state.exited, self.snapshot()
             time.sleep(0.01)
         raise AssertionError(f"Background scan did not finish: {self.snapshot()}")
+
+
+route_methods_through_emu(MediaBridge)
 
 
 class MediaControl:
@@ -145,6 +147,9 @@ class MediaControl:
         No direct writes to handler globals. I/O failure is returned first;
         notification is deliberately delayed until the packet returns.
         """
+        bridge._emu.call(self._deliver_interrupt, bridge)
+
+    def _deliver_interrupt(self, bridge):
         assert self.interrupt, "Handler did not register TD_ADDCHANGEINT"
         mem = bridge.mem
         code = mem.r32(self.interrupt + 18)
@@ -152,23 +157,18 @@ class MediaControl:
         cpu = bridge.vh.machine.cpu
         saved = [cpu.r_reg(i) for i in range(16)]
         pc, sr = cpu.r_pc(), cpu.r_sr()
-        block = _snapshot_block_state()
         stack = bridge.vh.alloc.alloc_memory(4096, label="media-interrupt-stack")
         try:
-            result = bridge.vh.machine.run(
-                code,
-                sp=stack.addr + 4092,
-                set_regs={9: data},
-                max_cycles=10000,
+            result = bridge.vh.runtime.run(
+                Code(code, sp=stack.addr + 4092, set_regs={9: data}),
                 name="media-change-interrupt",
             )
-            assert result.done and not result.error, result
+            assert result.mach_error is None, result
         finally:
             for i, value in enumerate(saved):
                 cpu.w_reg(i, value)
             cpu.w_pc(pc)
             cpu.w_sr(sr)
-            _restore_block_state(block)
             bridge.vh.alloc.free_memory(stack)
         self.pending = False
 
