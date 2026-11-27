@@ -997,9 +997,11 @@ CodePage	= 596
 InvCodeLen	= 600
 InvCodePage	= 604
 
-;OEM charset maps
-OemPage		= 608
-InvOemPage	= 612
+;OEM charset maps: one block, the inverse map then the forward one
+OemPage		= 608		;Amiga $a0..$ff -> upper case OEM
+InvOemPage	= 612		;OEM $80..$ff -> Amiga
+OEM_INV		= 128
+OEM_FWD		= 96
 
 ;SCSI Sense data
 SenseBuffer	= 616
@@ -2902,18 +2904,19 @@ c2ms_special:
 	sub.b	#$a0,d0
 	bcs.s	c2ms_block
 
-	cmp.b	#$40,d0
-	bcs.s	c2ms_change
-
-	sub.b	#$20,d0			;toUpper special chars
-c2ms_change:
 	tst.l	OemPage(a4)
-	beq.s	c2ms_end
+	beq.s	c2ms_raw
 
 	ext.w	d0
 	move.l	OemPage(a4),a0
-	add.w	d0,a0
-	move.b	(a0),d0
+	move.b	(a0,d0.w),d0		;$a0..$ff -> upper case OEM
+	bra.s	c2ms_end
+c2ms_raw:
+	add.b	#$a0,d0			;no table: the Amiga char,..
+	btst	#6,d0
+	beq.s	c2ms_end
+
+	and.b	#$df,d0			;..$e0..$ff to upper case
 	bra.s	c2ms_end
 
 ;--- convert C-String PC437 -> Amiga -----------------------
@@ -3036,11 +3039,6 @@ msn_pair:
 	addq.l	#1,a0			;%% is one %
 	bra.s	msn_write
 msn_table:
-	btst	#6,d0
-	beq.s	msn_t1
-
-	and.b	#$df,d0			;toUpper special chars
-msn_t1:
 	sub.b	#$a0,d0
 	bcs.s	msn_underscore
 
@@ -3049,14 +3047,17 @@ msn_t1:
 
 	move.l	d1,a2
 	ext.w	d0
-	add.w	d0,a2
-	move.b	(a2),d0			;..and ANSI -> OEM
+	move.b	(a2,d0.w),d0		;$a0..$ff -> upper case OEM
 	bmi.s	msn_write
 
 	moveq.l	#3,d4
 	bra.s	msn_write
 msn_t2:
-	add.b	#$a0,d0
+	add.b	#$a0,d0			;no table: the Amiga char,..
+	btst	#6,d0
+	beq.s	msn_write
+
+	and.b	#$df,d0			;..$e0..$ff to upper case
 	bra.s	msn_write
 
 msn_pass2:
@@ -3868,13 +3869,15 @@ icp_oem:
 	tst.l	OemPage(a4)
 	beq.s	icp_end			;if requested..
 
-	moveq.l	#64,d0
-	add.l	d0,d0
+	move.l	#OEM_INV+OEM_FWD,d0
 	moveq.l	#MEMF_NORM,d1
 	CALLEXEC AllocMem
 	move.l	d0,InvOemPage(a4)	;..same thing again..
-	beq.s	icp_end
+	bne.s	icp_ogot
 
+	clr.l	OemPage(a4)		;no memory: names keep their chars
+	bra.s	icp_end
+icp_ogot:
 	move.l	d0,a1
 	moveq.l	#32-1,d0
 	move.l	#$80818283,d1		;..for chars 128 ~ 255..
@@ -3883,10 +3886,29 @@ icp_ofill:
 	add.l	#$04040404,d1
 	dbf	d0,icp_ofill
 
+;-- the forward table behind it: $a0..$ff, the oem chunk holds $a0..$df
+;   and, from install95 4.3 on, $e0..$ff; without those the upper case
+;   of $e0..$ff is the entry $20 below
 	move.l	OemPage(a4),a0
-	add.w	#64,a0
+	move.l	a1,OemPage(a4)
+	moveq.l	#64-1,d0
+icp_ocopy:
+	move.b	(a0)+,(a1)+
+	dbf	d0,icp_ocopy
+
+	cmp.l	#OEM_FWD,-64-4(a0)	;chunk size
+	bcc.s	icp_ohigh
+
+	lea	-32(a1),a0
+icp_ohigh:
+	moveq.l	#32-1,d0
+icp_ocopy2:
+	move.b	(a0)+,(a1)+
+	dbf	d0,icp_ocopy2
+
+	move.l	a1,a0			;from the top: the lowest char wins
 	move.l	InvOemPage(a4),a1
-	move.w	#$df,d0
+	move.w	#$ff,d0
 icp_oscan:
 	moveq.l	#0,d1
 	move.b	-(a0),d1
@@ -3914,8 +3936,7 @@ fit_1:
 	move.l	InvOemPage(a4),d1
 	beq.s	fit_end
 
-	moveq.l	#64,d0
-	add.l	d0,d0
+	move.l	#OEM_INV+OEM_FWD,d0
 	move.l	d1,a1
 	CALLEXEC FreeMem
 fit_end:

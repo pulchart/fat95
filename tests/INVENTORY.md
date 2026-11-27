@@ -291,6 +291,18 @@ SerializeDisk must propagate the result of flushing its changes.
 | `test_failed_flush_reports_failure` | A failed flush returns failure and preserves the device error. |
 | `test_successful_flush_reports_success` | A successful flush still returns success. |
 
+#### `test_short_names.py`
+
+8.3 names: Amiga characters from $A0 through the [oem] table, 64 entries as before or 96 with $E0..$FF.
+
+| test | what it guards |
+|---|---|
+| `test_64_entries_fold_the_upper_range` | With 64 entries $E0..$FF take the entry $20 below, as before the table grew. |
+| `test_96_entries_map_the_upper_range` | With 96 entries $E0..$FF have their own entries: $FF no longer lands on the entry of $DF. |
+| `test_no_table_keeps_the_char` | Without a table a char from $A0 stays, $E0..$FF in upper case. |
+| `test_char2ms` | Char2MS maps through the table, and without one gives the upper case Amiga char instead of the char minus $A0. |
+| `test_inverse_takes_the_lowest_char` | StrPc2Amiga turns an OEM byte back into the lowest Amiga char that maps to it, the upper case one. |
+
 ### Scripts
 
 Not collected by `unittest`; each one is run on its own.

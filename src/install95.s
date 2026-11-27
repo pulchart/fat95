@@ -536,10 +536,20 @@ s_roem:
 	move.b	#LF,(a1)+
 	move.l	d2,a0
 	move.w	#$a0,d2
+	move.w	-2(a0),d4		;64 or 96 entries
+	add.w	d2,d4
 s_roline:
 	move.b	(a0)+,d3
+	cmp.w	#$e0,d2
+	bcs.s	s_rolow
+
+	cmp.b	-33(a0),d3
+	beq.s	s_ronext		;skip the entry $20 below
+	bra.s	s_roput
+s_rolow:
 	cmp.b	d2,d3
 	beq.s	s_ronext		;skip 1:1 mappings
+s_roput:
 
 	move.w	d2,d0
 	moveq.l	#2,d1
@@ -551,7 +561,7 @@ s_roline:
 	move.b	#LF,(a1)+
 s_ronext:
 	addq.w	#1,d2
-	cmp.w	#$e0,d2
+	cmp.w	d4,d2
 	bcs.s	s_roline
 	bra.w	s_rchunk
 
@@ -766,7 +776,7 @@ s_woem:
 	move.l	Buffer(a4),a1
 	add.l	ChunkOffs(a4),a1
 	move.l	#'oem ',(a1)+
-	moveq.l	#64,d0
+	moveq.l	#96,d0
 	move.l	d0,(a1)+
 	addq.l	#8,d0
 	add.l	d0,ChunkOffs(a4)
@@ -777,6 +787,11 @@ s_woinit:
 	addq.w	#1,d2
 	cmp.w	#$e0,d2
 	bcs.s	s_woinit
+s_woinit2:
+	clr.b	(a1)+			;$e0..$ff: not named yet
+	addq.w	#1,d2
+	cmp.w	#$100,d2
+	bcs.s	s_woinit2
 
 	move.l	d3,a1
 s_woline:
@@ -792,7 +807,7 @@ s_woline:
 	sub.w	#$a0,d2
 	bmi.s	s_woline		;invalid Amiga char
 
-	cmp.w	#$40,d2
+	cmp.w	#$60,d2
 	bcc.s	s_woline		;dito
 
 	bsr.w	StrCue
@@ -803,6 +818,16 @@ s_woline:
 	move.b	d3,(a1,d2.w)		;write char
 	bra.s	s_woline
 s_wodone:
+	lea	64(a1),a0		;$e0..$ff not named: the upper case..
+	moveq.l	#32-1,d0
+s_wofill:
+	tst.b	(a0)
+	bne.s	s_wofnext
+
+	move.b	-32(a0),(a0)		;..is the entry $20 below
+s_wofnext:
+	addq.l	#1,a0
+	dbf	d0,s_wofill
 
 ;- - write object - - - - - - - - - - - - - - - - - - - - -
 
