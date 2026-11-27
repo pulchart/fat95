@@ -3692,9 +3692,7 @@ icp_ofill:
 	add.l	#$04040404,d1
 	dbf	d0,icp_ofill
 
-;-- the forward table behind it: $a0..$ff, the oem chunk holds $a0..$df
-;   and, from install95 4.3 on, $e0..$ff; without those the upper case
-;   of $e0..$ff is the entry $20 below
+;-- forward table $a0..$ff behind it, $e0..$ff from the entry $20 below when the oem chunk lacks them
 	move.l	OemPage(a4),a0
 	move.l	a1,OemPage(a4)
 	moveq.l	#64-1,d0
