@@ -690,7 +690,7 @@ $(GUIDE_FAT95): README.md $(MD2GUIDE)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) README.md $@ --version $(VERSION) --date $(DATE) --title "fat95" --ver-title "fat95 guide"
 
-$(GUIDE_CHANGES): docs/changes.md $(MD2GUIDE)
+$(GUIDE_CHANGES): docs/changes.md $(MD2GUIDE) Makefile
 	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) docs/changes.md $@ --version $(VERSION) --date $(DATE) --title "fat95 release notes" --ver-title "fat95 release notes guide"
