@@ -30,6 +30,14 @@ _AbsExecBase	= 4
 
 OpenLibrary	= -552
 CloseLibrary	= -414
+FreeSignal	= -336
+GetMsg		= -372
+CreateMsgPort	= -666
+DeleteMsgPort	= -672
+
+MP_FLAGS	= 14
+MP_SIGBIT	= 15
+PA_IGNORE	= 2
 
 ;--- from dos.library --------------------------------------
 
@@ -42,9 +50,19 @@ Open		= -30
 Close		= -36
 Write		= -48
 Output		= -60
-DoPkt		= -240
+Delay		= -198
+AllocDosObject	= -228
+FreeDosObject	= -234
+SendPkt		= -246
 GetDeviceProc	= -642
 FreeDeviceProc	= -648
+CheckSignal	= -792
+
+DOS_STDPKT	= 3
+SIGBREAKF_CTRL_C = $1000
+dp_Type		= 8
+dp_Res1		= 12
+dp_Arg1		= 20
 
 ModeNewfile	= 1006
 
@@ -59,6 +77,9 @@ DVP_Sizeof	= 16
 
 ACTION_END	= 1007
 
+WAIT_TICKS	= 10			;between two looks for the answer
+WAIT_LOOKS	= 50			;10 seconds in all
+
 ;--- global vars -------------------------------------------
 
 ArgV		= -4
@@ -70,6 +91,9 @@ DeviceName	= -24
 FileName	= -28
 DebugSource	= -32
 Result		= -36
+Packet		= -40
+ReplyPort	= -44
+Looks		= -48
 StringBuffer	= -256
 VarsSize	= -256
 
@@ -125,15 +149,12 @@ s_pend:
 	move.l	d0,DevProc(a4)
 	beq.w	s_nodev
 
-	move.l	d0,a0
-	move.l	DVP_Port(a0),d1
-	move.l	#ACTION_END,d2
-	moveq.l	#0,d3			;top secret!!!
-	moveq.l	#0,d4
-	moveq.l	#0,d5
-	CALLDOS	DoPkt
+	bsr	AskHandler
 	move.l	d0,DebugSource(a4)
 	beq.s	s_noinfo
+	moveq.l	#-1,d1
+	cmp.l	d1,d0
+	beq.s	s_freedev		;no answer, reported
 
 	btst	#0,d0
 	bne.s	s_noinfo		;odd Adress???
@@ -165,23 +186,93 @@ s_end:
 
 s_nofile:
 	lea	NoFileStr(pc),a0
-	bsr.s	ReportError
+	bsr	ReportError
 	bra.s	s_freedev
 
 s_noinfo:
 	lea	NoInfoStr(pc),a0
-	bsr.s	ReportError
+	bsr	ReportError
 	bra.s	s_freedev
 
 s_nodev:
 	lea	NoDevStr(pc),a0
-	bsr.s	ReportError
+	bsr	ReportError
 	bra.s	s_closelib
 
 s_noparams:
 	lea	HelpStr(pc),a0
-	bsr.s	ReportError
+	bsr	ReportError
 	bra.s	s_closelib
+
+;--- ask the handler for its debug info -------------------
+; d0 -> &debug info, 0 when the handler has none, -1 when it did
+;	not answer within WAIT_LOOKS or on Ctrl-C (reported)
+
+AskHandler:
+	CALLEXEC CreateMsgPort
+	move.l	d0,ReplyPort(a4)
+	beq.w	ah_nomem
+	moveq.l	#DOS_STDPKT,d1
+	moveq.l	#0,d2
+	CALLDOS	AllocDosObject
+	move.l	d0,Packet(a4)
+	beq.w	ah_noport
+
+	move.l	d0,a0
+	move.l	#ACTION_END,dp_Type(a0)
+	clr.l	dp_Arg1(a0)		;top secret!!!
+	move.l	d0,d1
+	move.l	DevProc(a4),a0
+	move.l	DVP_Port(a0),d2
+	move.l	ReplyPort(a4),d3
+	CALLDOS	SendPkt
+	move.l	#WAIT_LOOKS,Looks(a4)
+ah_look:
+	move.l	ReplyPort(a4),a0
+	CALLEXEC GetMsg
+	tst.l	d0
+	bne.s	ah_answer
+	move.l	#SIGBREAKF_CTRL_C,d1
+	CALLDOS	CheckSignal
+	lea	BreakStr(pc),a0
+	tst.l	d0
+	bne.s	ah_giveup
+	lea	NoAnswerStr(pc),a0
+	subq.l	#1,Looks(a4)
+	beq.s	ah_giveup
+	moveq.l	#WAIT_TICKS,d1
+	CALLDOS	Delay
+	bra.s	ah_look
+
+ah_answer:
+	move.l	Packet(a4),a0
+	move.l	dp_Res1(a0),-(sp)
+	moveq.l	#DOS_STDPKT,d1
+	move.l	a0,d2
+	CALLDOS	FreeDosObject
+	move.l	ReplyPort(a4),a0
+	CALLEXEC DeleteMsgPort
+	move.l	(sp)+,d0
+	rts
+
+; The packet is still out: keep it and the port, which a late answer
+; reaches without signalling, but give the signal bit back.
+ah_giveup:
+	bsr	ReportError
+	move.l	ReplyPort(a4),a1
+	move.b	#PA_IGNORE,MP_FLAGS(a1)
+	moveq.l	#0,d0
+	move.b	MP_SIGBIT(a1),d0
+	CALLEXEC FreeSignal
+	moveq.l	#-1,d0
+	rts
+
+ah_noport:
+	move.l	ReplyPort(a4),a0
+	CALLEXEC DeleteMsgPort
+ah_nomem:
+	moveq.l	#0,d0
+	rts
 
 ;--- report error ------------------------------------------
 ; a0 <- &Text
@@ -213,6 +304,8 @@ HelpStr:	dc.b	'usage: fat95debug <device> <logfile>',LF,0
 NoDevStr:	dc.b	'device not found.',LF,0
 NoFileStr:	dc.b	'could not open log file.',LF,0
 NoInfoStr:	dc.b	'debug info not available.',LF,0
+NoAnswerStr:	dc.b	'no answer from the handler.',LF,0
+BreakStr:	dc.b	'***Break',LF,0
 		even
 
 ;*** that's it!!!! *****************************************
