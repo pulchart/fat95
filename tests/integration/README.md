@@ -9,7 +9,7 @@ Each OS runs in an [amiga-fsuae](https://github.com/pulchart/container-amiga-fsu
 | OS | image |
 |---|---|
 | `3.2.3-a1200`, `3.1-a1200`, `3.2.3-a600`, `3.1-a600` | `localhost/amiga-fsuae-amigaos:<version>`, built locally from own install media |
-| `aros` | `docker.io/pulchart/amiga-fsuae-aros:latest` |
+| `aros` | `ghcr.io/pulchart/amiga-fsuae-aros:latest` |
 | `apolloos` | `ghcr.io/pulchart/amiga-fsuae-apolloos:latest` |
 
 ```
@@ -19,7 +19,7 @@ make test-integration IT_OS=3.2.3-a1200 IT="--scenario stress_fat32"   # a stres
 tests/integration/run.py --list                      # scenarios, the OSes they run on, description
 ```
 
-`make test-integration` builds `smoke` and `noreq` first and mounts the repository and the run directory at the same paths. A `stress_` scenario fetches FileSystemStressTest 1.2 from Aminet (disk/misc) once into `build/fsst`, checked against its SHA-256. `make` with `PTABLE` puts ptable.library into `dist/libs`. Exit code 0 when every scenario passes. Each run gets a new directory under `build/integration`, or `IT_WORK`.
+`make test-integration` builds `smoke` and `noreq` first and mounts the repository and the run directory at the same paths. A `stress_` scenario fetches FileSystemStressTest 1.2 from Aminet (disk/misc) once into `build/fsst`, checked against its SHA-256. `make` with `PTABLE` puts ptable.library into `dist/libs`. Exit code 0 when every scenario passes. Each run gets a new directory under `build/integration`, or `IT_WORK`. CI runs `aros` and `apolloos` only.
 
 In an image, as in CI:
 
