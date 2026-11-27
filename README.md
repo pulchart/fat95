@@ -87,7 +87,8 @@ By hand:
 
 1. Copy `l/<tier>/fat95` to `L:fat95` (see [CPU tiers](#cpu-tiers)).
 2. Copy `libs/<small|full>/<68000|68020>/ptable.library` to `LIBS:`.
-3. Set the language: `l/install95 w locale/<language>`. Languages: english, cestina, dansk, deutsch, espanol, francais, greek, italiano, magyar, nederlands, norsk, polski, portugues, russian, svenska, turkce.
+3. Set the language: `l/install95 WRITE locale/<language>`. Languages: english, cestina, dansk, deutsch, espanol, francais, greek, italiano, magyar, nederlands, norsk, polski, portugues, russian, svenska, turkce.
+   `l/install95 READ <file>` saves the language of `L:fat95` into a file, `HANDLER <file>` works on another fat95 file than `L:fat95`.
 4. Optional: copy mountlists from `DOSDrivers/` to `DEVS:DOSDrivers/` (mount at boot) or `SYS:Storage/DOSDrivers/` (mount by hand):
    - `MS0`/`MS1` - FAT-formatted PC DD 720k floppy (mfm.device)
    - `CF0` - FAT partition on CompactFlash in PCMCIA slot (compactflash.device), supports MBR and GPT
