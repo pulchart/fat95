@@ -39,6 +39,9 @@ PATH_KEYS = ("fat95", "dd", "lsfsres", "debug95", "ptable", "work")
 OS_PATH_KEYS = ("kickstart", "kickstart_ext", "commands_adf", "workbench_adf", "system_dir")
 SMOKE = ROOT / "build/tools/smoke"  # make smoke
 
+sys.path.insert(0, str(ROOT / "tools"))
+import parse_debug95  # noqa: E402
+
 COMMANDS = ["Assign", "Copy", "Delete", "DiskChange", "Execute", "Info", "List",
             "MakeDir", "Mount", "SetPatch", "Version", "Wait"]  # fmt: skip
 
@@ -356,8 +359,23 @@ def run(cfg, osname, osc, boot, work, name, sc):
     for what, ok in checks:
         print("  %-48s %s" % (what, "ok" if ok else "FAIL"))
     passed = all(ok for _, ok in checks)
+    if (out / "debug95.dump").exists():
+        state = handler_state(out / "debug95.dump")
+        (d / "state.txt").write_text(state)
+        if not passed:
+            print("".join("    " + line for line in state.splitlines(True)), end="")
     print("  %s in %.0f s, %s" % ("PASS" if passed else "FAIL", took, d))
     return passed
+
+
+def handler_state(dump):
+    """The parse_debug95.py summary of a dump the guest wrote; never fails the run."""
+    try:
+        d = parse_debug95.Dump(dump, parse_debug95.Layout(parse_debug95.VARS))
+        lines = ["warning: " + w for w in d.warnings()] + parse_debug95.summary_lines(d)
+    except (Exception, SystemExit) as e:
+        return "no summary of %s: %s\n" % (dump.name, e)
+    return "\n".join(lines) + "\n"
 
 
 def resolve(value):

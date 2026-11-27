@@ -28,7 +28,7 @@ fragments:
   snap: |
     Info >OUT:info0.txt
     If EXISTS OUT:debug95
-    OUT:debug95 {dev} OUT:debug95.txt
+    OUT:debug95 {dev} OUT:debug95.dump
     EndIf
   read: |
     {copy} {dev}payload.bin OUT:got0.bin
