@@ -237,7 +237,7 @@ IT_WORK := build/integration/$(shell date +%Y%m%d-%H%M%S)
 .PHONY: test-integration
 test-integration:
 	@podman run --rm --pull=newer --security-opt label=disable -v $(CURDIR):$(CURDIR) -w $(CURDIR) \
-		$(foreach d,$(MOUNTS),-v $(d):$(d)) -e CI_SUFFIX $(TOOLCHAIN_IMAGE) make $(MAKEOVERRIDES) smoke noreq
+		$(foreach d,$(MOUNTS),-v $(d):$(d)) -e CI_SUFFIX $(TOOLCHAIN_IMAGE) make $(MAKEOVERRIDES) smoke noreq stage
 	@mkdir -p $(IT_WORK); rc=0; $(foreach os,$(IT_OS),podman run --rm --pull=newer \
 		--security-opt label=disable -v $(CURDIR):$(CURDIR) -w $(CURDIR) \
 		-v $(abspath $(IT_WORK)):$(abspath $(IT_WORK)) \

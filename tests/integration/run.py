@@ -8,7 +8,7 @@ mfm.device and IDE disks with FAT partitions.
 Runs in an amiga-fsuae OS image (make test-integration): AMIGA_SYSTEM is the
 system directory, AMIGA_KICKSTART the ROM, AMIGA_KICKSTART_EXT its second half
 and AMIGA_HD_CONTROLLER the FS-UAE controller for disks, if any. --os names
-the OS profile of the config, its settings and scenarios. Preparation copies the system directory and puts fat95, dd,
+the OS profile of the config, its settings and scenarios. Preparation copies the system directory and puts fat95, dd, install95,
 lsfsres and the test tools (smoke and noreq from make) on it. Each scenario
 gets its own medium image, mountlist and steps; the guest writes its findings
 to the host directory OUT:, and the host checks them and the image. Exit 0
@@ -26,6 +26,7 @@ import time
 import urllib.request
 from pathlib import Path
 
+import fatnames
 import yaml
 from scenarios import SCENARIOS
 
@@ -39,16 +40,23 @@ PART_SLACK = 2048  # blocks after the partition: 3.1 scsi.device loses the CHS r
 BUILDS = {
     "fat95": "dist/l/68020/fat95",
     "dd": "dist/c/dd",
+    "install95": "dist/l/install95",
     "lsfsres": "dist/c/lsfsres",
     "debug95": "dist/c/debug95",
     "ptable": "dist/libs/full/68020/ptable.library",  # make with PTABLE= puts it there
 }
-PATH_KEYS = ("fat95", "dd", "lsfsres", "debug95", "ptable", "work")
+PATH_KEYS = ("fat95", "dd", "install95", "lsfsres", "debug95", "ptable", "work")
 SMOKE = ROOT / "build/tools/smoke"  # make smoke
 NOREQ = ROOT / "build/tools/noreq"  # make noreq
 FSST_URL = "https://aminet.net/disk/misc/FileSystemStressTest.lha"
 FSST_SHA256 = "33cdc3e7462459874c2674d89b2e9d79e9b445acf380bea2c309fc1066078c05"
 FSST = ROOT / "build/fsst/FileSystemStressTest"
+# the fat95 of the last release, for the Installer scenario
+OLD_FAT95_URL = "https://github.com/pulchart/fat95/releases/download/v20261115/fat95.v20261115.lha"
+OLD_FAT95_SHA256 = "0493cea074caccda415716ff0035fad06ee88a86e61a1e48419f89afed36e758"
+OLD_FAT95 = ROOT / "build/deps/fat95-4.2"
+STAGE = ROOT / "build/stage"  # make stage: the tree of the release archive
+DISPLAY = 99  # the X server of a scenario with gui steps
 
 sys.path.insert(0, str(ROOT / "tools"))
 import parse_debug95  # noqa: E402
@@ -65,7 +73,7 @@ Echo "DONE" >OUT:done
 """
 
 MOUNTLIST = """{name}:
-FileSystem = L:fat95
+FileSystem = {handler}
 Device = {device}
 Unit = {unit}
 Flags = 0
@@ -83,7 +91,7 @@ GlobVec = -1
 Mask = 0xfffffffe
 MaxTransfer = {max_transfer:#x}
 DosType = {dostype}
-#
+{control}#
 """
 
 
@@ -106,6 +114,21 @@ def fsst():
     return FSST
 
 
+def old_fat95(tier):
+    """fat95 of the last release for a CPU tier, fetched once into build/deps."""
+    dest = OLD_FAT95 / "fat95/l" / tier / "fat95"
+    if not dest.exists():
+        data = urllib.request.urlopen(OLD_FAT95_URL).read()
+        if hashlib.sha256(data).hexdigest() != OLD_FAT95_SHA256:
+            sys.exit("%s: unexpected SHA-256" % OLD_FAT95_URL)
+        lha = OLD_FAT95 / "fat95.lha"
+        lha.parent.mkdir(parents=True, exist_ok=True)
+        lha.write_bytes(data)
+        sh("lha", "-xqw=%s" % OLD_FAT95, lha)
+        sh("chown", "-R", "%d:%d" % (os.getuid(), os.getgid()), OLD_FAT95)
+    return dest
+
+
 def prepare(cfg, osc, work, stress):
     """The boot volume, a copy of the system directory; returns the FS-UAE
     lines that attach it."""
@@ -116,6 +139,7 @@ def prepare(cfg, osc, work, stress):
         (NOREQ, "C/noreq"),
         (SMOKE, "C/smoke"),
         (cfg["dd"], "C/dd"),
+        (cfg["install95"], "C/install95"),
         (cfg["lsfsres"], "C/lsfsres"),
         (cfg["fat95"], "L/fat95"),
     ]
@@ -286,7 +310,47 @@ class Result:
         return r.stdout if r.returncode == 0 else None
 
 
-def emulate(cfg, d, cfgfile, limit, name):
+def pointer(img):
+    """Top left of the red Amiga pointer on a screenshot, None when it is not there."""
+    px = img.convert("RGB").load()
+    pts = [(x, y) for y in range(img.size[1]) for x in range(img.size[0])
+           if px[x, y][0] > 200 and px[x, y][1] < 80 and px[x, y][2] < 80]  # fmt: skip
+    return (min(p[0] for p in pts), min(p[1] for p in pts)) if pts else None
+
+
+def gui(steps, d, env):
+    """Drive the Amiga GUI: "click X Y" moves the pointer there with Amiga+cursor keys
+    (FS-UAE has no absolute X mouse) and clicks, "wait S" waits; a screenshot follows each step."""
+    from PIL import ImageGrab
+
+    for n, step in enumerate(steps, 1):
+        what, *arg = step.split()
+        if what == "wait":
+            time.sleep(float(arg[0]))
+        elif what == "click":
+            x, y = int(arg[0]), int(arg[1])
+            for _ in range(3):
+                cur = pointer(ImageGrab.grab(xdisplay=":%d" % DISPLAY))
+                if cur is None or (abs(x - cur[0]) <= 2 and abs(y - cur[1]) <= 2):
+                    break
+                keys = []
+                for delta, pos, neg, fine in (
+                    (x - cur[0], "Right", "Left", 1),
+                    (y - cur[1], "Down", "Up", 2),
+                ):
+                    k = pos if delta > 0 else neg
+                    keys += ["super+shift+" + k] * (abs(delta) // 40) + ["super+" + k] * (
+                        (abs(delta) % 40) // fine
+                    )
+                subprocess.run(["xdotool", "key", "--delay", "30", *keys], env=env, check=False)
+                time.sleep(1)
+            for action in ("mousedown", "mouseup"):
+                subprocess.run(["xdotool", action, "1"], env=env, check=False)
+                time.sleep(0.3)
+        ImageGrab.grab(xdisplay=":%d" % DISPLAY).save(d / ("gui%d.png" % n))
+
+
+def emulate(cfg, d, cfgfile, limit, name, steps=None):
     """Run FS-UAE until the guest writes OUT:done or the limit passes. A start
     that dies or shows no sign of the guest by BOOT_LIMIT is tried once more:
     FS-UAE and Xvfb now and then fail to come up. Returns (in time, seconds)."""
@@ -295,9 +359,10 @@ def emulate(cfg, d, cfgfile, limit, name):
         os.environ, XDG_RUNTIME_DIR=str(d / "xdg"), SDL_VIDEODRIVER="x11", SDL_AUDIODRIVER="dummy"
     )
     env.pop("WAYLAND_DISPLAY", None)
+    xvfb = ["-n", str(DISPLAY), "-s", "-screen 0 1024x768x24"] if steps else ["-a"]
     for attempt in (1, 2):
         with (d / "fsuae.log").open("a") as emu:
-            p = subprocess.Popen(["xvfb-run", "-a", cfg["fsuae"], str(cfgfile)], env=env, stdout=emu,
+            p = subprocess.Popen(["xvfb-run", *xvfb, cfg["fsuae"], str(cfgfile)], env=env, stdout=emu,
                                  stderr=subprocess.STDOUT, start_new_session=True)  # fmt: skip
             t0 = time.monotonic()
             try:
@@ -308,6 +373,9 @@ def emulate(cfg, d, cfgfile, limit, name):
                 ):
                     if time.monotonic() - t0 > BOOT_LIMIT and not (out / "log.txt").exists():
                         break
+                    if steps and (out / "gui").exists():  # the guest asks for the gui steps
+                        (out / "gui").unlink()
+                        gui(steps, d, dict(env, DISPLAY=":%d" % DISPLAY))
                     time.sleep(1)
                 took = time.monotonic() - t0
                 in_time = (out / "done").exists() and took <= limit
@@ -329,16 +397,25 @@ def run(cfg, osname, osc, boot, work, name, sc):
     out = d / "out"
     payload, up = os.urandom(200000), os.urandom(70000)
     image, start, ml = medium(d, sc, payload, cfg, osc)
+    if sc.get("names"):  # long names outside the code page
+        fatnames.populate(image, start * 512)
     dev = "MS1:" if sc["medium"] == "floppy" else "FA0:"
     if ml is None:  # the OS mounts it from the RDB
         ml = dict(device=osc.get("ide_device", "scsi.device"), unit=osc.get("ide_unit", 0))
     else:
         ml.setdefault("device", osc.get("ide_device", "scsi.device"))
         ml.setdefault("unit", osc.get("ide_unit", 0))
-        mountlist = MOUNTLIST.format(name=dev[:-1], stack=osc.get("stack", 8192),
+        mountlist = MOUNTLIST.format(name=dev[:-1], stack=osc.get("stack", 8192), handler=sc.get("handler", "L:fat95"),
+                                     control='Control = "%s"\n' % sc["control"] if sc.get("control") else "",
                                      max_transfer=osc.get("max_transfer", 0x20000), **ml)  # fmt: skip
         (out / "mountlist").write_text(mountlist)
     (out / "up.bin").write_bytes(up)
+    if sc.get("old_fat95"):  # the fat95 of the last release, for the Installer
+        shutil.copyfile(
+            old_fat95("68000" if osc.get("tier") == "68000" else "68020"), out / "old_fat95"
+        )
+    if sc.get("locale"):  # the language files, for install95
+        shutil.copytree(ROOT / "dist/locale", out / "locale")
     if cfg.get("debug95") and Path(cfg["debug95"]).exists():
         shutil.copyfile(cfg["debug95"], out / "debug95")
     steps = sc["steps"].format(dev=dev, wait=cfg["wait"], device=ml["device"], unit=ml["unit"],
@@ -372,14 +449,14 @@ def run(cfg, osname, osc, boot, work, name, sc):
         ["[fs-uae]", "amiga_model = %s" % osc.get("model", "A1200"), "cpu = %s" % cpu, "chip_memory = 2048",
          "fast_memory = %d" % osc.get("fast_memory", 8192), "kickstart_file = %s" % rom]
         + (["kickstart_ext_file = %s" % ext] if ext else [])
-        + boot_lines + attach + list(osc.get("fsuae", [])) + speed
+        + boot_lines + attach + list(osc.get("fsuae", [])) + speed + stage_lines(d, sc)
         + ["hard_drive_0 = %s" % out, "hard_drive_0_label = OUT", "hard_drive_0_priority = -128",
            "serial_port = %s" % serial, "joystick_port_1 = none", "uae_cpu_speed = max", "floppy_drive_speed = 800",
            "fullscreen = 0", "base_dir = %s" % (d / "base"), ""]
     )  # fmt: skip
     cfgfile = d / "run.fs-uae"
     cfgfile.write_text("\n".join(lines))
-    in_time, took = emulate(cfg, d, cfgfile, sc.get("limit", cfg["limit"]), name)
+    in_time, took = emulate(cfg, d, cfgfile, sc.get("limit", cfg["limit"]), name, sc.get("gui"))
     r = Result(cfg, d, image, start, dev, payload, up)
     checks = [("finished in time", in_time), *sc["checks"](r)]
     print("== %s %s: %s" % (osname, name, sc["doc"]))
@@ -393,6 +470,18 @@ def run(cfg, osname, osc, boot, work, name, sc):
             print("".join("    " + line for line in state.splitlines(True)), end="")
     print("  %s in %.0f s, %s" % ("PASS" if passed else "FAIL", took, d))
     return passed
+
+
+def stage_lines(d, sc):
+    """A copy of the release tree as the drive INST:, for the Installer scripts."""
+    if not sc.get("stage"):
+        return []
+    shutil.copytree(STAGE, d / "stage")
+    return [
+        "hard_drive_3 = %s" % (d / "stage"),
+        "hard_drive_3_label = INST",
+        "hard_drive_3_priority = -100",
+    ]
 
 
 def handler_state(dump):
@@ -469,12 +558,16 @@ def main():
     if osc.get("tier") == "68000":  # the 68000 builds of fat95 and ptable.library
         for k in ("fat95", "ptable"):
             cfg[k] = Path(str(cfg[k]).replace("/68020/", "/68000/"))
-    builds = [cfg[k] for k in ("fat95", "dd", "lsfsres", "ptable") if not cfg[k].exists()]
+    builds = [
+        cfg[k] for k in ("fat95", "dd", "install95", "lsfsres", "ptable") if not cfg[k].exists()
+    ]
     builds += [p for p in (SMOKE, NOREQ) if not p.exists()]
     if builds:
         sys.exit("missing builds: %s" % ", ".join(map(shown, builds)))
     names = a.scenario or [n for n in SCENARIOS if not SCENARIOS[n].get("request")]
     todo = [n for n in names if a.os in SCENARIOS[n].get("os", (a.os,))]
+    if any(SCENARIOS[n].get("stage") for n in todo) and not STAGE.exists():
+        sys.exit("missing build: %s (make stage)" % shown(STAGE))
     work = (a.work or cfg["work"] / time.strftime("fat95-it-%Y%m%d-%H%M%S")).resolve()
     if work.exists():
         sys.exit("%s exists; give a new --work directory" % work)
