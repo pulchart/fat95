@@ -71,6 +71,16 @@ Malformed FAT entries and stale free-space metadata, using assembled routines.
 | `test_fat_read_failure_is_not_an_end_marker` | Missing FAT returns a latched read failure, never stale disk-full status. |
 | `test_failed_fat_window_cannot_start_or_extend_a_chain` | Permanent or transient FAT32 lookup failure changes no allocation state. |
 
+#### `test_debug95.py`
+
+debug95 asks the handler with a packet of its own and waits at most ten seconds or until Ctrl-C.
+
+| test | what it guards |
+|---|---|
+| `test_answer_writes_the_dump` | An answer on the third look writes DebugSize bytes from dp_Res1 and frees the packet and the port. |
+| `test_no_answer_gives_up` | Without an answer debug95 gives up after 50 looks, keeps the packet and port and frees the signal bit. |
+| `test_ctrl_c_stops_the_wait` | Ctrl-C on the second look prints ***Break and leaves the packet out like a timeout. |
+
 #### `test_dirty_bits.py`
 
 Dirty-marker I/O ordering per FAT type, and what each failing step must do. No device is opened.
