@@ -68,7 +68,15 @@ Close		= -36
 Read		= -42
 Write		= -48
 Output		= -60
+Lock		= -84
+UnLock		= -90
 CurrentDir	= -126
+IoErr		= -132
+VFPrintf	= -354
+SameLock	= -420
+PrintFault	= -474
+ReadArgs	= -798
+FreeArgs	= -858
 DoPkt		= -240
 NameFromLock	= -402
 SetFileSize	= -456
@@ -82,6 +90,8 @@ PR_CLI		= 172
 MODE_READWRITE	= 1004
 MODE_OLDFILE	= 1005
 MODE_NEWFILE	= 1006
+
+SHARED_LOCK	= -2
 
 OFFSET_BEGINNING = -1
 OFFSET_CURRENT	 = 0
@@ -118,8 +128,8 @@ WA_Sizeof	= 8
 
 ;--- global Vars -------------------------------------------
 
-ArgV		= -4
-ArgC		= -8
+RDArgs		= -4
+Mode		= -8
 ExecBase	= -12
 DosBase		= -16
 Result		= -20
@@ -139,6 +149,9 @@ TextSize	= -72
 ChunkOffs	= -76
 TailOffset	= -80
 TailSize	= -84
+HandlerName	= -88
+LangName	= -92
+ArgArray	= -108
 StringBuffer	= -400
 VarsSize	= -400
 
@@ -151,7 +164,6 @@ Start:
 	link.w	a4,#VarsSize
 	movem.l	d1-d5/a0-a1/a6,-(sp)
 	move.l	(_AbsExecBase).w,ExecBase(a4)
-	move.l	a0,ArgV(a4)
 	clr.l	Result(a4)
 	moveq.l	#0,d2
 	sub.l	a1,a1
@@ -169,27 +181,54 @@ Start:
 	move.l	d0,d2
 s_1:
 	move.l	d2,StartupMsg(a4)
-	bne.s	s_2
-
-	move.l	ArgV(a4),a0
-	lea	StringBuffer(a4),a1
-	bsr.w	GetDosParams
-	move.l	d0,ArgC(a4)
-s_2:
 	moveq.l	#36,d0
 	lea	DosName(pc),a1
 	CALLEXEC OpenLibrary
 	move.l	d0,DosBase(a4)
 	beq.w	s_end
 
+	lea	Fat95Name(pc),a0
+	move.l	a0,HandlerName(a4)
+	clr.l	RDArgs(a4)
 	tst.l	StartupMsg(a4)
 	bne.s	s_3
 
-	tst.l	StringBuffer(a4)
-	beq.w	s_help
+;- - read the command line  - - - - - - - - - - - - - - - -
 
-	tst.l	StringBuffer+4(a4)
-	beq.w	s_help
+	lea	ArgArray(a4),a0
+	clr.l	(a0)+
+	clr.l	(a0)+
+	clr.l	(a0)+
+	clr.l	(a0)
+	lea	ArgTemplate(pc),a0
+	move.l	a0,d1
+	lea	ArgArray(a4),a0
+	move.l	a0,d2
+	moveq.l	#0,d3
+	CALLDOS	ReadArgs
+	move.l	d0,RDArgs(a4)
+	beq.w	s_argerr
+
+	move.l	ArgArray+8(a4),LangName(a4)
+	move.l	ArgArray+12(a4),d0
+	beq.s	s_a1
+
+	move.l	d0,HandlerName(a4)	;HANDLER
+s_a1:
+	moveq.l	#'w',d0
+	move.l	ArgArray(a4),d1		;WRITE
+	tst.l	ArgArray+4(a4)		;READ
+	beq.s	s_a2
+
+	moveq.l	#'r',d0
+	tst.l	d1
+	bne.w	s_help			;both
+	bra.s	s_a3
+s_a2:
+	tst.l	d1
+	beq.w	s_help			;neither
+s_a3:
+	move.l	d0,Mode(a4)
 s_3:
 	move.l	#80<<10,d0
 	move.l	d0,BufSize(a4)
@@ -234,8 +273,7 @@ s_3:
 	move.l	File3(a4),d0
 	bne.s	s_robj2
 s_robj1:
-	lea	Fat95Name(pc),a0	;..or take Module in l:..
-	move.l	a0,d1
+	move.l	HandlerName(a4),d1	;..or take Module in l:..
 	move.l	#MODE_OLDFILE,d2
 	CALLDOS	Open			;..and adapt it
 	move.l	d0,File3(a4)
@@ -442,13 +480,8 @@ s_switch:
 	tst.l	StartupMsg(a4)
 	bne.w	s_writewb
 
-	move.l	StringBuffer(a4),a0
-	move.b	(a0),d0
-	cmp.b	#'w',d0
+	cmp.b	#'w',Mode+3(a4)
 	beq.w	s_writetext
-
-	cmp.b	#'r',d0
-	bne.w	s_help2
 
 ;= = Object -> Text = = = = = = = = = = = = = = = = = = = =
 
@@ -572,7 +605,10 @@ s_rwrite:
 	move.l	a1,d0
 	sub.l	TextBuffer(a4),d0
 	move.l	d0,TextSize(a4)
-	move.l	StringBuffer+4(a4),d1
+	bsr.w	SameAsHandler
+	bne.w	s_samefile
+
+	move.l	LangName(a4),d1
 	move.l	#MODE_NEWFILE,d2
 	CALLDOS	Open
 	move.l	d0,File2(a4)
@@ -616,7 +652,7 @@ s_writewb:
 	bra.s	s_w1
 
 s_writetext:
-	move.l	StringBuffer+4(a4),d1
+	move.l	LangName(a4),d1
 	move.l	#MODE_OLDFILE,d2
 	CALLDOS	Open
 s_w1:
@@ -870,8 +906,7 @@ s_ww1:
 	and.l	(a1),d1
 	or.l	d0,d1
 	move.l	d0,(a1)			;..and file head
-	lea	Fat95Name(pc),a0
-	move.l	a0,d1
+	move.l	HandlerName(a4),d1
 	move.l	#MODE_NEWFILE,d2
 	CALLDOS	Open
 	move.l	d0,File3(a4)
@@ -897,6 +932,11 @@ s_freebuf:
 	move.l	BufSize(a4),d0
 	CALLEXEC FreeMem
 s_closelib:
+	move.l	RDArgs(a4),d1
+	beq.s	s_cl1
+
+	CALLDOS	FreeArgs
+s_cl1:
 	move.l	DosBase(a4),a1
 	CALLEXEC CloseLibrary
 s_end:
@@ -917,25 +957,30 @@ s_help:
 	bsr.s	ReportError
 	bra.s	s_closelib
 
-s_help2:
-	lea	HelpStr(pc),a0
-	bsr.s	ReportError
-	bra.s	s_freebuf
+s_argerr:
+	CALLDOS	IoErr
+	move.l	d0,d1
+	lea	ProgName(pc),a0
+	move.l	a0,d2
+	CALLDOS	PrintFault
+	moveq.l	#10,d0
+	move.l	d0,Result(a4)
+	bra.s	s_closelib
 
 s_nofile3:
 	lea	NoFile3Str(pc),a0
 	bsr.s	ReportError
-	bra.s	s_freebuf
+	bra.w	s_freebuf
 
 s_toolarge3:
 	lea	TooLarge3Str(pc),a0
 	bsr.s	ReportError
-	bra.s	s_freebuf
+	bra.w	s_freebuf
 
 s_bogus3:
 	lea	Bogus3Str(pc),a0
 	bsr.s	ReportError
-	bra.s	s_freebuf
+	bra.w	s_freebuf
 
 s_nowrite3:
 	lea	NoWrite3Str(pc),a0
@@ -952,87 +997,62 @@ s_nowrite2:
 	bsr.s	ReportError
 	bra.w	s_freebuf
 
+s_samefile:
+	lea	SameFileStr(pc),a0
+	bsr.s	ReportError
+	bra.w	s_freebuf
+
 
 ;--- report error ------------------------------------------
-; a0 <- &Text
+; a0 <- &Text, %s is the handler file
 
 ReportError:
 	move.l	a0,d2
-	moveq.l	#-1,d3
-	sub.l	a0,d3
-re_loop:
-	tst.b	(a0)+
-	bne.s	re_loop
-
-	add.l	a0,d3
 	CALLDOS	Output
 	move.l	d0,d1
 	beq.s	re_end
 
-	CALLDOS	Write
+	lea	HandlerName(a4),a0
+	move.l	a0,d3
+	CALLDOS	VFPrintf
 re_end:
 	moveq.l	#10,d0
 	move.l	d0,Result(a4)
 	rts
 
-;--- extract command line parameters -----------------------
-; a0 <- &command line
-; a1 <- &target
-; d0 -> # parameters found
+;--- language file is the handler file ---------------------
+; d0 -> 1 and Z clear when LangName and HandlerName are one file
 
-GetDosParams:
-	movem.l	a1-a2,-(sp)
-	lea	40(a1),a2		;&target
-gdp_par:
-	move.l	a2,(a1)+		;vector field..
-	moveq.l	#0,d2
-gdp_char:
-	move.b	(a0)+,d0
-	cmp.b	#' ',d0
-	beq.s	gdp_spc
-	bcs.s	gdp_pend
+SameAsHandler:
+	movem.l	d2-d4,-(sp)
+	moveq.l	#0,d4
+	move.l	LangName(a4),d1
+	moveq.l	#SHARED_LOCK,d2
+	CALLDOS	Lock
+	move.l	d0,d3
+	beq.s	sah_end
 
-	cmp.b	#'"',d0
-	beq.s	gdp_cite
-gdp_write:
-	or.w	#1,d2
-	move.b	d0,(a2)+		;..and strings
-	bra.s	gdp_char
+	move.l	HandlerName(a4),d1
+	moveq.l	#SHARED_LOCK,d2
+	CALLDOS	Lock
+	move.l	d0,d2
+	beq.s	sah_un1
 
-gdp_spc:
-	btst	#0,d2
-	beq.s	gdp_char
+	move.l	d3,d1
+	CALLDOS	SameLock
+	tst.l	d0
+	bne.s	sah_un2
 
-	btst	#1,d2
-	beq.s	gdp_pend
-	bra.s	gdp_write
-
-gdp_cite:
-	btst	#0,d2
-	bne.s	gdp_c1
-
-	or.w	#3,d2
-	bra.s	gdp_char
-gdp_c1:
-	cmp.b	#' '+1,(a0)
-	bcc.s	gdp_write
-
-	move.b	(a0)+,d0
-gdp_pend:
-	clr.b	(a2)+
-	cmp.b	#' ',d0
-	beq.s	gdp_par
-
-	btst	#0,d2
-	bne.s	gdp_p1
-
-	subq.l	#4,a1
-gdp_p1:
-	clr.l	(a1)
-	move.l	a1,d0
-	sub.l	(sp),d0
-	lsr.l	#2,d0
-	movem.l	(sp)+,a1-a2
+	moveq.l	#1,d4
+sah_un2:
+	move.l	d2,d1
+	CALLDOS	UnLock
+sah_un1:
+	move.l	d3,d1
+	CALLDOS	UnLock
+sah_end:
+	move.l	d4,d0
+	movem.l	(sp)+,d2-d4
 	rts
 
 ;--- copy string -------------------------------------------
@@ -1336,13 +1356,16 @@ udm32_next:
 DosName:	dc.b	'dos.library', 0
 Fat95Name:	dc.b	'l:'
 Fat95Name2:	dc.b	'fat95',0
-HelpStr:	dc.b	'usage: install95 <r|w> <language>', LF, 0
-NoFile3Str:	dc.b	'file "l:fat95" not found.', LF, 0
-TooLarge3Str:	dc.b	'file "l:fat95" too large.', LF, 0
-Bogus3Str:	dc.b	'file "l:fat95" is incomatible.', LF, 0
-NoWrite3Str:	dc.b	'cannot write "l:fat95".', LF, 0
+ProgName:	dc.b	'install95', 0
+ArgTemplate:	dc.b	'W=WRITE/S,R=READ/S,LANGUAGE/A,HANDLER/K', 0
+HelpStr:	dc.b	'usage: install95 WRITE|READ <language> [HANDLER <file>]', LF, 0
+NoFile3Str:	dc.b	'file "%s" not found.', LF, 0
+TooLarge3Str:	dc.b	'file "%s" too large.', LF, 0
+Bogus3Str:	dc.b	'file "%s" is incompatible.', LF, 0
+NoWrite3Str:	dc.b	'cannot write "%s".', LF, 0
 NoText2Str:	dc.b	'cannot read the language file.', LF, 0
 NoWrite2Str:	dc.b	'cannot write the language file.', LF, 0
+SameFileStr:	dc.b	'the language file cannot be "%s".', LF, 0
 FileHeadStr:	dc.b	';fat95 locale file', LF, 0
 InstStr:	dc.b	'[installer]',0
 LocaStr:	dc.b	'[locale]', 0

@@ -150,6 +150,21 @@ Helper outputs, saved registers and condition codes.
 | `test_cache_init_list_sentinels_counters_registers_and_ccr` | CacheInit empties both buffer lists to their sentinel form and zeroes the in-use counters, carrying d0, d1 and a1 through with the other registers and the condition codes untouched. |
 | `test_ms_date_string_all_packed_dates` | All 65536 dates yield ten DD.MM.YYYY bytes; a1 advances and saved registers survive. |
 
+#### `test_install95.py`
+
+install95 reads its arguments with ReadArgs and writes or reads the language of a fat95 file.
+
+| test | what it guards |
+|---|---|
+| `test_template` | ReadArgs gets the template with the short switches of the old w and r. |
+| `test_write_then_read` | WRITE puts the language into L:fat95 and READ gives its texts back. |
+| `test_read_into_the_handler_is_refused` | READ into the handler file itself, under any spelling, fails and leaves it as it was. |
+| `test_read_over_another_file` | READ replaces an existing language file that is not the handler file. |
+| `test_handler_keyword` | HANDLER names the fat95 file to change, L:fat95 stays as it was. |
+| `test_missing_handler_is_named` | A missing handler file is reported by its name. |
+| `test_one_mode_required` | Neither or both of WRITE and READ print the usage before any file is touched. |
+| `test_bad_arguments_print_the_fault` | A failing ReadArgs prints the DOS fault, returns 10 and frees nothing. |
+
 #### `test_integration.py`
 
 Media generation, cache retention, scan completion and volume locking across the whole handler.
