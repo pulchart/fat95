@@ -46,6 +46,7 @@ class Fake:
         self.calls, self.opened, self.handles, self.locks = [], [], {}, {}
         self.printed, self.faults, self.alloc = b"", [], []
         self.freed_args = 0
+        self.no_memory = False
         self.mem.w32(4, EXEC)
         self.mem.w32(TASK + 172, 1)  # pr_CLI
         for name, lvo in EXEC_LVO.items():
@@ -81,6 +82,8 @@ class Fake:
         return 0
 
     def AllocMem(self):
+        if self.no_memory:
+            return 0
         self.alloc.append(self.reg(0))
         return BUF
 
@@ -268,6 +271,24 @@ class Arguments(unittest.TestCase):
                 self.assertIn(b"usage: install95 WRITE|READ", f.printed)
                 self.assertEqual((f.opened, f.alloc), ([], []))
                 f.close()
+
+    def test_handler_size_limit(self):
+        """A fat95 file up to one byte below 64 KB is read, one of 64 KB is too large."""
+        for size, message in ((65535, b"is incompatible"), (65536, b"too large")):
+            with self.subTest(size=size):
+                f = self.fake({"WRITE": True, "LANGUAGE": "locale/english"},
+                              **{"l:fat95": bytes(size)})  # fmt: skip
+                self.assertEqual(f.run(), 10)
+                self.assertIn(message, f.printed)
+                f.close()
+
+    def test_no_memory(self):
+        """A failed AllocMem is reported and returns 10, so the Installer does not take it for success."""
+        f = self.fake({"WRITE": True, "LANGUAGE": "locale/english"})
+        f.no_memory = True
+        self.assertEqual(f.run(), 10)
+        self.assertEqual(f.printed, b"not enough memory.\n")
+        self.assertEqual(f.files["l:fat95"], self.handler)
 
     def test_bad_arguments_print_the_fault(self):
         """A failing ReadArgs prints the DOS fault, returns 10 and frees nothing."""
