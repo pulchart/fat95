@@ -4,7 +4,7 @@
 # S:Startup-Sequence. {dev} is the fat95 device, {wait} the mount wait from the
 # config, {copy} the command that moves files between OUT: and the volume,
 # {device} and {unit} the disk the mountlist names, {st_*} the stress sizes of
-# the scenario.
+# the scenario. A fragment with {lang} repeats for every language file.
 #
 # scenarios:
 #   doc      one line for --list and the report
@@ -18,6 +18,13 @@
 #   stress   sizes for the FileSystemStressTest fragments: small (two writers
 #            each), large (the total) and max (the largest file)
 #   request  runs only when --scenario names it
+#   names    the volume gets the long names of fatnames.py
+#   locale   OUT:locale holds the language files of dist/locale
+#   handler  the FileSystem of the mountlist, if not L:fat95
+#   control  the Control string of the mountlist
+#   stage    the release tree of make stage as the drive INST:
+#   old_fat95  OUT:old_fat95 is the fat95 of the last release
+#   gui      steps the host runs each time the guest writes OUT:gui: click X Y, wait S
 
 ---
 fragments:
@@ -42,6 +49,82 @@ fragments:
     {copy} OUT:up.bin {dev}up.bin
     {copy} {dev}up.bin OUT:back0.bin
     Wait 5
+
+  names: |  # the long names of fatnames.py: listed, typed (lower case too), copied, renamed, deleted, created
+    List {dev} LFORMAT "%N" >OUT:names0.txt
+    Type {dev}a^880.txt >OUT:type_a.txt
+    Type {dev}r^d72q.txt >OUT:type_r.txt
+    Type {dev}c^G7R00.txt >OUT:type_c.txt
+    Type {dev}p^^880.txt >OUT:type_p.txt
+    {copy} {dev}a^880.txt {dev}b^880.txt
+    Rename {dev}r^D72Q.txt {dev}s^D72Q.txt
+    Delete {dev}a^880.txt >OUT:delete.txt
+    Echo >{dev}new^880.txt "new"
+    List {dev} LFORMAT "%N" >OUT:names1.txt
+    Wait 5
+
+  i95_copy: |  # install95 changes a copy of the handler in RAM:
+    {copy} L:fat95 RAM:fat95
+  i95_language: |  # repeated for every language file in dist/locale
+    install95 WRITE OUT:locale/{lang} HANDLER RAM:fat95 >OUT:iw_{lang}.txt
+    Echo "rc $RC" >>OUT:iw_{lang}.txt
+    install95 READ OUT:ir_{lang} HANDLER RAM:fat95 >OUT:irr_{lang}.txt
+    Echo "rc $RC" >>OUT:irr_{lang}.txt
+  i95_errors: |  # what the Installer shows when install95 fails
+    install95 >OUT:e_noargs.txt
+    Echo "rc $RC" >>OUT:e_noargs.txt
+    install95 OUT:locale/cestina HANDLER RAM:fat95 >OUT:e_usage.txt
+    Echo "rc $RC" >>OUT:e_usage.txt
+    install95 WRITE OUT:locale/none HANDLER RAM:fat95 >OUT:e_nolang.txt
+    Echo "rc $RC" >>OUT:e_nolang.txt
+    install95 WRITE OUT:locale/cestina HANDLER RAM:missing >OUT:e_nohandler.txt
+    Echo "rc $RC" >>OUT:e_nohandler.txt
+    install95 READ RAM:fat95 HANDLER RAM:fat95 >OUT:e_same.txt
+    Echo "rc $RC" >>OUT:e_same.txt
+  i95_protected: |  # on the FAT volume: RAM: of AmigaOS 3.1 and AROS ignores a cleared w bit
+    {copy} RAM:fat95 {dev}ro
+    Protect {dev}ro w SUB
+    install95 WRITE OUT:locale/cestina HANDLER {dev}ro >OUT:e_protected.txt
+    Echo "rc $RC" >>OUT:e_protected.txt
+  i95_czech: |  # the handler the volume mounts with speaks czech
+    install95 WRITE OUT:locale/cestina HANDLER RAM:fat95 >OUT:iw_czech.txt
+  names_czech: |  # names in the czech code page: listed, and one copied under a new name typed in it
+    List {dev} LFORMAT "%N" >OUT:names_cz.txt
+    List {dev} PAT p#?li#?.txt LFORMAT "{copy} {dev}%N {dev}x%N" >RAM:cz_copy
+    Execute RAM:cz_copy
+    Wait 5
+
+  names_pct: |  # Control +n%: the escapes of fat95 4.2, ^ is a plain character
+    List {dev} LFORMAT "%N" >OUT:names0.txt
+    Type {dev}a%880.txt >OUT:type_a.txt
+    Type {dev}a'%880.txt >OUT:type_q.txt
+    Type {dev}p^880.txt >OUT:type_p.txt
+  names_off: |  # Control -n: no escapes, _ for what the code page lacks
+    List {dev} LFORMAT "%N" >OUT:names0.txt
+    Type {dev}p^880.txt >OUT:type_p.txt
+
+  installer_prep: |  # L:fat95 is fat95 4.2 of the last release; the Installer needs LOCALE: and FONTS:
+    Copy OUT:old_fat95 L:fat95
+    Assign >NIL: LOCALE: SYS:Locale
+    Assign >NIL: FONTS: SYS:Fonts
+  language_other: |  # Language on fat95 4.2: NOVICE takes the default No and leaves L:fat95 as it was
+    Echo >OUT:gui go
+    CD INST:fat95
+    SYS:System/Installer SCRIPT Language APPNAME fat95 MINUSER NOVICE DEFUSER NOVICE LOGFILE OUT:language.log
+    Echo "rc $RC" >OUT:language_rc.txt
+    CD SYS:
+    Copy L:fat95 OUT:fat95_mid
+  install_novice: |  # Install in NOVICE: fat95 for the CPU, ptable.library, the tools and the language
+    Echo >OUT:gui go
+    CD INST:fat95
+    SYS:System/Installer SCRIPT Install APPNAME fat95 MINUSER NOVICE DEFUSER NOVICE LOGFILE OUT:install.log
+    Echo "rc $RC" >OUT:install_rc.txt
+    CD SYS:
+    Version L:fat95 FULL >OUT:after.txt
+    Version LIBS:ptable.library FULL >OUT:ptable.txt
+    Version C:lsptres >OUT:lsptres.txt
+    List L:fat95 LFORMAT "%A" >OUT:prot.txt
+    install95 READ OUT:lang_after >OUT:lang_after_out.txt
 
   stressdir: |
     MakeDir {dev}st
@@ -95,6 +178,48 @@ scenarios:
     layout: {fs: fat32, table: none, sectors: 131072}
     steps: [mount, snap, read, smoke, write]
     checks: fat
+  names:
+    doc: "long names outside the code page as ^ escapes: listed, typed, copied, renamed, deleted and created"
+    medium: ide
+    layout: {fs: fat16, table: none, sectors: 65536}
+    names: true
+    steps: [mount, snap, names]
+    checks: names
+  install95:
+    doc: "install95 writes and reads back every language, reports its errors, and a czech handler lists and creates czech names"
+    medium: ide
+    layout: {fs: fat16, table: none, sectors: 65536}
+    names: true
+    locale: true
+    handler: RAM:fat95
+    steps: [i95_copy, i95_language, i95_errors, i95_czech, mount, snap, i95_protected, names_czech]
+    checks: install95
+  names_pct:
+    doc: "Control +n%: long names outside the code page as % escapes, ^ a plain character"
+    medium: ide
+    layout: {fs: fat16, table: none, sectors: 65536}
+    names: true
+    control: "+n%"
+    steps: [mount, snap, names_pct]
+    checks: names_pct
+  names_off:
+    doc: "Control -n: characters outside the code page as _, ^ a plain character"
+    medium: ide
+    layout: {fs: fat16, table: none, sectors: 65536}
+    names: true
+    control: "-n"
+    steps: [mount, snap, names_off]
+    checks: names_off
+  installer:
+    doc: "the Installer scripts of the archive in NOVICE: Language keeps another fat95 version, Install puts 5.0 in place"
+    os: ["3.2.3-a1200", "3.2.3-a600"]
+    medium: ide
+    layout: {fs: fat16, table: none, sectors: 65536}
+    stage: true
+    old_fat95: true
+    gui: ["wait 8", "click 400 495", "wait 8", "click 511 523", "wait 2"]
+    steps: [installer_prep, language_other, install_novice]
+    checks: installer
   rdb_fat32:
     doc: disk with an RDB that carries fat95 and a FAT32 partition, mounted by the OS
     medium: ide

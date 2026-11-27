@@ -391,6 +391,11 @@ Run by `make test-integration` from `integration/scenarios.yaml`; [integration/R
 | `disk_fat16` | integration | all | disk, MBR, FAT16 partition |
 | `disk_fat32` | integration | all | disk, MBR, FAT32 partition |
 | `sf_fat32` | integration | all | disk without a partition table, FAT32 from block 0 |
+| `names` | integration | all | long names outside the code page as ^ escapes: listed, typed, copied, renamed, deleted and created |
+| `install95` | integration | all | install95 writes and reads back every language, reports its errors, and a czech handler lists and creates czech names |
+| `names_pct` | integration | all | Control +n%: long names outside the code page as % escapes, ^ a plain character |
+| `names_off` | integration | all | Control -n: characters outside the code page as _, ^ a plain character |
+| `installer` | integration | 3.2.3-a1200, 3.2.3-a600 | the Installer scripts of the archive in NOVICE: Language keeps another fat95 version, Install puts 5.0 in place |
 | `rdb_fat32` | integration | all | disk with an RDB that carries fat95 and a FAT32 partition, mounted by the OS |
 | `stress_fat12` | integration | 3.2.3-a1200, 3.1-a1200, 3.2.3-a600, 3.1-a600 | FileSystemStressTest on a PC 720K floppy, FAT12: two writers, large files, volume filled |
 | `stress_fat16` | integration | all | FileSystemStressTest on an MBR FAT16 partition: two writers, large files, volume filled |
