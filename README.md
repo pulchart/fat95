@@ -38,7 +38,7 @@ Improvements to this handler are developed in my free time. If you'd like to sup
 * Up to 4 GBytes of partition size for FAT16
 * Large harddisk support via TD64 or direct SCSI
 * Long filenames (up to 104 chars for now)
-* Characters outside the code page show as `%` and the code point in base 32, such as `%880` for U+0100; a `%` that would read as an escape shows as `%%`, and typing `%%` gives one `%`
+* Characters outside the code page as escapes such as `^880`, see [File Names](#file-names)
 * Inquiry, read, write, and maintenance access
 * Built-in error check utility
 * Disk formatting using the OS 2.0+ format command
@@ -421,6 +421,12 @@ Overwrites deleted files with zeroes (unrecoverable delete).
 Works with CompactFlash built-in erase when available.
 
 **Note:** scandisk and erase can be aborted with `<ESC>`.
+
+## File Names
+
+Long names hold up to 104 characters, converted with the code page of the language file. A character outside the code page shows as `^` and its code point in base 32, for example `^880` for U+0100, and typing it creates that character. A `^` that would read as an escape shows as `^^` and typing `^^` gives one `^` character.
+
+The `n` Control option chooses another escape character, `+n%` the `%` of fat95 4.2, or turns escapes off with `-n`, see [Control Options](#control-options).
 
 ## Troubleshooting
 

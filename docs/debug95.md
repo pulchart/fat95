@@ -29,7 +29,7 @@ python3 tools/parse_debug95.py --diff a.dump b.dump     variables that differ
 ## The summary
 
 ```
-fat95 4.3 handler state, cf0.dump (1232 bytes)
+fat95 5.0 handler state, cf0.dump (1232 bytes)
 
 Device     unit                        0
            block size                  512 bytes
