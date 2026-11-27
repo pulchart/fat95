@@ -28,7 +28,36 @@ def fat(r, fs):
     ]
 
 
-CHECKS = {"fat": fat}
+def stress(r, fs):
+    """Every FileSystemStressTest run validated and removed its files, the
+    directory is empty, the image is clean and the handler's free count
+    matches the image."""
+    out = [("%s mounted read/write" % fs, mounted(r))]
+    steps = r.text("steps")
+    for name in ("st_a", "st_b", "st_c", "st_f"):
+        if "OUT:%s.txt" % name not in steps:
+            continue
+        log = r.text(name + ".txt")
+        bad = [line for line in log.splitlines() if "ailed" in line or "rror" in line]
+        rc = "rc 0" in log or '"rc $RC" >>OUT:%s.txt' % name not in steps  # Run gives no rc
+        rc = rc and "Total processing time" in log  # every iteration ran
+        out.append(
+            (
+                "%s: files validated and removed" % name,
+                "Successfully removed" in log and rc and not bad,
+            )
+        )
+    listing = r.text("st_list.txt")
+    out.append(("stress directory empty at the end", "is empty" in listing))
+    free = r.image_free()
+    out.append(("%s image clean" % fs, free is not None))
+    out.append(
+        ("handler free clusters match the image", free is not None and r.handler_free() == free)
+    )
+    return out
+
+
+CHECKS = {"fat": fat, "stress": stress}
 
 
 def load(path):
@@ -40,7 +69,10 @@ def load(path):
         if unknown or s["checks"] not in CHECKS:
             raise SystemExit("%s: %s: unknown %s" % (path, name, ", ".join(unknown) or s["checks"]))
         sc = dict(s)
-        sc["steps"] = "".join(fragments[f] for f in s["steps"])
+        steps = "".join(fragments[f] for f in s["steps"])
+        for key, value in s.get("stress", {}).items():
+            steps = steps.replace("{st_%s}" % key, str(value))
+        sc["steps"] = steps
         fs = "fat12"
         if "layout" in s:
             lay = s["layout"]

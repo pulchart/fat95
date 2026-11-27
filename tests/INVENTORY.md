@@ -373,5 +373,8 @@ Run by `make test-integration` from `integration/scenarios.yaml`; [integration/R
 | `disk_fat32` | integration | all | disk, MBR, FAT32 partition |
 | `sf_fat32` | integration | all | disk without a partition table, FAT32 from block 0 |
 | `rdb_fat32` | integration | all | disk with an RDB that carries fat95 and a FAT32 partition, mounted by the OS |
+| `stress_fat12` | integration | 3.1, 3.2.3 | FileSystemStressTest on a PC 720K floppy, FAT12: two writers, large files, volume filled |
+| `stress_fat16` | integration | all | FileSystemStressTest on an MBR FAT16 partition: two writers, large files, volume filled |
+| `stress_fat32` | integration | all | FileSystemStressTest on an MBR FAT32 partition, 512-byte clusters: two writers, large files, volume filled |
 
 <!-- TESTS:END -->
