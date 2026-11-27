@@ -873,6 +873,7 @@ s_start:
 
 	move.l	d2,(a4)			;DebugSize
 	move.w	#FILE_VERSION<<8+FILE_REVISION,DebugVersion(a4)
+	move.b	#'^',EscChar(a4)	;Control n can change it
 	move.l	(_AbsExecBase).w,ExecBase(a4)
 	lea	IDStr+6(pc),a1		;skip "$VER: " prefix for clean LN_Name
 	move.l	a1,ChangeInt+LN_Name(a4)
@@ -2812,6 +2813,8 @@ msn_char:
 
 	and.b	#$df,d0			;toUpper
 msn_c1:
+	cmp.b	EscChar(a4),d0
+	beq.s	msn_pct
 	lea	msn_chars(pc),a2
 	moveq.l	#0,d1
 	move.b	d0,d1
@@ -2821,8 +2824,6 @@ msn_c1:
 	and.b	d0,d1
 	btst	d1,(a2)
 	beq.s	msn_write
-	cmp.b	#'%',d0
-	beq.s	msn_pct			;marked invalid to reach this check
 msn_underscore:
 	moveq.l	#'_',d0			;invalid char
 	moveq.l	#3,d4
@@ -2838,7 +2839,7 @@ msn_pct:
 	exg	a0,a1
 	tst.l	d0
 	bpl.s	msn_underscore		;an escape: a character outside the code page
-	moveq.l	#'%',d0
+	move.b	EscChar(a4),d0
 	bra.s	msn_write
 msn_pair:
 	addq.l	#1,a0			;%% is one %
@@ -2934,7 +2935,7 @@ msn_parent:
 	bra.s	msn_end
 
 msn_chars:
-	dc.l	-1,$24dc00fc,$00000038,$00000010
+	dc.l	-1,$04dc00fc,$00000038,$00000010
 
 ;--- find a unique standard name ---------------------------
 ; <- ULONG DirStartBlock, char &StdName[11];
@@ -7708,7 +7709,7 @@ lob_sesc:
 	beq	lob_sescd
 	cmp.b	#'/',d0
 	beq	lob_sescd
-	cmp.b	#'%',d0
+	cmp.b	EscChar(a4),d0
 	bne	lob_sesc
 	st	LOB_ESC(a5)
 lob_sescd:
@@ -7816,7 +7817,8 @@ lob_cother:
 	bmi	lob_cunits
 	tst.b	d1
 	bmi	lob_cunits
-	cmp.b	#'%',d0
+	move.b	-1(a0),d0		;the disk byte before or.b, for ^ and @
+	cmp.b	EscChar(a4),d0
 	beq	lob_cunits
 	tst.b	LOB_ESC(a5)
 	beq	lob_oldstyle		;plain ASCII differs
@@ -8287,6 +8289,8 @@ ssc_next:
 ; d1 -> -1 when a % was copied, else kept; a0 changed
 
 SpcFieldCopy:
+	move.l	d2,-(sp)
+	move.b	EscChar(a4),d2
 	add.w	d0,a0
 	subq.w	#1,d0
 sfc_trim:
@@ -8296,13 +8300,14 @@ sfc_trim:
 	sub.w	d0,a0
 sfc_copy:
 	move.b	(a0),(a1)+
-	cmp.b	#'%',(a0)+
+	cmp.b	(a0)+,d2
 	dbeq	d0,sfc_copy
 	bne.s	sfc_end
 	moveq.l	#-1,d1			;a % was copied
 	subq.w	#1,d0
 	bpl.s	sfc_copy
 sfc_end:
+	move.l	(sp)+,d2
 	rts
 
 ;--- extra timestamps MSDE -> BStr -------------------------
@@ -9089,7 +9094,7 @@ epc_room:
 	addq.w	#1,d0			;with the %
 	bsr	ExRoom
 	bcc	epc_none
-	move.b	#'%',(a1)+
+	move.b	EscChar(a4),(a1)+
 	move.w	d3,d4
 	subq.w	#1,d4
 	lsl.w	#2,d4			;class of the 1st digit: 8, 12, 16
@@ -9197,7 +9202,7 @@ eau_put:
 	bsr	ExRoom
 	bcc	eau_bad
 	move.b	d1,(a1)+
-	cmp.b	#'%',d1
+	cmp.b	EscChar(a4),d1
 	bne	eau_end			;d0 = 1 from ExRoom
 	move.l	a1,d2			;a % waits for the text behind it
 	sub.l	a3,d2
@@ -9211,8 +9216,13 @@ eau_unit:
 eau_esc:
 	cmp.l	#$80,d0
 	bcs	eau_bad
+	tst.b	EscChar(a4)
+	beq	eau_under		;Control -n: no escapes
 	bsr	ExPutEscape
 	bra	eau_end
+eau_under:
+	moveq.l	#'_',d1
+	bra	eau_put
 eau_ok:
 	moveq.l	#1,d0
 	bra	eau_end
@@ -9234,7 +9244,8 @@ eau_wait:
 	move.w	12(sp),d1		;offset of the waiting %
 	lea	(a3,d1.w),a0
 	clr.b	(a1)
-	cmp.b	#'%',1(a0)
+	move.b	1(a0),d2
+	cmp.b	EscChar(a4),d2
 	beq	eaw_double
 	move.l	a1,d2
 	lea	1(a0),a1
@@ -9289,7 +9300,7 @@ ExNextUnit:
 enu_new:
 	moveq.l	#0,d1
 	move.b	(a1)+,d1
-	cmp.b	#'%',d1
+	cmp.b	EscChar(a4),d1
 	bne	enu_plain
 	cmp.b	(a1),d1
 	beq	enu_pair
@@ -9327,14 +9338,15 @@ enu_end:
 ; a0 <- name; d0 -> its length in UTF-16 units
 
 ExCountUnits:
-	movem.l	d1/a1,-(sp)
+	movem.l	d1-d2/a1,-(sp)
+	move.b	EscChar(a4),d2
 	move.l	a0,a1
 	moveq.l	#0,d1
 ecnt_loop:
 	move.b	(a1)+,d0
 	beq	ecnt_end
 	addq.w	#1,d1
-	cmp.b	#'%',d0
+	cmp.b	d2,d0
 	bne	ecnt_loop
 	cmp.b	(a1),d0
 	beq	ecnt_pair
@@ -9351,7 +9363,7 @@ ecnt_pair:
 ecnt_end:
 	moveq.l	#0,d0
 	move.w	d1,d0
-	movem.l	(sp)+,d1/a1
+	movem.l	(sp)+,d1-d2/a1
 	rts
 
 ; a0 <- typed name (ends at 0 or /), a1 <- entry; its long name and
@@ -9408,10 +9420,12 @@ esn_end:
 ; a0 -> behind the 0; d0/a1 changed
 
 ExShowPct:
+	move.l	d2,-(sp)
+	move.b	EscChar(a4),d2
 esp_loop:
 	move.b	(a0)+,d0
 	beq	esp_end
-	cmp.b	#'%',d0
+	cmp.b	d2,d0
 	bne	esp_loop
 	cmp.b	(a0),d0
 	beq	esp_double
@@ -9428,22 +9442,24 @@ esp_shift:
 	move.b	-(a1),1(a1)
 	cmp.l	a1,a0
 	bne	esp_shift
-	move.b	#'%',(a0)+
+	move.b	d2,(a0)+
 	bra	esp_loop
 esp_end:
+	move.l	(sp)+,d2
 	rts
 
 ; a1 <-> end of a name cut to MAXNAMELEN, d0 <- first byte cut off;
 ; a1 moves back to the % of an escape or %% the cut splits
 
 ExCutEscape:
-	movem.l	d0-d2/a0/a2-a3,-(sp)
+	movem.l	d0-d3/a0/a2-a3,-(sp)
+	move.b	EscChar(a4),d3
 	move.l	a1,a3			;end of the kept text
 	move.b	d0,(a3)			;the cut byte behind it
 	move.l	a1,a2
 	moveq.l	#5-1,d2
 ece_find:
-	cmp.b	#'%',-(a2)
+	cmp.b	-(a2),d3
 	dbeq	d2,ece_find
 	bne	ece_end			;no % close to the cut
 	lea	-MAXNAMELEN(a3),a0	;start of the name
@@ -9452,7 +9468,7 @@ ece_find:
 ece_run:
 	cmp.l	a0,a1
 	beq	ece_odd
-	cmp.b	#'%',-(a1)
+	cmp.b	-(a1),d3
 	bne	ece_odd
 	addq.w	#1,d1			;% before it in the run
 	bra	ece_run
@@ -9462,7 +9478,7 @@ ece_odd:
 	lea	1(a2),a1
 	cmp.l	a1,a3
 	bne	ece_class
-	cmp.b	#'%',d0
+	cmp.b	d3,d0
 	beq	ece_cut			;the cut splits a %%
 ece_class:
 	bsr	ExDigit			;class digit
@@ -9487,7 +9503,7 @@ ece_cut:
 	move.l	a2,a3
 ece_end:
 	move.l	a3,a1
-	movem.l	(sp)+,d0-d2/a0/a2-a3
+	movem.l	(sp)+,d0-d3/a0/a2-a3
 	rts
 
 ; a0 <- disk name behind its first different byte, a1 <- wanted name
@@ -9496,7 +9512,8 @@ ece_end:
 ; (the wanted name ends at 0 or /)
 
 ExSameRest:
-	movem.l	d2-d3/a3,-(sp)
+	movem.l	d2-d4/a3,-(sp)
+	move.b	EscChar(a4),d4
 	moveq.l	#1,d2			;bytes to go back
 	move.l	a0,a3
 	subq.l	#1,a3			;the different byte
@@ -9504,7 +9521,7 @@ esr_find:
 	cmp.l	a2,a3
 	beq	esr_here
 	addq.l	#1,d2
-	cmp.b	#'%',-(a3)
+	cmp.b	-(a3),d4
 	beq	esr_pct
 	cmp.w	#6,d2
 	bcs	esr_find
@@ -9514,7 +9531,7 @@ esr_pct:
 esr_run:
 	cmp.l	a2,a3
 	beq	esr_first
-	cmp.b	#'%',-(a3)
+	cmp.b	-(a3),d4
 	beq	esr_run
 	addq.l	#1,a3
 esr_first:
@@ -9542,16 +9559,16 @@ esr_here:
 	bmi	esr_units		;a byte from $80
 	tst.b	d0
 	bmi	esr_units
-	cmp.b	#'%',d0
+	cmp.b	d4,d0
 	beq	esr_units
-	cmp.b	#'%',d3
+	cmp.b	d4,d3
 	beq	esr_units
 	moveq.l	#0,d0
 	bra	esr_end
 esr_units:
 	bsr	ExSameUnits
 esr_end:
-	movem.l	(sp)+,d2-d3/a3
+	movem.l	(sp)+,d2-d4/a3
 	rts
 
 ; ExSameRest from d2 bytes back; d2-d3/a3 are free
@@ -13112,6 +13129,8 @@ so_char:
 	cmp.b	#'-',d0
 	beq.s	so_off			;..or OFF
 
+	cmp.b	#'n',d0
+	beq.s	so_escape		;+n<char>: escape character, -n: none
 	lea	so_tab(pc),a1
 so_test:
 	move.w	(a1)+,d1
@@ -13135,6 +13154,23 @@ so_write:
 so_off:
 	moveq.l	#0,d2
 	bra.s	so_char
+so_escape:
+	tst.w	d2
+	bne.s	so_echar
+	clr.b	EscChar(a4)		;no escapes, characters outside the code page as _
+	bra.s	so_char
+so_echar:
+	move.b	(a0)+,d0
+	cmp.b	#' ',d0
+	bcs.s	so_end
+	lea	so_escs(pc),a1
+so_etest:
+	move.b	(a1)+,d1
+	beq.s	so_char			;not allowed, keep the old one
+	cmp.b	d0,d1
+	bne.s	so_etest
+	move.b	d0,EscChar(a4)
+	bra.s	so_char
 so_end:
 	moveq.l	#-1,d0
 	move.l	(sp)+,d2
@@ -13150,6 +13186,9 @@ so_tab:
 	dc.b	12,"q"
 	dc.b	13,"m"
 	dc.w	0
+so_escs:
+	dc.b	"%!$@^`",0		;legal in FAT and AmigaDOS names, no pattern
+	even
 
 ;--- local vars for ScanDisk() and SecurityErase() ---------
 

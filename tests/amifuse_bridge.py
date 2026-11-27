@@ -32,6 +32,7 @@ ScsiDevice.BeginIO = _trackdisk_query
 class RawFatBridge(HandlerBridge):
     def __init__(self, image, driver, **kwargs):
         self.expect_managed = kwargs.pop("expect_managed", False)
+        control = kwargs.pop("control", None)
         volume = inspect_image(image)
         sectors = volume.total_sectors
         heads, spt = (2, 9 if sectors == 1440 else 18) if sectors in (1440, 2880) else (1, 1)
@@ -48,6 +49,12 @@ class RawFatBridge(HandlerBridge):
         self._volume = volume
         # Observe post-startup requests only; fixture mounting is not measured.
         self.backend._fat95_io_observer = self._observe_io
+        if control:
+            self.control(control)
+
+    def control(self, options):
+        """Change Control options at runtime, as filenote "!control <options>" does."""
+        self.packet(28, 0, 0, self._alloc_bstr("")[1], self._alloc_bstr("!control " + options)[1])
 
     def _observe_io(self, request):
         command = request.command.val
@@ -201,20 +208,20 @@ def escape_value(text):
     return value
 
 
-def escaped(text):
-    """What the handler shows for a name: a character outside Latin-1 as % and its code point in base 32, a % as %% where the text behind it starts with % or reads as an escape."""
+def escaped(text, esc="%"):
+    """What the handler shows for a name: a character outside Latin-1 as esc and its code point in base 32, an esc as two where the text behind it starts with esc or reads as an escape."""
     out = ""
     for char in reversed(text):
         cp = ord(char)
-        if char == "%":
-            piece = "%%" if out.startswith("%") or escape_value(out) is not None else "%"
+        if char == esc:
+            piece = esc * 2 if out.startswith(esc) or escape_value(out) is not None else esc
         elif cp < 0x100:
             piece = char
         elif cp < 0x800:
-            piece = "%" + DIGITS[8 | cp >> 10] + DIGITS[cp >> 5 & 31] + DIGITS[cp & 31]
+            piece = esc + DIGITS[8 | cp >> 10] + DIGITS[cp >> 5 & 31] + DIGITS[cp & 31]
         elif cp < 0x10000:
             piece = (
-                "%"
+                esc
                 + DIGITS[12 | cp >> 14]
                 + DIGITS[cp >> 9 & 31]
                 + DIGITS[cp >> 4 & 31]
@@ -222,7 +229,7 @@ def escaped(text):
             )
         else:
             piece = (
-                "%"
+                esc
                 + DIGITS[16 | cp >> 19]
                 + DIGITS[cp >> 14 & 31]
                 + DIGITS[cp >> 9 & 31]

@@ -380,44 +380,54 @@ memory available.
 
 Available options:
 
-  @{b}Option@{ub}  @{b}Description@{ub}                @{b}Default@{ub}  
-  ------  -------------------------  -------  
-  @{fg shine}+@{fg text}       Turn ON the following      -        
-          options                             
-  @{fg shine}-@{fg text}       Turn OFF the following     -        
-          options                             
-  @{fg shine}s@{fg text}       Force direct SCSI          OFF      
-          reads/writes (for >4GB              
-          disks)                              
-  @{fg shine}d@{fg text}       Display extra datestamp    OFF      
-          info as file comments               
-  @{fg shine}D@{fg text}       Record "last accessed"     OFF      
-          date on file reads                  
-  @{fg shine}l@{fg text}       Show 8.3 filenames         OFF      
-          lowercase (e.g.,                    
-          "test.txt")                         
-  @{fg shine}L@{fg text}       Show 8.3 filenames with    OFF      
-          uppercase initial (e.g.,            
-          "Test.txt")                         
-  @{fg shine}q@{fg text}       Quiet: never open error    OFF      
-          requesters                          
-          (read/write/reinsert                
-          windows); errors are                
-          reported to the caller              
-          instead. Recommended for            
-          hot-plugged removable               
-          media                               
-  @{fg shine}m@{fg text}       Mount used: claim a        OFF      
-          partition even when                 
-          another handler already             
-          serves it (normally such            
-          a mount is refused, see             
-          below). Two handlers then           
-          cache the same volume:              
-          reading mostly works, any           
-          write corrupts it, so               
-          this is strictly at your            
-          own risk                            
+  @{b}Option@{ub}    @{b}Description@{ub}                @{b}Default@{ub}     
+  --------  -------------------------  ----------  
+  @{fg shine}+@{fg text}         Turn ON the following      -           
+            options                                
+  @{fg shine}-@{fg text}         Turn OFF the following     -           
+            options                                
+  @{fg shine}s@{fg text}         Force direct SCSI          OFF         
+            reads/writes (for >4GB                 
+            disks)                                 
+  @{fg shine}d@{fg text}         Display extra datestamp    OFF         
+            info as file comments                  
+  @{fg shine}D@{fg text}         Record "last accessed"     OFF         
+            date on file reads                     
+  @{fg shine}l@{fg text}         Show 8.3 filenames         OFF         
+            lowercase (e.g.,                       
+            "test.txt")                            
+  @{fg shine}L@{fg text}         Show 8.3 filenames with    OFF         
+            uppercase initial (e.g.,               
+            "Test.txt")                            
+  @{fg shine}q@{fg text}         Quiet: never open error    OFF         
+            requesters                             
+            (read/write/reinsert                   
+            windows); errors are                   
+            reported to the caller                 
+            instead. Recommended for               
+            hot-plugged removable                  
+            media                                  
+  @{fg shine}m@{fg text}         Mount used: claim a        OFF         
+            partition even when                    
+            another handler already                
+            serves it (normally such               
+            a mount is refused, see                
+            below). Two handlers then              
+            cache the same volume:                 
+            reading mostly works, any              
+            write corrupts it, so                  
+            this is strictly at your               
+            own risk                               
+  @{fg shine}+e<char>@{fg text}  Escape character of long   @{fg shine}^@{fg text}           
+            names, one of ^ % ! $,                 
+            the at sign and the                    
+            backquote, for example                 
+            @{fg shine}+e%@{fg text}                                    
+  @{fg shine}-e@{fg text}        No escapes: characters     escapes on  
+            outside the code page                  
+            show as @{fg shine}_@{fg text} , and names                  
+            that differ only there                 
+            look alike                             
 
 A partition another handler already serves is refused on the auto-detect
 path: the mount fails and accesses report @{fg shine}object is in use@{fg text} (error 202)

@@ -1,4 +1,4 @@
-"""Long names: characters outside the code page as %-escapes, %% for a % that would read as one.
+"""Long names: characters outside the code page as escapes such as ^880 (written here with %, as Control n% sets it), ^^ for a ^ that would read as one; Control -n shows them as _.
 
 Run: make test"""
 
@@ -179,6 +179,16 @@ def form(cp, size):
 class NameEscapes(unittest.TestCase):
     """The escape routines against an independent model of the escape rules."""
 
+    SWAP = None  # a subclass swaps % with its escape character in all names
+
+    def swap(self, data):
+        return data.translate(self.SWAP) if self.SWAP else data
+
+    def swap_unit(self, unit):
+        if self.SWAP:
+            return {0x25: self.SWAP[0x25], self.SWAP[0x25]: 0x25}.get(unit, unit)
+        return unit
+
     @classmethod
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()
@@ -191,12 +201,13 @@ class NameEscapes(unittest.TestCase):
     def setUp(self):
         self.h = Handler(self.image)
         self.addCleanup(self.h.close)
+        self.h.set("EscChar", ord("%"), 1)
 
     def text(self, address, size):
-        return bytes(self.h.mem.r_block(address, size))
+        return self.swap(bytes(self.h.mem.r_block(address, size)))
 
     def put(self, address, data):
-        self.h.mem.w_block(address, data + b"\0")
+        self.h.mem.w_block(address, self.swap(data) + b"\0")
 
     def set_codepage(self, table):
         """Install a code page, one Unicode value per local character, and its inverse."""
@@ -214,7 +225,11 @@ class NameEscapes(unittest.TestCase):
         h.mem.w_block(ENTRY, bytes(C["XMSDE_Sizeof"]))
         end, state, result = ENTRY + C["XMSDE_FullName"], 0, 1
         for unit in units:
-            result = h.run("ExAddUnit", d0=unit, regs={7: state, 9: end, 11: ENTRY, 14: inverse})
+            result = h.run(
+                "ExAddUnit",
+                d0=self.swap_unit(unit),
+                regs={7: state, 9: end, 11: ENTRY, 14: inverse},
+            )
             state, end = h.cpu.r_reg(7), h.cpu.r_reg(9)
             if not result:
                 break
@@ -230,7 +245,8 @@ class NameEscapes(unittest.TestCase):
         self.put(ENTRY, text)
         units, cursor, pending = [], ENTRY, 0
         while pending or cursor < ENTRY + len(text):
-            units.append(h.run("ExNextUnit", regs={9: cursor, 4: pending, 14: table}) & 0xFFFF)
+            unit = h.run("ExNextUnit", regs={9: cursor, 4: pending, 14: table}) & 0xFFFF
+            units.append(self.swap_unit(unit))
             cursor, pending = h.cpu.r_reg(9), h.cpu.r_reg(4) & 0xFFFF
         self.assertEqual(cursor, ENTRY + len(text), text)
         return units
@@ -337,7 +353,11 @@ class NameEscapes(unittest.TestCase):
         self.put(ENTRY, text)
         units, cursor, pending = [], ENTRY, 0
         for _ in range(8):
-            units.append(h.run("ExNextUnit", regs={9: cursor, 4: pending, 14: TABLES}) & 0xFFFF)
+            units.append(
+                self.swap_unit(
+                    h.run("ExNextUnit", regs={9: cursor, 4: pending, 14: TABLES}) & 0xFFFF
+                )
+            )
             cursor, pending = h.cpu.r_reg(9), h.cpu.r_reg(4) & 0xFFFF
         self.assertEqual(units, [0x41, 0x104, 0xE9, 0x141, 0x100, 0xD83D, 0xDE00, 0x7A])
         self.assertEqual(cursor, ENTRY + len(text))
@@ -459,7 +479,7 @@ class NameEscapes(unittest.TestCase):
             if raw[0] == " ":
                 continue
             self.h.mem.w_block(ENTRY, bytes(C["XMSDE_Sizeof"]))
-            self.h.mem.w_block(ENTRY, raw.encode())
+            self.h.mem.w_block(ENTRY, self.swap(raw.encode()))
             self.h.run("GetBName", a0=ENTRY, a1=ENTRY + 0x200)
             base, ext = raw[:8].rstrip(" "), raw[8:].rstrip(" ")
             want = show([ord(c) for c in base + ("." + ext if ext else "")]).encode()
@@ -727,7 +747,7 @@ class NameEscapes(unittest.TestCase):
                 continue
             self.put(ENTRY, disk)
             if keep_units:
-                self.assertEqual(h.mem.r_block(ENTRY + 0x200, len(wanted)), wanted)
+                self.assertEqual(self.text(ENTRY + 0x200, len(wanted)), wanted)
             else:
                 self.put(ENTRY + 0x200, wanted)
                 h.set("WantedStart", 0)
@@ -908,12 +928,14 @@ class NameEscapes(unittest.TestCase):
             (b"%", 0xD800, 0),
         ):
             h.mem.w_block(ENTRY, bytes(200))
-            h.mem.w_block(name, text)
+            h.mem.w_block(name, self.swap(text))
             regs = self.sentinels(
                 {7: C["XMSDE_FullName"] << 16 | pending, 9: name + len(text), 11: ENTRY, 14: 0},
                 (0, 7, 9),
             )
-            self.assertEqual(h.run("ExAddUnit", d0=unit, regs=regs), 1, (text, hex(unit)))
+            self.assertEqual(
+                h.run("ExAddUnit", d0=self.swap_unit(unit), regs=regs), 1, (text, hex(unit))
+            )
             self.assert_preserved(regs, (0, 7, 9), ("ExAddUnit", text, hex(unit)))
         for text in (
             "880",
@@ -959,7 +981,7 @@ class NameEscapes(unittest.TestCase):
         start = ENTRY + 0x200 - C["MAXNAMELEN"]
         self.h.mem.w_block(start, b"\0" * C["MAXNAMELEN"])
         self.put(ENTRY + 0x200 - cut, text[:cut].encode())
-        self.h.run("ExCutEscape", d0=ord(text[cut]), regs={9: ENTRY + 0x200})
+        self.h.run("ExCutEscape", d0=self.swap(text[cut].encode())[0], regs={9: ENTRY + 0x200})
         return self.h.cpu.r_reg(9) - (ENTRY + 0x200 - cut)
 
     def test_cut_keeps_no_part_of_an_escape(self):
@@ -1012,6 +1034,93 @@ class NameEscapes(unittest.TestCase):
             else:
                 whole = decode(text)
                 self.assertEqual(decode(kept), whole[: len(decode(kept))], (text, cut, end))
+
+
+class NameEscapesCaret(NameEscapes):
+    """The same tests with ^, the default escape character; % is then a plain character."""
+
+    SWAP = bytes.maketrans(b"%^", b"^%")
+
+    def setUp(self):
+        super().setUp()
+        self.h.set("EscChar", ord("^"), 1)
+
+
+class ControlEscape(unittest.TestCase):
+    """Control +n<char> sets the escape character, from a fixed set only, -n turns escapes off."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory()
+        cls.image = load(Path(cls.temp.name) / "handler.hunk")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    def options(self, text):
+        h = Handler(self.image)  # one machine at a time, closed before the next
+        try:
+            h.mem.w_block(ENTRY, text.encode() + b"\0")
+            self.assertEqual(h.run("SetOptions", a0=ENTRY), 0xFFFFFFFF, text)
+            return chr(h.get("EscChar", 1)), h.get("CmdFlags", 2)
+        finally:
+            h.close()
+
+    def test_control_sets_the_escape_character(self):
+        """n or +n takes the next character when it is one of % ! $ @ ^ `, keeps the old one otherwise; -n takes none and turns escapes off; other options around it still apply."""
+        q = 1 << 12
+        for text, esc, quiet in (
+            ("n%", "%", False),
+            ("+n`", "`", False),
+            ("+qn!", "!", True),
+            ("n% +q", "%", True),
+            ("n#q", "^", True),
+            ("nA", "^", False),
+            ("n", "^", False),
+            ("n!n%", "%", False),
+            ("-n", "\0", False),
+            ("-n+q", "\0", True),
+            ("-qn", "\0", False),
+            ("-n!", "\0", False),
+            ("-n+n$", "$", False),
+            ("e%", "^", False),
+        ):
+            got, flags = self.options(text)
+            self.assertEqual((got, bool(flags & q)), (esc, quiet), text)
+
+
+class EscapesOff(unittest.TestCase):
+    """Control -n: no escape character, characters outside the code page show as _ and every typed character stands for itself."""
+
+    SWAP = None
+    setUpClass = classmethod(NameEscapes.setUpClass.__func__)
+    tearDownClass = classmethod(NameEscapes.tearDownClass.__func__)
+    swap, swap_unit = NameEscapes.swap, NameEscapes.swap_unit
+    text, put = NameEscapes.text, NameEscapes.put
+    add_units, next_units = NameEscapes.add_units, NameEscapes.next_units
+
+    def setUp(self):
+        self.h = Handler(self.image)
+        self.addCleanup(self.h.close)
+        self.h.set("EscChar", 0, 1)
+
+    def test_units_outside_the_code_page_show_as_underscore(self):
+        """ExAddUnit puts _ for a character outside Latin-1 and for a surrogate pair, keeps Latin-1, and still hides what it cannot show."""
+        units = [0x41, 0xE9, 0x100, 0x416, 0xD83D, 0xDE00, 0x5E, 0x25]
+        name, result, pending = self.add_units(units)
+        self.assertEqual((name, result, pending), (b"A\xe9___^%", 1, 0))
+        for units in ([0xDE00], [0xD83D, 0x41], [0x41, 0], [0xFFFE]):
+            self.assertEqual(self.add_units(units)[1], 0, units)
+        self.assertEqual(self.add_units([0x61] * 103 + [0x100])[1], 1)
+        self.assertEqual(self.add_units([0x61] * 104 + [0x100])[1], 0)
+
+    def test_typed_escapes_are_plain_characters(self):
+        """ExNextUnit and ExCountUnits read ^880, %880 and ^^ character by character."""
+        for name in ("^880.txt", "%880.txt", "a^^b", "%%", "^"):
+            self.assertEqual(self.next_units(name.encode()), [ord(c) for c in name], name)
+            self.put(ENTRY, name.encode())
+            self.assertEqual(self.h.run("ExCountUnits", a0=ENTRY), len(name), name)
 
 
 if __name__ == "__main__":

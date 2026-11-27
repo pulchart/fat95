@@ -192,6 +192,8 @@ Available options:
 | `L` | Show 8.3 filenames with uppercase initial (e.g., "Test.txt") | OFF |
 | `q` | Quiet: never open error requesters (read/write/reinsert windows); errors are reported to the caller instead. Recommended for hot-plugged removable media | OFF |
 | `m` | Mount used: claim a partition even when another handler already serves it (normally such a mount is refused, see below). Two handlers then cache the same volume: reading mostly works, any write corrupts it, so this is strictly at your own risk | OFF |
+| `+n<char>` | Escape character of long names, one of ^ % ! $, the at sign and the backquote, for example `+n%` | `^` |
+| `-n` | No escapes: characters outside the code page show as `_`, and names that differ only there look alike | escapes on |
 
 A partition another handler already serves is refused on the auto-detect path: the mount fails and accesses report `object is in use` (error 202) instead of starting a second handler on the same volume, which corrupts it on write. The `m` option overrides the refusal for its own mountlist; the extra mount is then listed as its own `partition.resource` row next to the owner's.
 
