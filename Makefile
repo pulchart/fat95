@@ -210,7 +210,7 @@ PTABLE_LSPTRES_VERSION_FILE = $(PTABLE)/dist/lsptres.version
 # Outside the image make runs the goals in TOOLCHAIN_IMAGE, pulled when the registry
 # has a newer one; the checkout, PTABLE and their git dirs are mounted at their paths
 ifeq ($(wildcard /usr/share/amiga-toolchain/toolchain.json),)
-GOALS  := $(filter-out test-integration,$(or $(MAKECMDGOALS),all))
+GOALS  := $(filter-out test-integration test-stress,$(or $(MAKECMDGOALS),all))
 gitdir  = $(shell d=$$(git -C $(1) rev-parse --git-common-dir 2>/dev/null) && cd $(1) && cd "$$d" && pwd)
 MOUNTS := $(sort $(filter-out $(CURDIR) $(CURDIR)/%,$(call gitdir,.) $(abspath $(PTABLE)) $(call gitdir,$(PTABLE))))
 ifneq ($(GOALS),)
@@ -234,15 +234,22 @@ IT_IMAGE_3.1-a600 = localhost/amiga-fsuae-amigaos:3.1
 IT_IMAGE_aros = ghcr.io/pulchart/amiga-fsuae-aros:latest
 IT_IMAGE_apolloos = ghcr.io/pulchart/amiga-fsuae-apolloos:latest
 IT_WORK := build/integration/$(shell date +%Y%m%d-%H%M%S)
-.PHONY: test-integration
-test-integration:
+# $(1): run.py options after IT
+define it_run
 	@podman run --rm --pull=newer --security-opt label=disable -v $(CURDIR):$(CURDIR) -w $(CURDIR) \
 		$(foreach d,$(MOUNTS),-v $(d):$(d)) -e CI_SUFFIX $(TOOLCHAIN_IMAGE) make $(MAKEOVERRIDES) smoke noreq stage
 	@mkdir -p $(IT_WORK); rc=0; $(foreach os,$(IT_OS),podman run --rm --pull=newer \
 		--security-opt label=disable -v $(CURDIR):$(CURDIR) -w $(CURDIR) \
 		-v $(abspath $(IT_WORK)):$(abspath $(IT_WORK)) \
 		$(IT_IMAGE_$(os)) python3 $(TESTDIR)/integration/run.py --os $(os) \
-		--work $(abspath $(IT_WORK))/$(os) $(IT) || rc=1;) exit $$rc
+		--work $(abspath $(IT_WORK))/$(os) $(IT) $(1) || rc=1;) exit $$rc
+endef
+.PHONY: test-integration test-stress
+test-integration:
+	$(call it_run,)
+# the stress_ scenarios on disks; stress_fat12 (floppy) with test-integration IT="--scenario stress_fat12"
+test-stress:
+	$(call it_run,--scenario stress_fat16 --scenario stress_fat32)
 else
 
 # Files: Driver
@@ -507,8 +514,8 @@ $(TARGET_NOREQ): $(SOURCE_NOREQ) Makefile
 	$(Q)vasmm68k_mot -quiet $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
 
 # FS-UAE integration suite: runs outside the toolchain image, see above.
-test-integration:
-	@echo "make test-integration runs the amiga-fsuae images, call it outside the toolchain image" >&2; exit 1
+test-integration test-stress:
+	@echo "make $@ runs the amiga-fsuae images, call it outside the toolchain image" >&2; exit 1
 
 # Must also run when vasm is missing.
 check-test-deps:
@@ -667,6 +674,7 @@ help:
 	@echo "  check-test-deps  - Report what the test suites need and what is missing"
 	@echo "  lint             - ruff check and format check of the tracked Python files"
 	@echo "  test-integration - FS-UAE integration suite (IT_OS=aros picks OSes, IT= passes options)"
+	@echo "  test-stress      - FileSystemStressTest on FAT16 and FAT32 disks in FS-UAE (IT_OS as above)"
 	@echo "  smoke            - Build build/tools/smoke for the integration suite"
 	@echo "  noreq            - Build build/tools/noreq for the integration suite"
 	@echo ""
@@ -741,6 +749,6 @@ $(GUIDE_DEBUG95): docs/debug95.md $(VERSION_STAMP)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)md2guide docs/debug95.md $@ --version $(DEBUG95_VERSION) --date $(DEBUG95_DATE) --title "debug95" --ver-title "debug95 guide"
 
-.PHONY: all fat95 fat95-080 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-lha guide guides help version-readme stage FORCE test test-amifuse test-list-update check-test-deps lint test-integration smoke noreq
+.PHONY: all fat95 fat95-080 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-lha guide guides help version-readme stage FORCE test test-amifuse test-list-update check-test-deps lint test-integration test-stress smoke noreq
 
 endif

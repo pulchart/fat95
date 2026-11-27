@@ -15,11 +15,12 @@ Each OS runs in an [amiga-fsuae](https://github.com/pulchart/container-amiga-fsu
 ```
 make test-integration PTABLE=...                     # every scenario on every OS, except stress_
 make test-integration IT_OS=aros IT="--scenario sf_fat32"
-make test-integration IT_OS=3.2.3-a1200 IT="--scenario stress_fat32"   # a stress_ scenario runs only when named
+make test-stress                                     # stress_fat16 and stress_fat32 on every OS
+make test-integration IT_OS=3.2.3-a1200 IT="--scenario stress_fat12"   # a stress_ scenario runs only when named
 tests/integration/run.py --list                      # scenarios, the OSes they run on, description
 ```
 
-`make test-integration` builds `smoke` and `noreq` first and mounts the repository and the run directory at the same paths. A `stress_` scenario fetches FileSystemStressTest 1.2 from Aminet (disk/misc) once into `build/fsst`, checked against its SHA-256. `make` with `PTABLE` puts ptable.library into `dist/libs`. Exit code 0 when every scenario passes. Each run gets a new directory under `build/integration`, or `IT_WORK`. CI runs `aros` and `apolloos` only.
+`make test-integration` builds `smoke` and `noreq` first and mounts the repository and the run directory at the same paths. A `stress_` scenario fetches FileSystemStressTest 1.2 from Aminet (disk/misc) once into `build/fsst`, checked against its SHA-256. `make` with `PTABLE` puts ptable.library into `dist/libs`. Exit code 0 when every scenario passes. Each run gets a new directory under `build/integration`, or `IT_WORK`. CI runs `aros` and `apolloos` only, the scenarios and `stress_fat16` with `stress_fat32` in parallel jobs, with FileSystemStressTest kept in the Actions cache.
 
 In an image, as in CI:
 

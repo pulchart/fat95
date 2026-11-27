@@ -195,7 +195,7 @@ jobs:
     needs: [image, build]
     runs-on: ubuntu-24.04
     container: ${{ matrix.image }}
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.stress && 75 || 45 }}  # stress: two scenarios of up to 30 minutes
     strategy:
       fail-fast: false
       matrix:
@@ -204,10 +204,26 @@ jobs:
             image: ghcr.io/pulchart/amiga-fsuae-aros:latest
           - os: apolloos
             image: ghcr.io/pulchart/amiga-fsuae-apolloos:latest
+          - os: aros
+            image: ghcr.io/pulchart/amiga-fsuae-aros:latest
+            stress: true
+          - os: apolloos
+            image: ghcr.io/pulchart/amiga-fsuae-apolloos:latest
+            stress: true
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: FileSystemStressTest version
+        id: fsst
+        if: matrix.stress
+        run: echo "sha=$(sed -n 's/^FSST_SHA256 = "\(.*\)"/\1/p' tests/integration/run.py)" >>"$GITHUB_OUTPUT"
+      - name: FileSystemStressTest from the cache
+        if: matrix.stress
+        uses: actions/cache@v6
+        with:
+          path: build/fsst
+          key: fsst-${{ steps.fsst.outputs.sha }}
       - uses: actions/download-artifact@v8
         with:
           name: fat95-dist.${{ needs.image.outputs.version }}
@@ -219,27 +235,30 @@ jobs:
       - name: Scenarios
         env:
           OS: ${{ matrix.os }}
+          SCENARIOS: ${{ matrix.stress && '--scenario stress_fat16 --scenario stress_fat32' || '' }}
+          SET: ${{ matrix.stress && 'stress' || 'scenarios' }}
         run: |
           set +e
-          python3 tests/integration/run.py --os "$OS" --work "build/integration/$OS" 2>&1 | tee it.log
+          # shellcheck disable=SC2086 # SCENARIOS is a list of options
+          python3 tests/integration/run.py --os "$OS" --work "build/integration/$OS" $SCENARIOS 2>&1 | tee it.log
           rc=${PIPESTATUS[0]}
           set -e
           {
             echo
-            echo "### Integration, $OS"
+            echo "### Integration, $OS, $SET"
             echo
-            echo "| scenario | result |"
-            echo "|---|---|"
-            awk '/^== /{n=$3; sub(/:$/, "", n)}
-                 /^  (PASS|FAIL) in /{print "| `" n "` | " ($1 == "PASS" ? "passed" : "**failed**") " |"}
-                 /^  SKIP: /{sub(/^  SKIP: /, ""); print "| `" n "` | skipped: " $0 " |"}' it.log
+            echo "| scenario | what it does | result |"
+            echo "|---|---|---|"
+            awk '/^== /{n=$3; sub(/:$/, "", n); d=$0; sub(/^== [^:]*: /, "", d)}
+                 /^  (PASS|FAIL) in /{print "| `" n "` | " d " | " ($1 == "PASS" ? "passed" : "**failed**") " in " $3 " s |"}
+                 /^  SKIP: /{sub(/^  SKIP: /, ""); print "| `" n "` | " d " | skipped: " $0 " |"}' it.log
           } >>"$GITHUB_STEP_SUMMARY"
           exit "$rc"
       - name: Upload the guest output
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: fat95-integration-${{ matrix.os }}
+          name: fat95-integration-${{ matrix.os }}${{ matrix.stress && '-stress' || '' }}
           path: |
             build/integration/${{ matrix.os }}/*/out/*.txt
             build/integration/${{ matrix.os }}/*/serial.txt
