@@ -8,6 +8,7 @@ and drive the routine you care about.
 Status: library, collected by unittest like any other test file.
 Run: make test
 """
+
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,7 +23,7 @@ class Example(unittest.TestCase):
     def setUpClass(cls):
         # Assemble src/fat95.s once for the whole class: it is the slow part.
         cls.temp = tempfile.TemporaryDirectory()
-        cls.image = load(Path(cls.temp.name) / 'fat95.hunk')
+        cls.image = load(Path(cls.temp.name) / "fat95.hunk")
 
     @classmethod
     def tearDownClass(cls):
@@ -36,11 +37,11 @@ class Example(unittest.TestCase):
     def test_ms_date_renders_a_packed_date(self):
         """MSDate2Str writes a packed FAT date as DD.MM.YYYY and leaves a1 past it."""
         target = 0x56000
-        packed = (1 << 9) | (3 << 5) | 14          # 1981-03-14, FAT epoch is 1980
-        self.h.run('MSDate2Str', d0=packed, a1=target)
-        self.assertEqual(bytes(self.h.mem.r_block(target, 10)), b'14.03.1981')
+        packed = (1 << 9) | (3 << 5) | 14  # 1981-03-14, FAT epoch is 1980
+        self.h.run("MSDate2Str", d0=packed, a1=target)
+        self.assertEqual(bytes(self.h.mem.r_block(target, 10)), b"14.03.1981")
         self.assertEqual(self.h.cpu.r_reg(9), target + 10)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
