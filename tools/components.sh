@@ -69,8 +69,9 @@ for entry in "$@"; do
 		esac
 	fi
 
+	# CI_SUFFIX marks the build, not a change of the component.
 	new=
-	{ [ -z "$prev" ] || [ "$ver ($date)" != "$ov ($od)" ]; } && new=1
+	{ [ -z "$prev" ] || [ "${ver%"$CI_SUFFIX"} ($date)" != "$ov ($od)" ]; } && new=1
 
 	if [ "$fmt" = md ]; then
 		line="- \`$name $ver ($date)\`${new:+ _(new)_}"

@@ -45,18 +45,22 @@ LSFSRES_MINOR = 3
 LSFSRES_VERSION_SUFFIX =
 LSFSRES_DATE = 03.10.2026
 
+# CI sets CI_SUFFIX (-pr<n>.<hash>, ...); it replaces every suffix above,
+# so no CI build carries the name of a release
+CI_SUFFIX ?=
+
 # Derived versions
-VERSION = $(RELEASE_DATE)$(VERSION_SUFFIX)
+VERSION = $(RELEASE_DATE)$(or $(CI_SUFFIX),$(VERSION_SUFFIX))
 # Human-readable date derived from RELEASE_DATE (YYYYMMDD -> DD.MM.YYYY)
 DATE = $(shell echo "$(RELEASE_DATE)" | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\3.\2.\1/')
 
-FAT95_VERSION       = $(FAT95_MAJOR).$(FAT95_MINOR)$(FAT95_VERSION_SUFFIX)
-INSTALL95_VERSION   = $(INSTALL95_MAJOR).$(INSTALL95_MINOR)$(INSTALL95_VERSION_SUFFIX)
-DD_VERSION          = $(DD_MAJOR).$(DD_MINOR)$(DD_VERSION_SUFFIX)
-DEBUG95_VERSION     = $(DEBUG95_MAJOR).$(DEBUG95_MINOR)$(DEBUG95_VERSION_SUFFIX)
-SETFILESIZE_VERSION = $(SETFILESIZE_MAJOR).$(SETFILESIZE_MINOR)$(SETFILESIZE_VERSION_SUFFIX)
-BOOT95_VERSION      = $(BOOT95_MAJOR).$(BOOT95_MINOR)$(BOOT95_VERSION_SUFFIX)
-LSFSRES_VERSION     = $(LSFSRES_MAJOR).$(LSFSRES_MINOR)$(LSFSRES_VERSION_SUFFIX)
+FAT95_VERSION       = $(FAT95_MAJOR).$(FAT95_MINOR)$(or $(CI_SUFFIX),$(FAT95_VERSION_SUFFIX))
+INSTALL95_VERSION   = $(INSTALL95_MAJOR).$(INSTALL95_MINOR)$(or $(CI_SUFFIX),$(INSTALL95_VERSION_SUFFIX))
+DD_VERSION          = $(DD_MAJOR).$(DD_MINOR)$(or $(CI_SUFFIX),$(DD_VERSION_SUFFIX))
+DEBUG95_VERSION     = $(DEBUG95_MAJOR).$(DEBUG95_MINOR)$(or $(CI_SUFFIX),$(DEBUG95_VERSION_SUFFIX))
+SETFILESIZE_VERSION = $(SETFILESIZE_MAJOR).$(SETFILESIZE_MINOR)$(or $(CI_SUFFIX),$(SETFILESIZE_VERSION_SUFFIX))
+BOOT95_VERSION      = $(BOOT95_MAJOR).$(BOOT95_MINOR)$(or $(CI_SUFFIX),$(BOOT95_VERSION_SUFFIX))
+LSFSRES_VERSION     = $(LSFSRES_MAJOR).$(LSFSRES_MINOR)$(or $(CI_SUFFIX),$(LSFSRES_VERSION_SUFFIX))
 
 # Installer scripts: the package version and the fat95 that install95 fits
 INSTALL_SED = -e "s|@VERSION@|$(VERSION)|g" -e "s|@DATE@|$(DATE)|g" \
@@ -124,7 +128,7 @@ COMPONENT_ARGS = $(foreach c,$(COMPONENTS),'$(c)|$($(c)_NAME)|$($(c)_VERSION)|$(
 
 # Component summary with literal `\n` for GNU sed substitution; plain
 # text (no markdown), changed-since-previous-tag components flagged "(new)".
-COMPONENT_VERSIONS_NL = $(shell sh tools/components.sh plain $(COMPONENT_ARGS))
+COMPONENT_VERSIONS_NL = $(shell CI_SUFFIX='$(CI_SUFFIX)' sh tools/components.sh plain $(COMPONENT_ARGS))
 
 # Generate version include files for assembler
 VERSION_FAT95_INC = src/fat95_version.i
@@ -213,7 +217,7 @@ ifneq ($(GOALS),)
 .PHONY: $(GOALS)
 $(firstword $(GOALS)):
 	@podman run --rm --pull=newer --security-opt label=disable -v $(CURDIR):$(CURDIR) -w $(CURDIR) \
-		$(foreach d,$(MOUNTS),-v $(d):$(d)) $(TOOLCHAIN_IMAGE) make $(MAKEOVERRIDES) $(GOALS)
+		$(foreach d,$(MOUNTS),-v $(d):$(d)) -e CI_SUFFIX $(TOOLCHAIN_IMAGE) make $(MAKEOVERRIDES) $(GOALS)
 $(wordlist 2,$(words $(GOALS)),$(GOALS)):
 	@:
 endif
@@ -231,7 +235,7 @@ IT_WORK := build/integration/$(shell date +%Y%m%d-%H%M%S)
 .PHONY: test-integration
 test-integration:
 	@podman run --rm --pull=newer --security-opt label=disable -v $(CURDIR):$(CURDIR) -w $(CURDIR) \
-		$(foreach d,$(MOUNTS),-v $(d):$(d)) $(TOOLCHAIN_IMAGE) make $(MAKEOVERRIDES) smoke noreq
+		$(foreach d,$(MOUNTS),-v $(d):$(d)) -e CI_SUFFIX $(TOOLCHAIN_IMAGE) make $(MAKEOVERRIDES) smoke noreq
 	@mkdir -p $(IT_WORK); rc=0; $(foreach os,$(IT_OS),podman run --rm --pull=newer \
 		--security-opt label=disable -v $(CURDIR):$(CURDIR) -w $(CURDIR) \
 		-v $(abspath $(IT_WORK)):$(abspath $(IT_WORK)) \
@@ -280,8 +284,8 @@ LHA = lha
 # Default target: build both CPU tiers + all tools
 all: version-readme $(DRIVER_TARGETS) $(TARGET_INSTALL95) $(TARGET_DD) $(TARGET_DEBUG95) $(TARGET_SETFILESIZE) $(TARGET_BOOT95) $(TARGET_LSFSRES)
 
-# Generate version include file (always check, only update if changed)
-# Uses a stamp file to track the current version string
+# Every version and date (CI_SUFFIX too), rewritten only when one changes,
+# so whatever carries a version rebuilds
 VERSION_STAMP = .version-stamp
 .PHONY: FORCE
 FORCE:
@@ -335,7 +339,7 @@ ptable-sync:
 # so the bundle (which builds them) must run first.
 version-readme: ptable-bundle
 	$(Q)sed -i '0,/^## [0-9]\{8\}[^[:space:]]*/s/^## [0-9]\{8\}[^[:space:]]*/## $(VERSION)/' docs/changes.md
-	$(Q)block="_Components in this release_:\n\n$$(sh tools/components.sh md $(COMPONENT_ARGS))"; \
+	$(Q)block="_Components in this release_:\n\n$$(CI_SUFFIX='$(CI_SUFFIX)' sh tools/components.sh md $(COMPONENT_ARGS))"; \
 	awk -v block="$$block" ' \
 	    /<!-- COMPONENTS:BEGIN -->/{print; print block; in_block=1; next} \
 	    /<!-- COMPONENTS:END -->/{in_block=0} \
@@ -707,12 +711,12 @@ GUIDE_LSPTRES    = $(GUIDE_OUTPUT_DIR)/lsptres.guide
 
 guide guides: $(GUIDE_FAT95) $(GUIDE_CHANGES) $(GUIDE_DD) $(GUIDE_LSFSRES) $(GUIDE_DEBUG95)
 
-$(GUIDE_FAT95): README.md
+$(GUIDE_FAT95): README.md $(VERSION_STAMP)
 	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)md2guide README.md $@ --version $(VERSION) --date $(DATE) --title "fat95" --ver-title "fat95 guide"
 
-$(GUIDE_CHANGES): docs/changes.md Makefile
+$(GUIDE_CHANGES): docs/changes.md Makefile $(VERSION_STAMP)
 	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)md2guide docs/changes.md $@ --version $(VERSION) --date $(DATE) --title "fat95 release notes" --ver-title "fat95 release notes guide"

@@ -6,7 +6,9 @@ Podman and an amigaos-ptable checkout: the `extern/ptable` submodule or `PTABLE=
 
 `make` and `make guides` write the handler, the tools, the bundled ptable.library and lsptres and the guides to `dist/`, which git ignores except for `dist/DOSDrivers` and `dist/locale`.
 
-CI runs on every pull request, master push and manual run in the image's current digest. It lints, builds and tests in parallel and uploads the build as `fat95-dist`; the FS-UAE integration suite runs on the build in the amiga-fsuae images of AROS and ApolloOS. Then it packs that build into the release archive, checks that the archive holds the build's handlers, tools and ptable.library copies and uploads the archive with its readme as `fat95-release`. Each run's summary lists the image, the built files, the tests, the integration scenarios and the archive with a download link.
+CI runs on every pull request, master push and manual run in the image's current digest. It lints, builds and tests in parallel and uploads the build as `fat95-dist.<version>`; the FS-UAE integration suite runs on the build in the amiga-fsuae images of AROS and ApolloOS. Then it packs that build into the release archive, checks that the archive holds the build's handlers, tools and ptable.library copies and uploads the archive with its readme as `fat95.<version>`. Each run's summary lists the image, the built files, the tests, the integration scenarios and the archive with a download link.
+
+CI builds the head commit of a pull request, not the merge commit GitHub makes for it, and sets `CI_SUFFIX`, which replaces the version suffix of the archive and of every component: `-pr<n>.<hash>` in pull request n, `-master.<hash>` on a master push and `-ci.<hash>` in a manual run, with the short hash of the built commit. A CI build never carries the name of a release, the release archive comes from a local build. `<version>` above is the archive's version, such as `v20261122-pr12.6da062e`.
 
 ## ptable.library
 
