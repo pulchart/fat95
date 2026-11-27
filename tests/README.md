@@ -73,10 +73,8 @@ Give each test class and method a short docstring stating what it guards,
 then run `make test-list-update`. Commit the updated
 [INVENTORY.md](INVENTORY.md) with the test; `make test` checks it.
 
-For Make, set `VASM_HOME` to override the assembler installation.
-Direct Python runs resolve `FAT95_VASM`, then `VASM_HOME/bin`, then
-`vasmm68k_mot` on PATH, then `/opt/vasm/bin/vasmm68k_mot`.
-Make exports its selected assembler as `FAT95_VASM`.
+The suites take vasm from `FAT95_VASM`, `VASM_HOME/bin` or PATH, in that
+order; in the amiga-toolchain image PATH has it.
 
 ## Failures and coverage
 

@@ -4,7 +4,7 @@ fat95 is a FAT12/FAT16/FAT32 filesystem handler for AmigaOS, written in 68000 as
 
 ## Build
 
-You need vasm 2.0f with the Motorola syntax module and the m68k backend, built from <http://sun.hasenbraten.de/vasm/> with `make CPU=m68k SYNTAX=mot` and installed so that `/opt/vasm/bin/vasmm68k_mot` exists. Any other prefix works with `make VASM_HOME=/your/prefix`, and `make check-vasm` tells you whether the one it found is the expected version.
+You need podman. `make` runs every target in the [amiga-toolchain](https://github.com/pulchart/container-amiga-toolchain) image, which brings vasm, vbcc, the NDK, the Python test and lint tools, md2guide and lha; see [docs/building.md](docs/building.md).
 
 ```sh
 git submodule update --init      # extern/ptable, the bundled ptable.library
@@ -13,7 +13,7 @@ make help                        # every target, with the output files
 make V=1                         # show the full assembler command lines
 ```
 
-`make ptable-bundle` stages `ptable.library` and `lsptres` from the `extern/ptable` submodule. To build guides, obtain the [md2guide.py converter](https://github.com/pulchart/cfd/blob/master/tools/md2guide.py) from the cfd repository and run `make guide MD2GUIDE=/path/to/md2guide.py`.
+`make ptable-bundle` stages `ptable.library` and `lsptres` from the `extern/ptable` submodule. `make guide` builds the AmigaGuide files.
 
 ## Test
 
