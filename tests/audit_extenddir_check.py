@@ -29,9 +29,9 @@ with tempfile.TemporaryDirectory() as tmp:
                 h.set("FATType", fat_type, 2)
                 h.set("BlocksPerCluster", 1, 1)
                 h.mem.w32(C["XL_Parent"], 0)  # deterministic low-memory read at a0=0
-                h.stub("ExtendChain", lambda: h.result(100))
-                h.stub("Cluster2Block", lambda: h.result(900))
-                h.stub("ReadBlocks", lambda: h.result(data))
+                h.stub("ExtendChain", lambda h=h: h.result(100))
+                h.stub("Cluster2Block", lambda h=h: h.result(900))
+                h.stub("ReadBlocks", lambda h=h, data=data: h.result(data))
                 h.stub("BlockChanged", lambda: None)
                 code = b"\x2f\x3c" + struct.pack(">I", child)
                 code += b"\x4e\xb9" + struct.pack(">I", h.syms["ExtendDir"])

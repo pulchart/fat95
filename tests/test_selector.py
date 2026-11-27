@@ -3,6 +3,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from typing import ClassVar
 
 from harness import C, Handler, load
 
@@ -117,7 +118,7 @@ class PickTests(unittest.TestCase):
         h.mem.w32(head, nodes[0] if nodes else tail)
         h.mem.w32(tail, 0)
         for node, succ, (index, dostype, present, unit, start) in zip(
-            nodes, nodes[1:] + [tail], entries
+            nodes, nodes[1:] + [tail], entries, strict=True
         ):
             h.mem.w_block(node, bytes(0x100))
             h.mem.w32(node, succ)
@@ -132,7 +133,7 @@ class PickTests(unittest.TestCase):
         return h.get("FirstBlock") if found else None
 
     # primary FAT, primary non-FAT, then the first MBR logical at index 4
-    CARD = [(0, FAT, 1, 0, 1000), (1, DOS, 1, 0, 2000), (4, FAT, 1, 0, 5000)]
+    CARD: ClassVar[list[tuple]] = [(0, FAT, 1, 0, 1000), (1, DOS, 1, 0, 2000), (4, FAT, 1, 0, 5000)]
 
     def test_selector_is_index_plus_one(self):
         """CF<n> and FAT\\<n+1> both reach pe_PartIndex n."""

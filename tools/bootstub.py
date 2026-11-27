@@ -59,7 +59,7 @@ def main():
         print(dc_line(data, text))
     msg = full[len(code) :].decode("ascii")
     lines = msg.rstrip("\0").split("\r\n")
-    for i, text in enumerate(lines[:-1]):
+    for text in lines[:-1]:
         print(f'\tdc.b\t"{text}",$0D,$0A')
     print("\tdc.b\t0")
     print(f"; {len(full)} bytes", file=sys.stderr)

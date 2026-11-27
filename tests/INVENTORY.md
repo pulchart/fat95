@@ -14,7 +14,7 @@ Block I/O encodes offsets, splits requests and rejects short transfers.
 
 | test | what it guards |
 |---|---|
-| `test_td64_requests_cross_four_gib` | TD64 preserves the high offset across 4 GiB for 512–4096-byte blocks. |
+| `test_td64_requests_cross_four_gib` | TD64 preserves the high offset across 4 GiB for 512-4096-byte blocks. |
 | `test_td64_large_lba_keeps_all_offset_bits` | Large LBAs retain every high-offset bit instead of wrapping at 4 GiB. |
 | `test_maxtransfer_uses_whole_blocks` | Legacy requests round MaxTransfer down and advance the buffer and LBA. |
 | `test_short_second_request_fails_whole_transfer` | A short later transfer stops I/O and fails the whole block request. |

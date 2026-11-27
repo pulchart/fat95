@@ -5,7 +5,8 @@ Status: gated, run by make test. Exit 0 means correct.
 Run from the repository root: python3 tests/audit_ptable_check.py
 Reuses IntegrationTests.image and drives its class fixture by hand."""
 
-import json, sys
+import json
+import sys
 from test_integration import IntegrationTests
 from harness import Handler, C, CPU
 
@@ -19,7 +20,7 @@ try:
                 h.set("ExecBase", 0x70000)
                 events = []
 
-                def openlib():
+                def openlib(events=events, h=h, base=base, z=z):
                     events.append("OpenLibrary")
                     second = events.count("OpenLibrary") == 2
                     h.result(base if second else 0)
@@ -28,11 +29,15 @@ try:
                 h.trap(0x70000 + C["OpenLibrary"], openlib)
                 h.trap(
                     0x70000 + C["FindResident"],
-                    lambda: (events.append("FindResident"), h.result(0x65000)),
+                    lambda events=events, h=h: (events.append("FindResident"), h.result(0x65000)),
                 )
-                h.trap(0x70000 + C["InitResident"], lambda: events.append("InitResident"))
-                h.trap(0x70000 + C["CloseLibrary"], lambda: events.append("CloseLibrary"))
-                h.trap(0x60000 + lvo, lambda: events.append("work"))
+                h.trap(
+                    0x70000 + C["InitResident"], lambda events=events: events.append("InitResident")
+                )
+                h.trap(
+                    0x70000 + C["CloseLibrary"], lambda events=events: events.append("CloseLibrary")
+                )
+                h.trap(0x60000 + lvo, lambda events=events: events.append("work"))
                 outcome = "returned"
                 try:
                     h.run(name)

@@ -159,7 +159,7 @@ class CorruptFATTests(unittest.TestCase):
                     before = bytes(h.mem.r_block(address, 16384))
                     reads = []
 
-                    def read():
+                    def read(reads=reads, h=h, transient=transient):
                         reads.append(h.cpu.r_reg(0))
                         if len(reads) <= 2 or not transient:
                             h.result(0)  # Both FAT copies fail.

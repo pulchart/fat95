@@ -11,6 +11,7 @@ from harness import C, Handler, load
 
 B32 = "0123456789ABCDEFGHIJKLMNOPQRSTUV"
 TABLES, ENTRY = 0x60000, 0x62000
+UPPER_CACHE = {}
 
 
 def escape(cp):
@@ -667,7 +668,9 @@ class NameEscapes(unittest.TestCase):
         + list(range(0xFF41, 0xFF5B))
     )
 
-    def upper(self, unit, cache={}):
+    def upper(self, unit, cache=None):
+        if cache is None:
+            cache = UPPER_CACHE
         if unit > 0xFFFF:
             return unit
         if unit not in cache:
@@ -807,7 +810,6 @@ class NameEscapes(unittest.TestCase):
             0x4D,
             0x6D,
         ]
-        h = self.h
         for local in (None, {u: i for i, u in enumerate(TABLE[:0x100]) if i >= 0x80}):
             if local is not None:
                 self.set_codepage(TABLE)
@@ -833,7 +835,7 @@ class NameEscapes(unittest.TestCase):
                 checked += 1
                 back = {v: k for k, v in local.items()} if local else {}
 
-                def meaning(text):
+                def meaning(text, back=back):
                     text = text.split(b"/")[0].decode("latin-1")
                     return [self.upper(back.get(u, u)) for u in decode(text)]
 

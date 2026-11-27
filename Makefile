@@ -432,6 +432,12 @@ lsfsres: check-vasm $(TARGET_LSFSRES)
 # Fast emulated checks; see tests/README.md.
 TEST_CHECKS = lsfsres_paging.py audit_ptable_check.py audit_extenddir_check.py
 
+# ruff over the tracked Python files (rules in ruff.toml), yamllint over the YAML files.
+lint:
+	$(Q)ruff check $$(git ls-files '*.py')
+	$(Q)ruff format --check $$(git ls-files '*.py')
+	$(Q)yamllint -s $$(git ls-files '*.yaml' '*.yml')
+
 # Must also run when vasm is missing.
 check-test-deps:
 	$(Q)$(PYTHON) $(TESTDIR)/deps.py
@@ -602,6 +608,7 @@ help:
 	@echo "  test-amifuse     - Handler-in-the-loop suite (needs amifuse, dosfstools, mtools)"
 	@echo "  test-list-update - Refresh the inventory in $(TESTDIR)/INVENTORY.md"
 	@echo "  check-test-deps  - Report what the test suites need and what is missing"
+	@echo "  lint             - ruff check and format check of the tracked Python files"
 	@echo ""
 	@echo "Documentation targets:"
 	@echo "  guide / guides - Generate AmigaGuide documentation"
@@ -669,4 +676,4 @@ $(GUIDE_LSFSRES): docs/lsfsres.md $(MD2GUIDE) $(VERSION_STAMP)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) docs/lsfsres.md $@ --version $(LSFSRES_VERSION) --date $(LSFSRES_DATE) --title "lsfsres" --ver-title "lsfsres guide"
 
-.PHONY: all fat95 fat95-080 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide guides help version-readme stage FORCE test test-amifuse test-list-update check-test-deps
+.PHONY: all fat95 fat95-080 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide guides help version-readme stage FORCE test test-amifuse test-list-update check-test-deps lint

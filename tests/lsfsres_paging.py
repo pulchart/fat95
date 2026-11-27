@@ -5,12 +5,14 @@ Status: gated, run by make test. Exit 0 means correct.
 Run from the repository root: python3 tests/lsfsres_paging.py
 Frame variable offsets are recovered from the vasm -L listing, so a layout change does not invalidate it."""
 
-import re, sys, tempfile
+import re
+import sys
+import tempfile
 from pathlib import Path
 from amitools.binfmt.BinFmt import BinFmt
 from amitools.binfmt.Relocate import Relocate
 from amitools.vamos.machine import Machine
-from toolchain import ROOT, assemble
+from toolchain import assemble
 
 BASE, EXEC, DOS, STACK = 0x10000, 0x300000, 0x320000, 0x200000
 FRAME = 0x180000  # a4 points here, vars live below it
@@ -439,7 +441,7 @@ def narrow_test(image, eq):
         f.call("Start")
         text = bytes(f.written).decode("latin-1").replace("\x1b[ q", "")
         page = text.split("\x1b[3;7m")[0]  # up to the first prompt
-        rows = sum(max(1, -(-len(l) // 66)) for l in page.split("\n")[:-1])
+        rows = sum(max(1, -(-len(ln) // 66)) for ln in page.split("\n")[:-1])
         assert "\x1b[3;7m" in text, "no pause in a full window"
         assert rows <= 13, (rows, page)  # 14 rows, one kept for the prompt
         assert page.startswith(" #: DosType"), page[:40]
@@ -456,7 +458,7 @@ def pages(text, cols):
     for page in text.replace("\x1b[ q", "").split(prompt):
         page = page.replace(erase, "")
         lines = page.split("\n")
-        rows = sum(max(1, -(-len(l) // cols)) for l in lines[:-1])
+        rows = sum(max(1, -(-len(ln) // cols)) for ln in lines[:-1])
         rows += -(-len(lines[-1]) // cols)
         out.append(rows)
     return out
@@ -480,7 +482,7 @@ def tall_test(image, eq):
         text = bytes(f.written).decode("latin-1")
         after = text.split("(any key, Q quits)")
         assert len(after) == 2, len(after)  # one pause, then nothing
-        assert after[1].strip("\x1b[23;27m\r ") == "", repr(after[1])
+        assert after[1].strip("\x1b[23;7m\r ") == "", repr(after[1])
         assert f.raw and f.raw[-1] == 0, "console handed back cooked"
     finally:
         f.close()
@@ -499,7 +501,7 @@ def list_test(image, eq):
         assert f.allocated == 2 * eq["RecSize"], f.allocated
         assert f.freed == [SNAP], f.freed
         assert len(f.rows) == 3, f.rows  # two entries and a summary
-        for i, (fmt, args) in enumerate(f.rows[:2]):
+        for i, (_fmt, args) in enumerate(f.rows[:2]):
             dostype, version, patch, seg, name = entries[i]
             assert args[0] == i + 1 and args[1] == dostype
             # the version longword is rendered as major.revision

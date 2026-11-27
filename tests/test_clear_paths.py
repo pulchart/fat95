@@ -6,7 +6,7 @@ import struct
 import tempfile
 import unittest
 from pathlib import Path
-from harness import C, CPU, Handler, load
+from harness import C, Handler, load
 
 
 class ClearPaths(unittest.TestCase):
@@ -62,7 +62,7 @@ class ClearPaths(unittest.TestCase):
                 h.mem.w_block(control, bytes(C["EAC_Sizeof"]))
                 h.mem.w_block(target, b"\xa5" * 1024)
 
-                def read_entry():
+                def read_entry(entries=entries):
                     if len(entries) == 2:
                         h.result(0)
                         return

@@ -2,7 +2,7 @@
 
 ## Start here
 
-Requires Linux, Python 3.11+ and [vasm 2.0f](../CONTRIBUTING.md#build).
+Requires Linux, Python 3.14+ and [vasm 2.0f](../CONTRIBUTING.md#build).
 From the repository root:
 
 ```sh
@@ -11,6 +11,8 @@ python3 -m venv .venv
 python -m pip install -r tests/requirements.txt
 make test
 ```
+
+`make lint` runs ruff and yamllint; `pre-commit install` runs them before each commit.
 
 An existing compatible Python environment also works. The requirements pin
 tested **amitools-amifuse** and **machine68k-amifuse** versions. Do not mix them

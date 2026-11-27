@@ -61,7 +61,7 @@ def render():
             scripts.append((path, tree))
             continue
         out += ["#### `%s`" % path.name, "", summary(ast.get_docstring(tree)), ""]
-        for klass, funcs in cases:
+        for _klass, funcs in cases:
             out += ["| test | what it guards |", "|---|---|"]
             out += ["| `%s` | %s |" % (f.name, summary(ast.get_docstring(f))) for f in funcs]
             out += [""]

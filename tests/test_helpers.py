@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from harness import C, CPU, GLOBALS, Handler, load
+from harness import C, GLOBALS, Handler, load
 
 
 class HelperContracts(unittest.TestCase):
@@ -74,7 +74,7 @@ class HelperContracts(unittest.TestCase):
                 h.mem.w_block(target, b"\xa5" * 1024)
                 reads = []
 
-                def read_entry():
+                def read_entry(reads=reads, flags=flags):
                     if reads:
                         h.result(0)
                         return

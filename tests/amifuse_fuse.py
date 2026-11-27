@@ -153,10 +153,10 @@ def mounted(image, driver, mountpoint, logfile):
             finally:
                 try:
                     status = process.wait(timeout=30)
-                except subprocess.TimeoutExpired:
+                except subprocess.TimeoutExpired as error:
                     process.kill()
                     process.wait(timeout=5)
-                    raise TimeoutError(f"Handler shutdown timeout: {logfile}")
+                    raise TimeoutError(f"Handler shutdown timeout: {logfile}") from error
             if status:
                 raise RuntimeError(f"Mount exited {status}: {logfile}")
 
