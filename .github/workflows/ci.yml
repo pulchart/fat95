@@ -127,6 +127,35 @@ jobs:
           } >>"$GITHUB_STEP_SUMMARY"
           exit "$rc"
 
+  # The 68020 handler on FAT images through amifuse, one restart cycle per case
+  test-amifuse:
+    needs: image
+    runs-on: ubuntu-24.04
+    container: ${{ needs.image.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - name: Trust the checkout, which another user owns
+        run: git config --global --add safe.directory '*'
+      - name: Handler-in-the-loop suites
+        run: |
+          set +e
+          make test-amifuse AMIFUSE_CYCLES=1 2>&1 | tee amifuse.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          {
+            python3 tests/amifuse_summary.py amifuse.log
+            [ "$rc" -eq 0 ] || printf '\n**make test-amifuse failed**, see the log of this step.\n'
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+      - name: Upload the run directory
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fat95-amifuse-runs
+          path: tests/.amifuse-runs/
+
   # FS-UAE integration suite in the amiga-fsuae image of each OS (IT_IMAGE_* in the Makefile)
   integration:
     needs: build
@@ -182,7 +211,7 @@ jobs:
 
   # the release archive from the build job's output, checked against it
   package:
-    needs: [image, lint, build, test]
+    needs: [image, lint, build, test, test-amifuse]
     runs-on: ubuntu-24.04
     container: ${{ needs.image.outputs.ref }}
     steps:
