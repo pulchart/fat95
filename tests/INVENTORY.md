@@ -287,7 +287,7 @@ Not collected by `unittest`; each one is run on its own.
 | file | status | what it checks |
 |---|---|---|
 | `amifuse_bridge.py` | library for the handler-in-the-loop tier | Raw-FAT adapter between AmiFUSE's HandlerBridge and the fat95 handler, with the observer that records what reaches the device. Patches nothing on disk; the changes are made to the imported objects at runtime. |
-| `amifuse_fat_names.py` | handler-in-the-loop tier | FAT long names with characters outside the code page: the built handler shows them as %-escapes and opens, creates, renames and deletes the right file; a Python parser and fsck.fat read the result back. |
+| `amifuse_fat_names.py` | handler-in-the-loop tier | FAT long names with characters outside the code page: the built handler shows them as %-escapes and lists, opens, edits, creates, renames and deletes the right file or directory on FAT12, FAT16 and FAT32; a Python parser and fsck.fat read the result back. |
 | `amifuse_format.py` | handler-in-the-loop tier | ACTION_FORMAT on FAT12, FAT16 and FAT32 images: fsck.fat accepts the result and the boot sectors carry the boot code stub. |
 | `amifuse_fuse.py` | handler-in-the-loop tier | Real FUSE mount, write, unmount and remount of the built handler, one run per image profile. |
 | `amifuse_images.py` | library for the handler-in-the-loop tier | Reproducible FAT fixtures and the independent oracle that checks them: a pure-Python FAT parser plus fsck.fat and mtools. Images are unpartitioned regular files; never pass a device path. |
