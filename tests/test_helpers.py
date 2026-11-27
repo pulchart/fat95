@@ -92,6 +92,32 @@ class HelperContracts(unittest.TestCase):
                     self.assertEqual(h.mem.r32(target + C["ED_Prot"]), self.protection(flags))
                 self.assertEqual(h.mem.r8(target + 1023), 0xA5)
 
+    def test_open_all_leaves_idle_requests_unqueued(self):
+        """OpenAll leaves the timer and input requests IOF_QUICK and NT_FREEMSG, so a later WaitIO neither waits nor Remove()s an unqueued node the way AROS WaitIO does for NT_REPLYMSG."""
+        h = self.h
+        h.exec_memory()
+        port = 0x5C000
+        h.mem.w8(port + C["MP_SigBit"], 9)
+        h.set("DosBase", 0x5D000)
+        h.set("pr_MsgPort", 0x5C100)
+        h.stub("AllocMsgPort", lambda: h.result(port))
+        h.stub("SafeDoIO", lambda: h.result(-1))  # no NSCMD_DEVICEQUERY
+
+        def replied():  # input.device and DoIO leave a request NT_REPLYMSG
+            h.mem.w8(h.cpu.r_reg(9) + C["LN_Type"], 7)
+            h.result(0)
+
+        h.trap(0x70000 + C["OpenDevice"], replied)
+        h.trap(0x70000 + C["DoIO"], lambda: (replied(), h.result(-1)))
+        h.trap(0x70000 + C["OpenLibrary"], lambda: h.result(0))
+        self.assertEqual(h.run("OpenAll"), 0)
+        for name in ("TimeRequest", "InputRequest"):
+            io = h.get(name)
+            with self.subTest(request=name):
+                self.assertNotEqual(io, 0)
+                self.assertEqual(h.mem.r8(io + C["IO_Flags"]) & C["IOF_QUICK"], C["IOF_QUICK"])
+                self.assertEqual(h.mem.r8(io + C["LN_Type"]), C["NT_FREEMSG"])
+
     def test_cache_init_list_sentinels_counters_registers_and_ccr(self):
         """CacheInit empties both buffer lists to their sentinel form and zeroes the in-use counters, carrying d0, d1 and a1 through with the other registers and the condition codes untouched."""
         h = self.h

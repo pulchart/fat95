@@ -582,6 +582,9 @@ IO_Sizeof	= 56
 ;IO_Flags
 IOF_QUICK	= 1
 
+;ln_Type
+NT_FREEMSG	= 6
+
 ;struct DriveGeometry
 DG_SectorSize	= 0
 DG_TotalSectors	= 4
@@ -3531,6 +3534,7 @@ oa_cend:
 
 	move.l	TimeRequest(a4),a0
 	move.b	#IOF_QUICK,IO_Flags(a0)	;WaitIO() sees Request finished
+	move.b	#NT_FREEMSG,LN_Type(a0)	;and AROS WaitIO() does not Remove() it
 
 ;- - input.device and intuition.library - - - - - - - - - -
 
@@ -3550,6 +3554,7 @@ oa_cend:
 
 	move.l	InputRequest(a4),a0
 	move.b	#IOF_QUICK,IO_Flags(a0)	;WaitIO() sees Request finished
+	move.b	#NT_FREEMSG,LN_Type(a0)	;and AROS WaitIO() does not Remove() it
 
 	moveq.l	#0,d0
 	lea	IntName(pc),a1
@@ -13955,6 +13960,7 @@ sd_ready:
 	CALLEXEC DoIO
 	move.l	TimeRequest(a4),a1
 	move.b	#IOF_QUICK,IO_Flags(a1)	;protect against double WaitIO()
+	move.b	#NT_FREEMSG,LN_Type(a1)	;AROS WaitIO() Remove()s a replied one
 	move.l	SD_WINDOW(a5),d0
 	beq.s	sd_freebuf
 
