@@ -2,9 +2,7 @@
 
 ## Requirements
 
-* vasm 2.0f (`vasmm68k_mot`), default path `/opt/vasm` (`VASM_HOME=`)
-* an amigaos-ptable checkout: `extern/ptable` submodule or `PTABLE=`
-* `../cfd/tools/md2guide.py` and python3 for the guides, `lha` for releases
+Podman and an amigaos-ptable checkout: the `extern/ptable` submodule or `PTABLE=`. Every target runs in the [amiga-toolchain](https://github.com/pulchart/container-amiga-toolchain) image, which holds vasm, vbcc, the NDK, the test and lint tools, md2guide and lha. Outside the image `make` runs the requested targets there, in one container, with the checkout and `PTABLE` mounted; inside it, as in CI, make runs them directly. make pulls a newer `latest` when the registry has one; `TOOLCHAIN_IMAGE=` selects another image, such as a dated tag or the Docker Hub copy.
 
 ## ptable.library
 
@@ -31,6 +29,8 @@ make clean; make; make guide; make release
 | `make stage` | archive tree in `build/stage` |
 | `make release` | Aminet LHA archive and readme |
 | `make test` | emulated checks on all CPU tiers |
+| `make lint` | ruff and yamllint |
+| `make test-integration` | FS-UAE integration suite, see [tests/integration](../tests/integration/README.md) |
 | `make clean`, `distclean`, `help` | cleanup, target list |
 
 ## Install script

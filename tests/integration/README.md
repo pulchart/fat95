@@ -77,7 +77,7 @@ Optional parameters: `work` (`build/integration`, for run.py alone), `fsuae` (`f
 
 ## Host tools
 
-podman; the images bring the rest. `make smoke noreq` needs vasm and vbcc with `NDK/`.
+podman; the images bring the rest. `make test-integration` builds `smoke` and `noreq` in the amiga-toolchain image first.
 
 ## Phases
 

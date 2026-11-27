@@ -147,20 +147,14 @@ else
   TESTQUIET = >/dev/null
 endif
 
-# Build tools
-VASM_HOME ?= /opt/vasm
-VASM = $(VASM_HOME)/bin/vasmm68k_mot
-EXPECTED_VASM_VERSION = 2.0f
-VBCC_HOME ?= /opt/vbcc
-VBCC = $(VBCC_HOME)/bin/vc
+# Every target runs in the amiga-toolchain image: the tools are on its PATH,
+# VBCC and NDK in its environment
+TOOLCHAIN_IMAGE ?= ghcr.io/pulchart/amiga-toolchain:latest
+#TOOLCHAIN_IMAGE ?= docker.io/pulchart/amiga-toolchain:latest
 
-# Test suite: the suites assemble src/ themselves, and FAT95_VASM is how they
-# are told to use exactly the assembler this Makefile uses.
-PYTHON ?= python3
 TESTDIR = tests
 TEST_CPUS = 68000 68020
 AMIFUSE_CYCLES ?= 100
-export FAT95_VASM = $(VASM)
 
 # Flags
 # VASMFLAGS is the base set shared by both CPU tiers; per-tier CPU flag
@@ -204,6 +198,42 @@ PTABLE ?= extern/ptable
 PTABLE_VERSION_FILE = $(PTABLE)/dist/ptable.version
 PTABLE_LSPTRES_VERSION_FILE = $(PTABLE)/dist/lsptres.version
 
+# Outside the image make runs the goals in TOOLCHAIN_IMAGE, pulled when the registry
+# has a newer one; the checkout, PTABLE and their git dirs are mounted at their paths
+ifeq ($(wildcard /usr/share/amiga-toolchain/toolchain.json),)
+GOALS  := $(filter-out test-integration,$(or $(MAKECMDGOALS),all))
+gitdir  = $(shell d=$$(git -C $(1) rev-parse --git-common-dir 2>/dev/null) && cd $(1) && cd "$$d" && pwd)
+MOUNTS := $(sort $(filter-out $(CURDIR) $(CURDIR)/%,$(call gitdir,.) $(abspath $(PTABLE)) $(call gitdir,$(PTABLE))))
+ifneq ($(GOALS),)
+.PHONY: $(GOALS)
+$(firstword $(GOALS)):
+	@podman run --rm --pull=newer --security-opt label=disable -v $(CURDIR):$(CURDIR) -w $(CURDIR) \
+		$(foreach d,$(MOUNTS),-v $(d):$(d)) $(TOOLCHAIN_IMAGE) make $(MAKEOVERRIDES) $(GOALS)
+$(wordlist 2,$(words $(GOALS)),$(GOALS)):
+	@:
+endif
+
+# FS-UAE integration suite: the guest tools built in TOOLCHAIN_IMAGE, then
+# tests/integration/run.py in the amiga-fsuae image of each OS in IT_OS, one
+# after another. Needs the build (make). IT_WORK is the run directory, IT
+# passes options to run.py. The AmigaOS images are built locally.
+IT_OS ?= 3.2.3 3.1 aros apolloos
+IT_IMAGE_3.2.3 = localhost/amiga-fsuae-amigaos:3.2.3
+IT_IMAGE_3.1 = localhost/amiga-fsuae-amigaos:3.1
+IT_IMAGE_aros = docker.io/pulchart/amiga-fsuae-aros:latest
+IT_IMAGE_apolloos = ghcr.io/pulchart/amiga-fsuae-apolloos:latest
+IT_WORK := build/integration/$(shell date +%Y%m%d-%H%M%S)
+.PHONY: test-integration
+test-integration:
+	@podman run --rm --pull=newer --security-opt label=disable -v $(CURDIR):$(CURDIR) -w $(CURDIR) \
+		$(foreach d,$(MOUNTS),-v $(d):$(d)) $(TOOLCHAIN_IMAGE) make $(MAKEOVERRIDES) smoke noreq
+	@mkdir -p $(IT_WORK); rc=0; $(foreach os,$(IT_OS),podman run --rm --pull=newer \
+		--security-opt label=disable -v $(CURDIR):$(CURDIR) -w $(CURDIR) \
+		-v $(abspath $(IT_WORK)):$(abspath $(IT_WORK)) \
+		$(IT_IMAGE_$(os)) python3 $(TESTDIR)/integration/run.py --os $(os) \
+		--work $(abspath $(IT_WORK))/$(os) $(IT) || rc=1;) exit $$rc
+else
+
 # Files: Driver
 SOURCE = $(SRCDIR)/fat95.s
 VARS_INC = $(SRCDIR)/fat95_vars.i
@@ -243,7 +273,7 @@ LHA = lha
 # ============================================================
 
 # Default target: build both CPU tiers + all tools
-all: check-vasm version-readme $(DRIVER_TARGETS) $(TARGET_INSTALL95) $(TARGET_DD) $(TARGET_DEBUG95) $(TARGET_SETFILESIZE) $(TARGET_BOOT95) $(TARGET_LSFSRES)
+all: version-readme $(DRIVER_TARGETS) $(TARGET_INSTALL95) $(TARGET_DD) $(TARGET_DEBUG95) $(TARGET_SETFILESIZE) $(TARGET_BOOT95) $(TARGET_LSFSRES)
 
 # Generate version include file (always check, only update if changed)
 # Uses a stamp file to track the current version string
@@ -261,13 +291,12 @@ $(VERSION_STAMP): FORCE
 
 # Build ptable.library (small, full) + lsptres in the ptable repo and stage the
 # built artifacts into dist/ for the release; nothing ptable-owned is rebuilt
-# here, so every release ships the ptable-built bytes. MD2GUIDE/NDK are passed
-# as absolute paths: the submodule's own relative defaults do not resolve from
-# inside extern/ptable. Phony; a missing $(PTABLE) is a soft skip.
+# here, so every release ships the ptable-built bytes. Phony; a missing
+# $(PTABLE) is a soft skip.
 .PHONY: ptable-bundle
 ptable-bundle:
 	$(Q)if [ -f "$(PTABLE)/Makefile" ]; then \
-		$(MAKE) -C "$(PTABLE)" all guides MD2GUIDE=$(abspath $(MD2GUIDE)) NDK=$(abspath NDK) >/dev/null; \
+		$(MAKE) -C "$(PTABLE)" all guides >/dev/null; \
 		for f in $(PLIB_FLAVORS); do \
 			mkdir -p dist/libs/$$f; \
 			cp "$(PTABLE)/dist/$$f/ptable.library" dist/libs/$$f/; \
@@ -365,76 +394,76 @@ $(VERSION_LSFSRES_INC): $(VERSION_STAMP)
 
 # Build fat95 handler, Apollo 68080 tier
 $(TARGET_080): $(SOURCE) $(VARS_INC) $(VERSION_FAT95_INC) tools/parse_debug95.py
-	$(Q)$(PYTHON) tools/parse_debug95.py --check --vars $(VARS_INC) --source $(SOURCE)
+	$(Q)python3 tools/parse_debug95.py --check --vars $(VARS_INC) --source $(SOURCE)
 	$(Q)mkdir -p $(OUTDIR_080)
 	$(Q)echo "  VASM    $@ [68080]"
-	$(Q)$(VASM) $(VASMFLAGS) $(HANDLERFLAGS) $(VASMCPU_080) -o $@ $<
+	$(Q)vasmm68k_mot $(VASMFLAGS) $(HANDLERFLAGS) $(VASMCPU_080) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
 # Build fat95 handler, 68020+ tier
 $(TARGET_020): $(SOURCE) $(VARS_INC) $(VERSION_FAT95_INC) tools/parse_debug95.py
-	$(Q)$(PYTHON) tools/parse_debug95.py --check --vars $(VARS_INC) --source $(SOURCE)
+	$(Q)python3 tools/parse_debug95.py --check --vars $(VARS_INC) --source $(SOURCE)
 	$(Q)mkdir -p $(OUTDIR_020)
 	$(Q)echo "  VASM    $@ [68020+]"
-	$(Q)$(VASM) $(VASMFLAGS) $(HANDLERFLAGS) $(VASMCPU_020) -o $@ $<
+	$(Q)vasmm68k_mot $(VASMFLAGS) $(HANDLERFLAGS) $(VASMCPU_020) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
 # Build fat95 handler, 68000 tier
 $(TARGET_000): $(SOURCE) $(VARS_INC) $(VERSION_FAT95_INC) tools/parse_debug95.py
-	$(Q)$(PYTHON) tools/parse_debug95.py --check --vars $(VARS_INC) --source $(SOURCE)
+	$(Q)python3 tools/parse_debug95.py --check --vars $(VARS_INC) --source $(SOURCE)
 	$(Q)mkdir -p $(OUTDIR_000)
 	$(Q)echo "  VASM    $@ [68000]"
-	$(Q)$(VASM) $(VASMFLAGS) $(HANDLERFLAGS) $(VASMCPU_000) -o $@ $<
+	$(Q)vasmm68k_mot $(VASMFLAGS) $(HANDLERFLAGS) $(VASMCPU_000) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
 # Build tools (single tier: 68000)
 $(TARGET_INSTALL95): $(SOURCE_INSTALL95) $(VERSION_INSTALL95_INC)
 	$(Q)mkdir -p $(OUTDIR)
 	$(Q)echo "  VASM    $@"
-	$(Q)$(VASM) $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
+	$(Q)vasmm68k_mot $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
 $(TARGET_DD): $(SOURCE_DD) $(VERSION_DD_INC) $(SRCDIR)/paging.i
 	$(Q)mkdir -p c
 	$(Q)echo "  VASM    $@"
-	$(Q)$(VASM) $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
+	$(Q)vasmm68k_mot $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
 $(TARGET_DEBUG95): $(SOURCE_DEBUG95) $(VERSION_DEBUG95_INC)
 	$(Q)mkdir -p c
 	$(Q)echo "  VASM    $@"
-	$(Q)$(VASM) $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
+	$(Q)vasmm68k_mot $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
 $(TARGET_SETFILESIZE): $(SOURCE_SETFILESIZE) $(VERSION_SETFILESIZE_INC)
 	$(Q)mkdir -p c
 	$(Q)echo "  VASM    $@"
-	$(Q)$(VASM) $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
+	$(Q)vasmm68k_mot $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
 $(TARGET_BOOT95): $(SOURCE_BOOT95) $(VERSION_BOOT95_INC)
 	$(Q)mkdir -p c
 	$(Q)echo "  VASM    $@"
-	$(Q)$(VASM) $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
+	$(Q)vasmm68k_mot $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
 $(TARGET_LSFSRES): $(SOURCE_LSFSRES) $(VERSION_LSFSRES_INC) $(SRCDIR)/paging.i
 	$(Q)mkdir -p c
 	$(Q)echo "  VASM    $@"
-	$(Q)$(VASM) $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
+	$(Q)vasmm68k_mot $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
 	$(Q)echo "          $$(stat -c%s $@) bytes, md5:$$(md5sum $@ | cut -c1-8)"
 
 # Convenience phonies per tier
-fat95: check-vasm $(DRIVER_TARGETS)
-fat95-080: check-vasm $(TARGET_080)
-fat95-020: check-vasm $(TARGET_020)
-fat95-000: check-vasm $(TARGET_000)
-install95: check-vasm $(TARGET_INSTALL95)
-dd: check-vasm $(TARGET_DD)
-debug95: check-vasm $(TARGET_DEBUG95)
-setfilesize: check-vasm $(TARGET_SETFILESIZE)
-boot95: check-vasm $(TARGET_BOOT95)
-lsfsres: check-vasm $(TARGET_LSFSRES)
+fat95: $(DRIVER_TARGETS)
+fat95-080: $(TARGET_080)
+fat95-020: $(TARGET_020)
+fat95-000: $(TARGET_000)
+install95: $(TARGET_INSTALL95)
+dd: $(TARGET_DD)
+debug95: $(TARGET_DEBUG95)
+setfilesize: $(TARGET_SETFILESIZE)
+boot95: $(TARGET_BOOT95)
+lsfsres: $(TARGET_LSFSRES)
 
 # ============================================================
 # Test targets
@@ -455,64 +484,52 @@ smoke: $(TARGET_SMOKE)
 $(TARGET_SMOKE): $(SOURCE_SMOKE) Makefile
 	$(Q)mkdir -p $(dir $@)
 	$(Q)echo "  VBCC    $@"
-	$(Q)VBCC=$(VBCC_HOME) PATH=$(VBCC_HOME)/bin:$$PATH $(VBCC) +aos68k -O2 -c99 -INDK/Include_H -o $@ $< -lamiga
+	$(Q)vc +aos68k -O2 -c99 -I$(NDK)/Include_H -o $@ $< -lamiga
 
 # noreq: guest tool of the integration suite, not shipped.
 SOURCE_NOREQ = tools/noreq.asm
 TARGET_NOREQ = build/tools/noreq
-noreq: check-vasm $(TARGET_NOREQ)
+noreq: $(TARGET_NOREQ)
 $(TARGET_NOREQ): $(SOURCE_NOREQ) Makefile
 	$(Q)mkdir -p $(dir $@)
 	$(Q)echo "  VASM    $@"
-	$(Q)$(VASM) -quiet $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
+	$(Q)vasmm68k_mot -quiet $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
 
-# FS-UAE integration suite: run.py in an amiga-fsuae OS image per OS, one
-# after another. IT_OS picks the OSes, IT_WORK the run directory, IT passes
-# options to run.py. The AmigaOS images are built locally.
-IT_OS ?= 3.2.3 3.1 aros apolloos
-IT_IMAGE_3.2.3 = localhost/amiga-fsuae-amigaos:3.2.3
-IT_IMAGE_3.1 = localhost/amiga-fsuae-amigaos:3.1
-IT_IMAGE_aros = docker.io/pulchart/amiga-fsuae-aros:latest
-IT_IMAGE_apolloos = ghcr.io/pulchart/amiga-fsuae-apolloos:latest
-IT_WORK := build/integration/$(shell date +%Y%m%d-%H%M%S)
-test-integration: $(TARGET_SMOKE) $(TARGET_NOREQ)
-	$(Q)mkdir -p $(IT_WORK); rc=0; $(foreach os,$(IT_OS),podman run --rm --pull=newer \
-		--security-opt label=disable -v $(CURDIR):$(CURDIR) -w $(CURDIR) \
-		-v $(abspath $(IT_WORK)):$(abspath $(IT_WORK)) \
-		$(IT_IMAGE_$(os)) python3 $(TESTDIR)/integration/run.py --os $(os) \
-		--work $(abspath $(IT_WORK))/$(os) $(IT) || rc=1;) exit $$rc
+# FS-UAE integration suite: runs outside the toolchain image, see above.
+test-integration:
+	@echo "make test-integration runs the amiga-fsuae images, call it outside the toolchain image" >&2; exit 1
 
 # Must also run when vasm is missing.
 check-test-deps:
-	$(Q)$(PYTHON) $(TESTDIR)/deps.py
+	$(Q)python3 $(TESTDIR)/deps.py
 
-test: check-vasm
+test:
 	$(Q)for cpu in $(TEST_CPUS); do \
 		echo "  TEST    unittest [$$cpu]"; \
-		FAT95_TEST_CPU=$$cpu $(PYTHON) -m unittest discover -s $(TESTDIR) $(TESTFLAGS) || exit 1; \
+		FAT95_TEST_CPU=$$cpu python3 -m unittest discover -s $(TESTDIR) $(TESTFLAGS) || exit 1; \
 		for check in $(TEST_CHECKS); do \
 			echo "  CHECK   $$check [$$cpu]"; \
-			FAT95_TEST_CPU=$$cpu $(PYTHON) $(TESTDIR)/$$check $(TESTQUIET) || exit 1; \
+			FAT95_TEST_CPU=$$cpu python3 $(TESTDIR)/$$check $(TESTQUIET) || exit 1; \
 		done; \
 	done
 
 # Optional image tests; missing dependencies are errors when requested.
-test-amifuse: check-vasm $(TARGET_020)
-	$(Q)$(PYTHON) -c 'import amifuse' >/dev/null 2>&1 || { \
+test-amifuse: $(TARGET_020)
+	$(Q)python3 -c 'import amifuse' >/dev/null 2>&1 || { \
 		echo "ERROR: amifuse is not installed, so this tier cannot run"; \
 		echo "       pip install -r $(TESTDIR)/requirements-amifuse.txt"; \
 		echo "       run 'make check-test-deps' for the full list"; \
 		exit 1; \
 	}
-	$(Q)$(PYTHON) $(TESTDIR)/amifuse_suite.py --cycles $(AMIFUSE_CYCLES)
-	$(Q)$(PYTHON) $(TESTDIR)/amifuse_media.py --suite
-	$(Q)$(PYTHON) $(TESTDIR)/amifuse_format.py
-	$(Q)$(PYTHON) $(TESTDIR)/amifuse_fat_names.py
-	$(Q)$(PYTHON) $(TESTDIR)/amifuse_full_dir.py
+	$(Q)python3 $(TESTDIR)/amifuse_suite.py --cycles $(AMIFUSE_CYCLES)
+	$(Q)python3 $(TESTDIR)/amifuse_media.py --suite
+	$(Q)python3 $(TESTDIR)/amifuse_format.py
+	$(Q)python3 $(TESTDIR)/amifuse_fat_names.py
+	$(Q)python3 $(TESTDIR)/amifuse_full_dir.py
 
 # Per-test inventory in tests/INVENTORY.md, built from the docstrings
 test-list-update:
-	$(Q)$(PYTHON) $(TESTDIR)/list_tests.py
+	$(Q)python3 $(TESTDIR)/list_tests.py
 	$(Q)echo "Updated: $(TESTDIR)/INVENTORY.md"
 
 # ============================================================
@@ -551,25 +568,6 @@ $(README_NAME): $(README_TEMPLATE) $(TOOLS_TARGETS)
 # Generate readme only
 readme: $(README_NAME)
 
-# Check if vasm is installed and expected version
-check-vasm:
-	@[ -x "$(VASM)" ] || { \
-		echo "ERROR: vasm command not found: $(VASM)"; \
-		echo "Set VASM_HOME to your vasm installation (expected $(EXPECTED_VASM_VERSION))"; \
-		exit 1; \
-	}
-	@version_output="$$( $(VASM) -v 2>&1 )"; \
-	detected_version="$$( printf '%s\n' "$$version_output" | sed '/./!d' | sed -n '1p' )"; \
-	case "$$version_output" in \
-		*"$(EXPECTED_VASM_VERSION)"*) ;; \
-		*) \
-			echo "ERROR: unsupported vasm version!"; \
-			echo "Expected: $(EXPECTED_VASM_VERSION)"; \
-			echo "Detected: $${detected_version:-<no output>}"; \
-			exit 1; \
-			;; \
-	esac
-
 # Check if lha is installed
 check-lha:
 	@command -v $(LHA) >/dev/null 2>&1 || { echo "ERROR: lha not found (sudo dnf install lha)"; exit 1; }
@@ -580,7 +578,7 @@ STAGE   = build/stage
 INSTALL = install
 LOCALES       = english cestina dansk deutsch espanol francais greek italiano magyar nederlands norsk polski portugues russian svenska turkce
 
-stage: check-vasm version-readme all $(README_NAME) guide
+stage: version-readme all $(README_NAME) guide
 	$(Q)rm -rf $(STAGE)
 	$(Q)mkdir -p $(STAGE)/fat95/c $(STAGE)/fat95/src $(STAGE)/fat95/docs $(STAGE)/fat95/locale
 	$(Q)for c in $(CPUS); do mkdir -p $(STAGE)/fat95/l/$$c; cp $(OUTDIR)/$$c/fat95 $(STAGE)/fat95/l/$$c/; done
@@ -643,8 +641,7 @@ help:
 	@echo ""
 	@echo "Options:"
 	@echo "  V=1                 - Verbose output (show full assembler messages)"
-	@echo "  VASM_HOME=/opt/vbcc - vasm installation path"
-	@echo "  VBCC_HOME=/opt/vbcc - vbcc installation path"
+	@echo "  TOOLCHAIN_IMAGE=... - amiga-toolchain image the targets run in"
 	@echo "  FAT95_TEST_CPU=68020 - CPU tier for a direct python test run"
 	@echo "  TEST_CPUS=68020    - Run make test on one CPU tier"
 	@echo "  AMIFUSE_CYCLES=1    - Restart cycles per test-amifuse case (default $(AMIFUSE_CYCLES))"
@@ -702,33 +699,34 @@ GUIDE_DD         = $(GUIDE_OUTPUT_DIR)/dd.guide
 GUIDE_LSFSRES    = $(GUIDE_OUTPUT_DIR)/lsfsres.guide
 GUIDE_DEBUG95    = $(GUIDE_OUTPUT_DIR)/debug95.guide
 GUIDE_LSPTRES    = $(GUIDE_OUTPUT_DIR)/lsptres.guide
-MD2GUIDE = ../cfd/tools/md2guide.py
 
 guide guides: $(GUIDE_FAT95) $(GUIDE_CHANGES) $(GUIDE_DD) $(GUIDE_LSFSRES) $(GUIDE_DEBUG95)
 
-$(GUIDE_FAT95): README.md $(MD2GUIDE)
+$(GUIDE_FAT95): README.md
 	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
 	$(Q)echo "  GUIDE   $@"
-	$(Q)python3 $(MD2GUIDE) README.md $@ --version $(VERSION) --date $(DATE) --title "fat95" --ver-title "fat95 guide"
+	$(Q)md2guide README.md $@ --version $(VERSION) --date $(DATE) --title "fat95" --ver-title "fat95 guide"
 
-$(GUIDE_CHANGES): docs/changes.md $(MD2GUIDE) Makefile
+$(GUIDE_CHANGES): docs/changes.md Makefile
 	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
 	$(Q)echo "  GUIDE   $@"
-	$(Q)python3 $(MD2GUIDE) docs/changes.md $@ --version $(VERSION) --date $(DATE) --title "fat95 release notes" --ver-title "fat95 release notes guide"
+	$(Q)md2guide docs/changes.md $@ --version $(VERSION) --date $(DATE) --title "fat95 release notes" --ver-title "fat95 release notes guide"
 
-$(GUIDE_DD): docs/dd.md $(MD2GUIDE) $(VERSION_STAMP)
+$(GUIDE_DD): docs/dd.md $(VERSION_STAMP)
 	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
 	$(Q)echo "  GUIDE   $@"
-	$(Q)python3 $(MD2GUIDE) docs/dd.md $@ --version $(DD_VERSION) --date $(DD_DATE) --title "dd" --ver-title "dd guide"
+	$(Q)md2guide docs/dd.md $@ --version $(DD_VERSION) --date $(DD_DATE) --title "dd" --ver-title "dd guide"
 
-$(GUIDE_LSFSRES): docs/lsfsres.md $(MD2GUIDE) $(VERSION_STAMP)
+$(GUIDE_LSFSRES): docs/lsfsres.md $(VERSION_STAMP)
 	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
 	$(Q)echo "  GUIDE   $@"
-	$(Q)python3 $(MD2GUIDE) docs/lsfsres.md $@ --version $(LSFSRES_VERSION) --date $(LSFSRES_DATE) --title "lsfsres" --ver-title "lsfsres guide"
+	$(Q)md2guide docs/lsfsres.md $@ --version $(LSFSRES_VERSION) --date $(LSFSRES_DATE) --title "lsfsres" --ver-title "lsfsres guide"
 
-$(GUIDE_DEBUG95): docs/debug95.md $(MD2GUIDE) $(VERSION_STAMP)
+$(GUIDE_DEBUG95): docs/debug95.md $(VERSION_STAMP)
 	$(Q)mkdir -p $(GUIDE_OUTPUT_DIR)
 	$(Q)echo "  GUIDE   $@"
-	$(Q)python3 $(MD2GUIDE) docs/debug95.md $@ --version $(DEBUG95_VERSION) --date $(DEBUG95_DATE) --title "debug95" --ver-title "debug95 guide"
+	$(Q)md2guide docs/debug95.md $@ --version $(DEBUG95_VERSION) --date $(DEBUG95_DATE) --title "debug95" --ver-title "debug95 guide"
 
-.PHONY: all fat95 fat95-080 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide guides help version-readme stage FORCE test test-amifuse test-list-update check-test-deps lint test-integration smoke noreq
+.PHONY: all fat95 fat95-080 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-lha guide guides help version-readme stage FORCE test test-amifuse test-list-update check-test-deps lint test-integration smoke noreq
+
+endif
