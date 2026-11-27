@@ -7,3 +7,7 @@ __pycache__/
 tests/.amifuse-runs/
 build/
 NDK
+dist/c/
+dist/docs/
+dist/l/
+dist/libs/
