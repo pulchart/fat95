@@ -7939,6 +7939,8 @@ lob_copy:
 	move.w	LOB_TO+4(a5),XMSDE_ExtOffset(a2)
 	move.l	LOB_TO(a5),XMSDE_ExtKey(a2)
 	beq.w	lob_ready		;dir full
+	move.l	LOB_TO(a5),XMSDE_Key(a2) ;a free slot, not the last entry read
+	move.w	LOB_TO+4(a5),XMSDE_Offset(a2)
 
 	moveq.l	#$ffffff80,d0
 	or.l	d4,d0			;no special modes
