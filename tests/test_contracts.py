@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from harness import BASE, BB, BUFFER, C, CPU, GLOBALS, WINDOW, Handler, load
+from harness import BB, C, WINDOW, Handler, load
 
 FSINFO_LBA = 2049  # FirstBlock 2048 + FSInfoBlock 1
 FAT_LBA = (2080, 2208)  # both FAT copies

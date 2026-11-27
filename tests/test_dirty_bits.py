@@ -5,7 +5,7 @@ Run: make test"""
 import tempfile
 import unittest
 from pathlib import Path
-from harness import Handler, C, CPU, WINDOW, BUFFER, load
+from harness import Handler, C, WINDOW, BUFFER, load
 
 
 class DirtyBitTests(unittest.TestCase):

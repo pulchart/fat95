@@ -45,7 +45,7 @@ class Documented(unittest.TestCase):
             .partition(list_tests.END)[0]
             .splitlines()
         )
-        for line, (have, want) in enumerate(zip(current, expected), 1):
+        for line, (have, want) in enumerate(zip(current, expected, strict=False), 1):
             self.assertEqual(
                 have, want, "stale inventory at line %d: run make test-list-update" % line
             )

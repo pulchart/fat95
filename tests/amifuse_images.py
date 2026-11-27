@@ -50,8 +50,13 @@ def inspect_image(path):
     """Read geometry, FAT allocation and markers without mounting or writing."""
     with _regular(path).open("rb") as image:
         boot = image.read(512)
-        u16 = lambda offset: struct.unpack_from("<H", boot, offset)[0]
-        u32 = lambda offset: struct.unpack_from("<I", boot, offset)[0]
+
+        def u16(offset):
+            return struct.unpack_from("<H", boot, offset)[0]
+
+        def u32(offset):
+            return struct.unpack_from("<I", boot, offset)[0]
+
         sector, spc, reserved, copies = u16(11), boot[13], u16(14), boot[16]
         if boot[510:512] != b"\x55\xaa" or sector != 512 or not spc or not copies:
             raise ValueError("Invalid or unsupported FAT boot sector")

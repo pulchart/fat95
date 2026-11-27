@@ -5,7 +5,7 @@ Run: make test"""
 import tempfile
 import unittest
 from pathlib import Path
-from harness import Handler, C, CPU, GLOBALS, WINDOW, BB, BUFFER, load
+from harness import Handler, C, GLOBALS, WINDOW, BB, BUFFER, load
 
 
 class IntegrationTests(unittest.TestCase):

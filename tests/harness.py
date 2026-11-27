@@ -8,6 +8,7 @@ Set FAT95_TEST_CPU=68020 to test the 68020 build (default: 68000).
 Status: library, imported by every suite. No disk device is ever opened.
 """
 
+import contextlib
 import re
 
 from amitools.binfmt.Relocate import Relocate
@@ -16,7 +17,10 @@ from amitools.vamos.machine import Machine
 # Re-exported so every suite can keep importing them from here. Bind the names,
 # never reach for toolchain.CPU at a use site: audit_selector.py rebinds
 # harness.CPU to sweep both CPU tiers and Handler reads that module global.
-from toolchain import ROOT, CPU, VASM, assemble, load
+from toolchain import ROOT, CPU
+from toolchain import VASM as VASM
+from toolchain import assemble as assemble
+from toolchain import load as load
 
 BASE, GLOBALS, REQUEST, BUFFER, WINDOW, BB, STACK = (
     0x10000,
@@ -39,10 +43,8 @@ def constants():
             expr = re.sub(r"%([01]+)", r"0b\1", expr)
             # Only evaluate arithmetic constant declarations from this source.
             if re.fullmatch(r"[\w\s+*/()<>|&~^-]+", expr):
-                try:
+                with contextlib.suppress(NameError, SyntaxError, TypeError):
                     result[name] = int(eval(expr, {"__builtins__": {}}, result))
-                except (NameError, SyntaxError, TypeError):
-                    pass
     return result
 
 

@@ -41,8 +41,13 @@ def make_image(path, bits, files):
 def scan(image):
     """Every file and directory (path -> (attributes, time, date, contents or None)), read by a small parser that checks every long name checksum."""
     data = Path(image).read_bytes()
-    u16 = lambda at: int.from_bytes(data[at : at + 2], "little")
-    u32 = lambda at: int.from_bytes(data[at : at + 4], "little")
+
+    def u16(at):
+        return int.from_bytes(data[at : at + 2], "little")
+
+    def u32(at):
+        return int.from_bytes(data[at : at + 4], "little")
+
     sector, per_cluster, reserved, copies = u16(11), data[13], u16(14), data[16]
     fat_sectors = u16(22) or u32(36)
     root_sectors = (u16(17) * 32 + sector - 1) // sector
@@ -378,7 +383,7 @@ def attributes(b, name):
     b.launcher.send_packet(b.state, 21, [0, 0, bname, 5])  # ACTION_SET_PROTECT: no write, no delete
     okay(b._run_until_replies()[-1][2:])
     stamp = b.vh.alloc.alloc_memory(12, label="stamp")
-    for offset, value in zip((0, 4, 8), STAMP):
+    for offset, value in zip((0, 4, 8), STAMP, strict=True):
         b.mem.w32(stamp.addr + offset, value)
     b.launcher.send_packet(b.state, 34, [0, 0, bname, stamp.addr])  # ACTION_SET_DATE
     okay(b._run_until_replies()[-1][2:])

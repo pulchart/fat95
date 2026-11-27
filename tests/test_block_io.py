@@ -67,7 +67,7 @@ class BlockIOTests(unittest.TestCase):
             h.close()
 
     def test_td64_requests_cross_four_gib(self):
-        """TD64 preserves the high offset across 4 GiB for 512–4096-byte blocks."""
+        """TD64 preserves the high offset across 4 GiB for 512-4096-byte blocks."""
         for write in (False, True):
             for size in (512, 1024, 4096):
                 with self.subTest(write=write, size=size):
