@@ -2,14 +2,17 @@
 """fat95 under AmigaOS and AROS in FS-UAE (A1200): PC floppies through
 mfm.device and IDE disks with FAT partitions.
 
-    run.py [--config FILE] [--os NAME ...] [--scenario NAME ...] [--list] [--work DIR]
+    run.py --os NAME [--config FILE] [--scenario NAME ...] [--work DIR]
+    run.py --list
 
-Preparation builds the boot medium per OS: an AmigaOS boot disk from the OS
-disks named in the config, or a copy of an AROS system directory, with fat95,
-dd, lsfsres and the test tools (smoke from make smoke) on it. Each scenario gets its own medium image,
-mountlist and steps; the guest writes its findings to the host directory OUT:,
-and the host checks them and the image. Exit 0 when every scenario that ran
-passes; an OS whose files are missing is skipped.
+Runs in an amiga-fsuae OS image (make test-integration): AMIGA_SYSTEM is the
+system directory, AMIGA_KICKSTART the ROM, AMIGA_KICKSTART_EXT its second half
+and AMIGA_HD_CONTROLLER the FS-UAE controller for disks, if any. --os names
+the OS profile of the config, its settings and scenarios. Preparation copies the system directory and puts fat95, dd,
+lsfsres and the test tools (smoke and noreq from make) on it. Each scenario
+gets its own medium image, mountlist and steps; the guest writes its findings
+to the host directory OUT:, and the host checks them and the image. Exit 0
+when every scenario passes.
 """
 
 import argparse
@@ -35,23 +38,14 @@ BUILDS = {
     "dd": "dist/c/dd",
     "lsfsres": "dist/c/lsfsres",
     "debug95": "dist/c/debug95",
+    "ptable": "dist/libs/full/68020/ptable.library",  # make with PTABLE= puts it there
 }
 PATH_KEYS = ("fat95", "dd", "lsfsres", "debug95", "ptable", "work", "fsst")
-OS_PATH_KEYS = ("kickstart", "kickstart_ext", "commands_adf", "workbench_adf", "system_dir")
 SMOKE = ROOT / "build/tools/smoke"  # make smoke
+NOREQ = ROOT / "build/tools/noreq"  # make noreq
 
 sys.path.insert(0, str(ROOT / "tools"))
 import parse_debug95  # noqa: E402
-
-COMMANDS = ["Assign", "Copy", "Delete", "DiskChange", "Execute", "Info", "List",
-            "MakeDir", "Mount", "SetPatch", "Version", "Wait"]  # fmt: skip
-
-# pr_WindowPtr -1 for the shell process: a missing volume is an error, not a
-# requester that waits forever
-NOREQ = (
-    "\tmove.l\t4.w,a6\n\tsub.l\ta1,a1\n\tjsr\t-294(a6)\n\tmove.l\td0,a0\n"
-    "\tmoveq\t#-1,d0\n\tmove.l\td0,184(a0)\n\tmoveq\t#0,d0\n\trts\n"
-)
 
 STARTUP = """SetPatch >NIL:
 FailAt 200
@@ -91,27 +85,14 @@ def sh(*a, **k):
     return subprocess.run([str(x) for x in a], check=True, capture_output=True, **k)
 
 
-def adf_read(adf, path, dest):
-    """Read path from an ADF; a compressed update file (name.Z) is unpacked."""
-    for name in (path, path + ".Z"):
-        r = subprocess.run(["xdftool", str(adf), "read", name, str(dest)], capture_output=True)
-        if r.returncode == 0 and dest.exists():
-            if name.endswith(".Z"):
-                data = subprocess.run(["gzip", "-dc", str(dest)], capture_output=True, check=True)
-                dest.write_bytes(data.stdout)
-            return True
-    return False
-
-
-def prepare(cfg, osname, osc, work):
-    """The boot medium for one OS; returns the FS-UAE lines that attach it."""
-    prep = work / osname / "boot"
-    prep.mkdir(parents=True)
-    s = prep / "noreq.s"
-    s.write_text(NOREQ)
-    sh(cfg["vasm"], "-quiet", "-Fhunkexe", "-o", prep / "noreq", s)
+def prepare(cfg, osc, work):
+    """The boot volume, a copy of the system directory; returns the FS-UAE
+    lines that attach it."""
+    sysdir = work / "boot"
+    shutil.copytree(os.environ["AMIGA_SYSTEM"], sysdir, symlinks=True)
+    subprocess.run(["chmod", "-R", "u+w", str(sysdir)], check=True)  # an ISO tree is read-only
     payload = [
-        (prep / "noreq", "C/noreq"),
+        (NOREQ, "C/noreq"),
         (SMOKE, "C/smoke"),
         (cfg["dd"], "C/dd"),
         (cfg["lsfsres"], "C/lsfsres"),
@@ -119,33 +100,11 @@ def prepare(cfg, osname, osc, work):
     ]
     if osc.get("ptable", True):  # fat95 reads partition tables through it
         payload.append((cfg["ptable"], "Libs/ptable.library"))
-    if "system_dir" in osc:  # AROS: boot from a directory
-        sysdir = prep / "sys"
-        shutil.copytree(osc["system_dir"], sysdir, symlinks=True)
-        subprocess.run(["chmod", "-R", "u+w", str(sysdir)], check=True)  # an ISO tree is read-only
-        for src, dest in payload:
-            shutil.copyfile(src, sysdir / dest)
-        (sysdir / "S/Startup-Sequence").write_text(STARTUP.replace("SetPatch >NIL:\n", ""))
-        return [
-            "hard_drive_2 = %s" % sysdir,
-            "hard_drive_2_label = Boot",
-            "hard_drive_2_priority = 10",
-        ]
-    adf = prep / "boot.adf"
-    sh("xdftool", adf, "create", "+", "format", "TestBoot", "DOS3", "+", "boot", "install")
-    for d in ("C", "S", "L", "Libs", "Devs"):
-        sh("xdftool", adf, "makedir", d)
-    for cmd in COMMANDS:
-        if not any(adf_read(a, "C/" + cmd, prep / cmd) for a in osc["commands_adf"]):
-            sys.exit("C/%s is on none of %s" % (cmd, ", ".join(map(str, osc["commands_adf"]))))
-        sh("xdftool", adf, "write", prep / cmd, "C/" + cmd)
-    if adf_read(osc["workbench_adf"], "Devs/mfm.device", prep / "mfm.device"):
-        payload.append((prep / "mfm.device", "Devs/mfm.device"))
     for src, dest in payload:
-        sh("xdftool", adf, "write", src, dest)
-    (prep / "startup").write_text(STARTUP)
-    sh("xdftool", adf, "write", prep / "startup", "S/Startup-Sequence")
-    return ["floppy_drive_0 = %s" % adf, "writable_floppy_images = 0"]
+        shutil.copyfile(src, sysdir / dest)
+    startup = STARTUP if osc.get("setpatch", True) else STARTUP.replace("SetPatch >NIL:\n", "")
+    (sysdir / "S/Startup-Sequence").write_text(startup)
+    return ["hard_drive_2 = %s" % sysdir, "hard_drive_2_label = Boot", "hard_drive_2_priority = 10"]
 
 
 def fat_volume(path, fs, sectors, payload):
@@ -318,7 +277,7 @@ def emulate(cfg, d, cfgfile, limit, name):
 
 
 def run(cfg, osname, osc, boot, work, name, sc):
-    d = work / osname / name
+    d = work / name
     for sub in ("out", "xdg", "base"):
         (d / sub).mkdir(parents=True)
     out = d / "out"
@@ -349,11 +308,10 @@ def run(cfg, osname, osc, boot, work, name, sc):
         ]
     else:  # a whole disk: type hdf would wrap it in a made-up RDB
         attach = ["hard_drive_1 = %s" % image, "hard_drive_1_type = rdb",
-                  "hard_drive_1_controller = %s" % osc.get("ide_controller", "ide0")]  # fmt: skip
+                  "hard_drive_1_controller = %s" % os.environ.get("AMIGA_HD_CONTROLLER", "ide0")]  # fmt: skip
     serial = d / "serial.txt"
     serial.touch()
-    rom = str(osc["kickstart"])
-    ext = osc.get("kickstart_ext") or (rom[:-2] + "E0" if rom.endswith(".F8") else None)
+    rom, ext = os.environ["AMIGA_KICKSTART"], os.environ.get("AMIGA_KICKSTART_EXT")
     cpu = osc.get("cpu", "68020")
     speed = []
     if sc.get("fast"):  # sizes and contents, not timing: 68040 with JIT
@@ -412,41 +370,18 @@ def resolve(value):
 def load_config(path):
     cfg = {
         "fsuae": "fs-uae",
-        "vasm": "vasmm68k_mot",
         "wait": 5,
         "limit": 240,
         "work": "build/integration",
     }
     cfg.update(BUILDS)
     cfg.update(yaml.safe_load(path.read_text()) or {})
-    missing = [k for k in ("os", "ptable") if k not in cfg]
-    for name, osc in (cfg.get("os") or {}).items():
-        need = (
-            ("kickstart", "system_dir")
-            if "system_dir" in osc
-            else ("kickstart", "commands_adf", "workbench_adf")
-        )
-        missing += ["os %s: %s" % (name, k) for k in need if k not in osc]
-    if missing:
-        sys.exit("%s lacks %s" % (path, ", ".join(missing)))
+    if "os" not in cfg:
+        sys.exit("%s lacks os" % path)
     for k in PATH_KEYS:
         if k in cfg:
             cfg[k] = resolve(cfg[k])
-    for osc in cfg["os"].values():
-        if isinstance(osc.get("commands_adf"), str):
-            osc["commands_adf"] = [osc["commands_adf"]]
-        for k in OS_PATH_KEYS:
-            if k in osc:
-                osc[k] = resolve(osc[k])
     return cfg
-
-
-def os_missing(osc):
-    """The OS files of a profile that are not there."""
-    paths = [
-        osc[k] for k in ("kickstart", "kickstart_ext", "workbench_adf", "system_dir") if k in osc
-    ]
-    return [p for p in paths + osc.get("commands_adf", []) if not p.exists()]
 
 
 def shown(p):
@@ -463,7 +398,7 @@ def main():
     ap.add_argument(
         "--config", type=Path, default=Path(os.environ.get("FAT95_IT_CONFIG", HERE / "config.yaml"))
     )
-    ap.add_argument("--os", action="append", help="run on these configured OSes only (repeatable)")
+    ap.add_argument("--os", help="OS profile of the config")
     ap.add_argument(
         "--scenario", action="append", choices=sorted(SCENARIOS), help="run only these (repeatable)"
     )
@@ -479,48 +414,35 @@ def main():
             print("%-15s %-28s %s" % (name, ",".join(s.get("os", ("all",))), s["doc"]))
         return
     cfg = load_config(a.config)
+    if a.os not in cfg["os"]:
+        sys.exit("--os: one of %s" % ", ".join(cfg["os"]))
+    osc = cfg["os"][a.os] or {}
+    unset = [v for v in ("AMIGA_SYSTEM", "AMIGA_KICKSTART") if not os.environ.get(v)]
+    if unset:
+        sys.exit("%s not set: run in an amiga-fsuae OS image" % " and ".join(unset))
     builds = [cfg[k] for k in ("fat95", "dd", "lsfsres", "ptable") if not cfg[k].exists()]
-    builds += [SMOKE] if not SMOKE.exists() else []
+    builds += [p for p in (SMOKE, NOREQ) if not p.exists()]
     if builds:
         sys.exit("missing builds: %s" % ", ".join(map(shown, builds)))
-    oses = a.os or list(cfg["os"])
-    unknown = [o for o in oses if o not in cfg["os"]]
-    if unknown:
-        sys.exit("not in the config: %s" % ", ".join(unknown))
     names = a.scenario or [n for n in SCENARIOS if not SCENARIOS[n].get("request")]
-    stress = [n for n in names if "OUT:fsst" in SCENARIOS[n]["steps"]]
+    todo = [n for n in names if a.os in SCENARIOS[n].get("os", (a.os,))]
+    stress = [n for n in todo if "OUT:fsst" in SCENARIOS[n]["steps"]]
     if stress and not (cfg.get("fsst") and cfg["fsst"].exists()):
         sys.exit("%s need FileSystemStressTest (fsst in the config)" % " ".join(stress))
-    plan, skipped = [], []
-    print("plan:")
-    for osname in oses:
-        osc = cfg["os"][osname]
-        todo = [n for n in names if osname in SCENARIOS[n].get("os", (osname,))]
-        gone = os_missing(osc)
-        if gone:
-            skipped.append(osname)
-            print("  %-13s skip: %s not found" % (osname, ", ".join(map(shown, gone))))
-        elif todo:
-            plan.append((osname, osc, todo))
-            print("  %-13s %s" % (osname, " ".join(todo)))
     work = (a.work or cfg["work"] / time.strftime("fat95-it-%Y%m%d-%H%M%S")).resolve()
     if work.exists():
         sys.exit("%s exists; give a new --work directory" % work)
     work.mkdir(parents=True)
-    failed, total = [], 0
-    for osname, osc, todo in plan:
-        boot = prepare(cfg, osname, osc, work)
-        for n in todo:
-            total += 1
-            if not run(cfg, osname, osc, boot, work, n, SCENARIOS[n]):
-                failed.append("%s %s" % (osname, n))
+    print("%s: %s" % (a.os, " ".join(todo)))
+    boot = prepare(cfg, osc, work)
+    failed = [n for n in todo if not run(cfg, a.os, osc, boot, work, n, SCENARIOS[n])]
     print(
-        "%d/%d scenarios passed%s%s"
+        "%s: %d/%d scenarios passed%s"
         % (
-            total - len(failed),
-            total,
+            a.os,
+            len(todo) - len(failed),
+            len(todo),
             "; failed: " + ", ".join(failed) if failed else "",
-            "; skipped: " + ", ".join(skipped) if skipped else "",
         )
     )
     sys.exit(1 if failed else 0)

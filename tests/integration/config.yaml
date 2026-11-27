@@ -1,43 +1,26 @@
-# Inputs of run.py that are not part of this repository. A relative path
-# starts at the repository root; ../ names a checkout beside it. fat95, dd,
-# lsfsres and debug95 default to this repository's dist/. An OS profile whose
-# files are missing is skipped.
+# Settings of run.py. os names the OS profiles, the image brings the OS. A
+# relative path starts at the repository root. fat95, dd, lsfsres, debug95
+# and ptable default to this repository's dist/.
 ---
 os:
-  "3.2.3":
-    kickstart: /opt/AmigaOS/Update3.2.3/ROMs/A1200.47.115.rom
-    commands_adf:
-      - /opt/AmigaOS/Update3.2.3/ADFs/DiskDoctor3.2.3.adf
-      - /opt/AmigaOS/Update3.2.3/ADFs/ModulesA1200_3.2.3.adf
-    workbench_adf: /opt/AmigaOS/AmigaOS3.2/adf/workbench3.2.adf
-  "3.1":
-    kickstart: /opt/AmigaOS/AmigaOS3.1/ROMs/kick40068.A1200
-    commands_adf: /opt/AmigaOS/AmigaOS3.1/ADFs/wbench31.adf
-    workbench_adf: /opt/AmigaOS/AmigaOS3.1/ADFs/wbench31.adf
-  aros-nightly:
-    kickstart: /opt/AmigaOS/AROS/nightly-20261116/boot/amiga/aros-rom.bin
-    kickstart_ext: /opt/AmigaOS/AROS/nightly-20261116/boot/amiga/aros-ext.bin
-    system_dir: /opt/AmigaOS/AROS/nightly-20261116
+  "3.2.3": {}
+  "3.1": {}
+  aros:
+    setpatch: false
     cpu: 68040-NOMMU
     ide_device: ata.device
     stack: 65536
     copy: dd
-    max_transfer: 0x10000
   apolloos:
-    kickstart: ../ApolloOS/apollo-os/bin/bin/amiga-m68k/gen/boot/aros-amiga-m68k-rom.bin
-    kickstart_ext: ../ApolloOS/apollo-os/bin/bin/amiga-m68k/gen/boot/aros-amiga-m68k-ext.bin
-    system_dir: ../ApolloOS/apollo-os/bin/bin/amiga-m68k/AROS
+    setpatch: false
     cpu: 68040-NOMMU
     ide_device: uaehf.device
-    ide_controller: uae
     ide_unit: 1
     stack: 65536
     copy: dd
-ptable: ../amigaos-ptable/dist/full/68020/ptable.library
 # FileSystemStressTest from Aminet (disk/misc), for the stress_ scenarios
 fsst: /opt/AmigaOS/FileSystemStressTest/FileSystemStressTest
 # work: build/integration
 # fsuae: fs-uae
-# vasm: vasmm68k_mot
 # wait: 5
 # limit: 240

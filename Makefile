@@ -457,10 +457,31 @@ $(TARGET_SMOKE): $(SOURCE_SMOKE) Makefile
 	$(Q)echo "  VBCC    $@"
 	$(Q)VBCC=$(VBCC_HOME) PATH=$(VBCC_HOME)/bin:$$PATH $(VBCC) +aos68k -O2 -c99 -INDK/Include_H -o $@ $< -lamiga
 
-# FS-UAE integration suite: the built handler and tools under the OS profiles
-# of tests/integration/config.yaml. IT passes options to run.py.
-test-integration: $(TARGET_SMOKE)
-	$(Q)$(PYTHON) $(TESTDIR)/integration/run.py $(IT)
+# noreq: guest tool of the integration suite, not shipped.
+SOURCE_NOREQ = tools/noreq.asm
+TARGET_NOREQ = build/tools/noreq
+noreq: check-vasm $(TARGET_NOREQ)
+$(TARGET_NOREQ): $(SOURCE_NOREQ) Makefile
+	$(Q)mkdir -p $(dir $@)
+	$(Q)echo "  VASM    $@"
+	$(Q)$(VASM) -quiet $(VASMFLAGS) $(VASMCPU_000) -o $@ $<
+
+# FS-UAE integration suite: run.py in an amiga-fsuae OS image per OS, one
+# after another. IT_OS picks the OSes, IT_WORK the run directory, IT passes
+# options to run.py. The AmigaOS images are built locally.
+IT_OS ?= 3.2.3 3.1 aros apolloos
+IT_IMAGE_3.2.3 = localhost/amiga-fsuae-amigaos:3.2.3
+IT_IMAGE_3.1 = localhost/amiga-fsuae-amigaos:3.1
+IT_IMAGE_aros = docker.io/pulchart/amiga-fsuae-aros:latest
+IT_IMAGE_apolloos = ghcr.io/pulchart/amiga-fsuae-apolloos:latest
+FSST_DIR ?= /opt/AmigaOS/FileSystemStressTest
+IT_WORK := build/integration/$(shell date +%Y%m%d-%H%M%S)
+test-integration: $(TARGET_SMOKE) $(TARGET_NOREQ)
+	$(Q)mkdir -p $(IT_WORK); rc=0; $(foreach os,$(IT_OS),podman run --rm --pull=newer \
+		--security-opt label=disable -v $(CURDIR):$(CURDIR) -w $(CURDIR) \
+		-v $(abspath $(IT_WORK)):$(abspath $(IT_WORK)) $(if $(wildcard $(FSST_DIR)),-v $(FSST_DIR):$(FSST_DIR):ro) \
+		$(IT_IMAGE_$(os)) python3 $(TESTDIR)/integration/run.py --os $(os) \
+		--work $(abspath $(IT_WORK))/$(os) $(IT) || rc=1;) exit $$rc
 
 # Must also run when vasm is missing.
 check-test-deps:
@@ -635,8 +656,9 @@ help:
 	@echo "  test-list-update - Refresh the inventory in $(TESTDIR)/INVENTORY.md"
 	@echo "  check-test-deps  - Report what the test suites need and what is missing"
 	@echo "  lint             - ruff check and format check of the tracked Python files"
-	@echo "  test-integration - FS-UAE integration suite (IT=\"--os 3.1\" passes options)"
+	@echo "  test-integration - FS-UAE integration suite (IT_OS=aros picks OSes, IT= passes options)"
 	@echo "  smoke            - Build build/tools/smoke for the integration suite"
+	@echo "  noreq            - Build build/tools/noreq for the integration suite"
 	@echo ""
 	@echo "Documentation targets:"
 	@echo "  guide / guides - Generate AmigaGuide documentation"
@@ -710,4 +732,4 @@ $(GUIDE_DEBUG95): docs/debug95.md $(MD2GUIDE) $(VERSION_STAMP)
 	$(Q)echo "  GUIDE   $@"
 	$(Q)python3 $(MD2GUIDE) docs/debug95.md $@ --version $(DEBUG95_VERSION) --date $(DEBUG95_DATE) --title "debug95" --ver-title "debug95 guide"
 
-.PHONY: all fat95 fat95-080 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide guides help version-readme stage FORCE test test-amifuse test-list-update check-test-deps lint test-integration smoke
+.PHONY: all fat95 fat95-080 fat95-020 fat95-000 install95 dd debug95 setfilesize boot95 lsfsres clean distclean readme release check-vasm check-lha guide guides help version-readme stage FORCE test test-amifuse test-list-update check-test-deps lint test-integration smoke noreq
