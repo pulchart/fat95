@@ -7814,10 +7814,15 @@ lob_nchar:
 	beq.s	lob_ndir
 
 	subq.w	#1,d1			;limit each name component..
-	bmi.s	lob_nchar		;..to length
+	bmi	lob_nlong		;..to length
 
 	move.b	d0,(a1)+
 	bra.s	lob_nchar
+lob_nlong:
+	cmp.w	#-1,d1
+	bne	lob_nchar
+	bsr	ExCutEscape		;keep no part of an escape
+	bra	lob_nchar
 lob_ndir:
 	tst.w	d2			;any chars remaining after '/'?
 	beq.s	lob_nend		;no - trailing slash, skip it
@@ -9358,6 +9363,45 @@ ecnt_end:
 	moveq.l	#0,d0
 	move.w	d1,d0
 	movem.l	(sp)+,d1/a1
+	rts
+
+; a1 <-> end of a name cut to MAXNAMELEN, d0 <- first byte cut off;
+; a1 moves back to the % of an escape the cut splits
+
+ExCutEscape:
+	movem.l	d0-d2/a0/a2-a3,-(sp)
+	move.l	a1,a3			;end of the kept text
+	move.b	d0,(a3)			;the cut byte behind it
+	move.l	a1,a2
+	moveq.l	#5-1,d2
+ece_find:
+	cmp.b	#'%',-(a2)
+	dbeq	d2,ece_find
+	bne	ece_end			;no % close to the cut
+	lea	1(a2),a1
+	bsr	ExDigit			;class digit
+	lsr.w	#2,d0
+	subq.w	#2,d0
+	cmp.w	#2,d0
+	bhi	ece_end			;no escape: the % stands for itself
+	addq.w	#3,d0			;digits of the escape
+	move.l	a3,d1
+	sub.l	a2,d1
+	subq.w	#1,d1			;digits kept
+	cmp.w	d0,d1
+	bcc	ece_end			;complete before the cut
+	subq.w	#1,d1			;digits to check up to the cut byte, minus 1
+	bmi	ece_cut			;the class digit was cut
+ece_digit:
+	bsr	ExDigit
+	tst.l	d0
+	bmi	ece_end			;not a digit: the % stands for itself
+	dbf	d1,ece_digit
+ece_cut:
+	move.l	a2,a3
+ece_end:
+	move.l	a3,a1
+	movem.l	(sp)+,d0-d2/a0/a2-a3
 	rts
 
 ;--- go to next dir entry ----------------------------------

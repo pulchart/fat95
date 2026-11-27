@@ -54,6 +54,20 @@ def unescape(text):
     return value, size + 1
 
 
+def decode(text):
+    """Reference decoder of a whole name: its code points, a % that starts no escape as itself."""
+    out, i = [], 0
+    while i < len(text):
+        found = unescape(text[i + 1:]) if text[i] == '%' else None
+        if found:
+            out.append(found[0])
+            i += 1 + found[1]
+        else:
+            out.append(ord(text[i]))
+            i += 1
+    return out
+
+
 # local 0x80..0x83 are U+0104, U+00E9, U+0141 and U+2013, every other value once
 TABLE = (list(range(0x80)) + [0x104, 0xe9, 0x141, 0x2013]
          + [u for u in range(0x84, 0x100) if u != 0xe9] + [0x1001])
@@ -332,6 +346,35 @@ class NameEscapes(unittest.TestCase):
             h.run('ExParseEscape', regs=regs)
             self.assert_preserved(regs, (0, 9), ('ExParseEscape', text))
 
+
+    def test_cut_keeps_no_part_of_an_escape(self):
+        """ExCutEscape moves the end of a name cut inside an escape back to its %, so the kept text means the same characters as the start of the full name; a % that starts no escape stays."""
+        rng = random.Random(13)
+        parts = [escape(cp) for cp in samples()[::40]] + ['%', '%Z', '%8', '%9x', '%%', 'a', 'b9', 'Q']
+        h = self.h
+        for text, cut, want in (('c' * 102 + '%9x', 104, 104), ('c' * 101 + '%90!', 104, 104),
+                                ('c' * 101 + '%90M', 104, 101)):
+            self.put(ENTRY, text[:cut].encode())
+            h.run('ExCutEscape', d0=ord(text[cut]), regs={9: ENTRY + cut})
+            self.assertEqual(h.cpu.r_reg(9) - ENTRY, want, text)
+        for _ in range(1500):
+            text = ''.join(rng.choice(parts) for _ in range(rng.randrange(2, 8))) + 'zzzzzz'
+            cut = rng.randrange(1, len(text) - 1)
+            self.put(ENTRY, text[:cut].encode())
+            h.run('ExCutEscape', d0=ord(text[cut]), regs={9: ENTRY + cut})
+            end = h.cpu.r_reg(9) - ENTRY
+            kept = text[:end]
+            self.assertTrue(cut - 5 <= end <= cut, (text, cut, end))
+            self.assertEqual(decode(kept), decode(text)[:len(decode(kept))], (text, cut, end))
+            if end < cut:
+                self.assertEqual(text[end], '%', (text, cut, end))
+                self.assertIsNone(unescape(text[end + 1:cut]), (text, cut, end))
+                self.assertTrue(all(c in B32 + B32.lower() for c in text[end + 1:cut + 1]),
+                                (text, cut, end))
+            else:
+                last = text.rfind('%', 0, cut)
+                whole = unescape(text[last + 1:]) if last >= 0 else None
+                self.assertFalse(whole and last + 1 + whole[1] > cut, (text, cut))
 
 if __name__ == '__main__':
     unittest.main()

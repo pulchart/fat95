@@ -193,12 +193,22 @@ def literal_percent(b, want):
 
 
 def name_limit(b, want):
-    """A name of exactly 104 bytes with an escape is created and opened by that name."""
+    """A name of exactly 104 bytes with an escape is created and opened by that name; a longer one is cut before an escape the limit splits, and a % that starts no escape stays."""
     name = 'c' * 100 + '\u0416'
     assert len(escaped(name)) == 104
     b.put('/' + escaped(name), b'104')
     want[name] = b'104'
     assert b.read_file('/' + escaped(name), 100, 0) == b'104'
+    for name, kept in (('c' * 101 + escaped('\u0416'), 'c' * 101), ('d' * 100 + escaped('\U0001f600'), 'd' * 100),
+                       ('e' * 103 + '%Zq', 'e' * 103 + '%')):
+        b.put('/' + name, kept[:1].encode())
+        want[kept] = kept[:1].encode()
+        assert b.read_file('/' + name, 100, 0) == want[kept]
+    folder = 'f' * 102 + escaped('\u0416')
+    mkdir(b, folder)
+    b.put('/' + folder + '/inner.txt', b'inner')
+    want['f' * 102] = None
+    want['f' * 102 + '/inner.txt'] = b'inner'
 
 
 def attributes(b, name):
